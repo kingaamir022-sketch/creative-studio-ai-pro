@@ -1,8 +1,8 @@
 {
  "app": "CreativeStudio AI Pro",
- "version": "2.1.0",
- "notes": "Auto-update system (PageCommand-style): URL feed check, dashboard notification, SHA-verified apply, backup + rollback.",
- "package": "update-2.1.0.json",
- "packageSha256": "11f6566bd95b4b2037fbefe670a56fbf9471bdfb08b3d10cb3eaf40d652c8a18",
- "publishedAt": "2026-11-13T09:02:05.367Z"
+ "version": "2.2.0",
+ "notes": "OWNER Lifetime Free: the OWNER account is now lifetime-free with everything unlimited.",
+ "package": "update-2.2.0.json",
+ "packageSha256": "835f21153c777e8a37338973960464388d4279e0809bd6a1e9bc9c301e8ddf89",
+ "publishedAt": "2026-11-13T12:15:44.496Z"
 }
