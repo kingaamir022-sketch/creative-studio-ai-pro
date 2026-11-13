@@ -4,8 +4,10 @@
 // Every paid action in the app costs a small, fixed number of credits.
 // Charges are a single SQLite transaction: balance check + deduct + usage
 // log entry happen atomically, so two concurrent charges can never drive a
-// balance below zero. Enterprise plans are unlimited (no deduction, the
-// usage is still logged with 0 credits).
+// balance below zero. Enterprise and Lifetime plans are unlimited (no
+// deduction, the usage is still logged with 0 credits) — and the OWNER role
+// is always unlimited too, even if the stored plan field says otherwise
+// (belt and braces: the owner can never be locked out of their own app).
 //
 // Costs are deliberately small: a Free account starts with 100 credits,
 // and a full test suite run stays far below that per user.
@@ -47,7 +49,7 @@ function costOf(action) {
 }
 
 function isUnlimited(user) {
-  return user && user.plan === 'Enterprise';
+  return !!user && (user.plan === 'Enterprise' || user.plan === 'Lifetime' || user.role === 'OWNER');
 }
 
 // Balance check only — no deduction. Used as a pre-flight gate at job
