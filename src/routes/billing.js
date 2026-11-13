@@ -101,6 +101,11 @@ router.post('/admin/requests/:id/approve', auth.requireAuth, auth.requireRole('O
   if (r.status !== 'pending') return res.status(400).json({ error: `This request was already ${r.status}.` });
   const user = db.getUserById(r.user_id);
   if (!user) return res.status(404).json({ error: 'The requesting user no longer exists.' });
+  // The Lifetime plan is reserved for the OWNER account — approving it for
+  // anyone else is refused even if such a request somehow exists.
+  if (r.plan === 'Lifetime' && user.role !== 'OWNER') {
+    return res.status(400).json({ error: 'The Lifetime plan is reserved for the OWNER account and cannot be approved for this user.' });
+  }
   const plan = PLANS[r.plan];
   const newBalance = Math.max(user.credits_balance, plan.credits);
   db.db.transaction(() => {
