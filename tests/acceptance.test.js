@@ -202,9 +202,9 @@ after(() => {
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-test('health reports Phase 9 / 2.2.0', async () => {
+test('health reports Phase 9 / 2.2.1', async () => {
   const h = await req('/api/health');
-  assert.equal(h.json.version, '2.2.0');
+  assert.equal(h.json.version, '2.2.1');
   assert.equal(h.json.phase, 9);
 });
 
