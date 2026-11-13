@@ -50,7 +50,7 @@ router.get('/dashboard', auth.requireAuth, async (req, res) => {
       db: 'ok',
       ffmpeg: ff,
       maxUploadMB: config.maxUploadMB,
-      version: '2.1.0 (Auto-Update)',
+      version: '2.2.0 (Auto-Update)',
     },
     recentProjects: recent.map((p) => ({ id: p.id, name: p.name, type: p.type, updatedAt: p.updated_at })),
     recentMedia: recentMedia.map((m) => ({ id: m.id, originalName: m.original_name, kind: m.kind, url: `/api/media/${m.id}/file`, createdAt: m.created_at })),
