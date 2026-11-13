@@ -1,0 +1,63 @@
+/* Video Editor (Phase 3) — three-area layout + bottom timeline. */
+.ve-wrap { display: flex; flex-direction: column; gap: 12px; }
+.ve-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ve-toolbar .spacer { flex: 1; }
+.ve-main { display: grid; grid-template-columns: 240px 1fr 300px; gap: 12px; align-items: stretch; }
+.ve-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px; min-height: 320px; }
+.ve-panel h3 { margin: 0 0 10px; font-size: 14px; }
+.ve-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.ve-tabs button { border: 1px solid var(--border); background: var(--bg2); color: var(--text); border-radius: 8px; padding: 5px 9px; cursor: pointer; font-size: 12px; }
+.ve-tabs button.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.ve-media-item { display: flex; gap: 8px; align-items: center; padding: 7px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 7px; cursor: pointer; }
+.ve-media-item:hover { border-color: var(--accent); }
+.ve-media-item img { width: 56px; height: 32px; object-fit: cover; border-radius: 4px; background: #000; }
+.ve-media-item .nm { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px; }
+.ve-media-item .mt { font-size: 11px; color: var(--muted); }
+.ve-preview { display: flex; flex-direction: column; gap: 8px; }
+.ve-stage { position: relative; background: #000; border-radius: 10px; overflow: hidden; margin: 0 auto; }
+.ve-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.ve-stage .ve-textov { position: absolute; white-space: pre-wrap; text-align: center; pointer-events: none; line-height: 1.2; }
+.ve-stage .ve-noclip { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 13px; }
+.ve-transport { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.ve-transport .time { font-family: monospace; font-size: 13px; }
+.ve-props label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+.ve-props input[type=text], .ve-props input[type=number], .ve-props select, .ve-props textarea { width: 100%; }
+.ve-props input[type=range] { width: 100%; }
+.ve-row { display: flex; gap: 8px; }
+.ve-row > * { flex: 1; }
+.ve-kf { border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin-bottom: 8px; font-size: 12px; }
+.ve-kf .ve-row input { width: 100%; }
+.ve-timeline { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 10px 12px; }
+.ve-tl-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.ve-tl-tools input[type=range] { width: 120px; }
+.ve-ruler { position: relative; height: 22px; border-bottom: 1px solid var(--border); margin-left: 92px; cursor: pointer; overflow: hidden; }
+.ve-tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--border); font-size: 10px; color: var(--muted); padding-left: 3px; }
+.ve-track { display: flex; align-items: stretch; border-bottom: 1px solid var(--border); min-height: 44px; }
+.ve-track-head { width: 92px; flex: none; font-size: 12px; padding: 6px 8px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.ve-track-head .nm { font-weight: 700; }
+.ve-track-head .tb { display: flex; gap: 4px; }
+.ve-track-head .tb button { font-size: 10px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); cursor: pointer; }
+.ve-track-head .tb button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.ve-lane { position: relative; flex: 1; }
+.ve-clip { position: absolute; top: 5px; bottom: 5px; border-radius: 6px; background: var(--accent); color: var(--on-accent); font-size: 11px; padding: 4px 6px; overflow: hidden; cursor: grab; border: 2px solid transparent; box-sizing: border-box; }
+.ve-clip.audio { background: var(--accent-2); }
+.ve-clip.text { background: var(--warning); }
+.ve-clip.selected { border-color: var(--on-accent); box-shadow: 0 0 0 2px var(--accent); }
+.ve-clip.grouped { outline: 2px dashed var(--on-accent); outline-offset: -4px; }
+.ve-clip .handle { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; }
+.ve-clip .handle.l { left: 0; }
+.ve-clip .handle.r { right: 0; }
+.ve-clip.locked { opacity: 0.55; cursor: not-allowed; }
+.ve-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--danger); z-index: 5; pointer-events: none; }
+.ve-marker { position: absolute; top: 0; font-size: 10px; color: var(--warning); cursor: pointer; z-index: 6; }
+.ve-job { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+.ve-progress { height: 8px; background: var(--bg2); border-radius: 4px; overflow: hidden; margin: 6px 0; }
+.ve-progress > div { height: 100%; background: var(--accent); }
+.ve-log { background: var(--surface-sunken); color: var(--text); font-family: monospace; font-size: 11px; padding: 8px; border-radius: 8px; max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+
+@media (max-width: 860px) {
+  .ve-main { grid-template-columns: 1fr; }
+  .ve-panel { min-height: 0; }
+  .ve-ruler, .ve-beat-ruler { margin-left: 0; }
+  .ve-track-head { width: 64px; }
+}
