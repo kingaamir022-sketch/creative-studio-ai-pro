@@ -125,7 +125,7 @@ test('health reports Phase 9', async () => {
   const r = await req('/api/health');
   assert.equal(r.status, 200);
   assert.equal(r.json.phase, 9);
-  assert.equal(r.json.version, '2.1.0');
+  assert.equal(r.json.version, '2.2.0');
 });
 
 test('design endpoints require login', async () => {
