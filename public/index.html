@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CreativeStudio AI Pro — v2.0.0 Final Redesign</title>
+<script>
+/* Theme before first paint: saved choice wins, else the OS preference. */
+(function () {
+  try {
+    var saved = localStorage.getItem('cs-theme');
+    var theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+})();
+</script>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/editor.css">
+<link rel="stylesheet" href="/video-editor.css">
+<link rel="stylesheet" href="/bulk.css">
+<link rel="stylesheet" href="/music.css">
+<link rel="stylesheet" href="/voice.css">
+<link rel="stylesheet" href="/shorts.css">
+<link rel="stylesheet" href="/ai-studio.css">
+<link rel="stylesheet" href="/social.css">
+<link rel="stylesheet" href="/marketplace.css">
+<link rel="stylesheet" href="/admin.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&family=Poppins:wght@400;500;700;800&family=Montserrat:wght@400;500;700;800&family=Playfair+Display:wght@500;700&family=Roboto:wght@400;500;700&family=Oswald:wght@500;700&family=Lato:wght@400;700&family=Raleway:wght@400;700&family=Bebas+Neue&family=Dancing+Script:wght@500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="root"></div>
+<script src="/editor.js"></script>
+<script src="/video-editor.js"></script>
+<script src="/bulk.js"></script>
+<script src="/music.js"></script>
+<script src="/voice.js"></script>
+<script src="/shorts.js"></script>
+<script src="/ai-studio.js"></script>
+<script src="/social.js"></script>
+<script src="/marketplace.js"></script>
+<script src="/admin.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
