@@ -27,9 +27,9 @@ real-provider or real-platform call has ever run**.
 | 10 | Long Video to Shorts | Implemented | Real local analysis (scene + silence + energy), explainable ranked clips, motion-centroid 9:16 reframe, review gallery, captions. **Pending:** face/subject tracking for the reframe (motion centroid only); a full 60-minute video was not rendered end-to-end (see acceptance C). |
 | 11 | AI Music Studio | Implemented | Real local DSP: BPM/beat grid/downbeats/energy curve/drop detection, waveform, confidence; Music Library (own/licensed audio only); Sync Director (cut/transition on beat, divisor, pulse, fade/volume/loop); beat-snap + beat ruler. AI music generation / mood tagging are live in Phase 7 but **need a music / LLM key**. **Pending:** multi-track audio mixing. |
 | 12 | Auto Captions | Implemented | Manual transcripts (plain text = estimated timing, SRT/VTT = exact), editable, SRT/VTT export, word-by-word burn-in, Urdu/English/Roman Urdu/Arabic RTL/Hindi. Automatic transcription is live in Phase 7 but **needs an STT key** (refuses with 402 `key_needed` without one — never a fake transcript). |
-| 13 | Background Remover | Pending | Not built. No vision model / background-removal provider is wired in. The sidebar shows an honest "not yet built" state. |
+| 13 | Background Remover | Implemented (v2.2.2) | Free local U-2-Net ONNX model (`onnxruntime-web`, WASM) — no key, nothing uploaded. Model (~168 MB) downloads once on first use into `data/models/u2net.onnx` and is cached; offline → honest 503. Also powers Magic Grab. Live in Magic Tools; the sidebar entry is now the Magic Tools view. |
 | 14 | Effects & Transitions | Implemented | Searchable library of the effects that really exist (filters, transitions, text animations); the view lists chroma key, stabilisation, object removal, proxy editing, speed ramping and motion paths as **not built**, never as working. |
-| 15 | Animation Studio | Implemented | Keyframes (position/scale/opacity, linear interpolation) + text fade/slide/pop animations, auto + manual per-element timing. **Pending:** motion paths, easing curves, typewriter (impossible with drawtext — never offered). |
+| 15 | Animation Studio | Implemented | Keyframes (position/scale/opacity, linear interpolation) + text fade/slide/pop animations, auto + manual per-element timing. **v2.2.2 — Magic Animate presets:** 10 one-click presets (fade, slide-up, slide-left, pop, zoom, bounce, float, pulse, spin, typewriter); design presets apply to a layer in the Graphic Editor and preview live with CSS; clip presets expand into real video keyframes held to the clip end. **Still pending:** motion paths, easing curves; typewriter and spin are design-only (drawtext cannot render them — never offered for clips). |
 | 16 | Brand Kit | Implemented | Brand profiles (logos, colours, fonts), one-click apply to designs. |
 | 17 | Media Library | Implemented | Real uploads (image/video/audio, 200 MB default), search/tags/folders/favourites/preview, delete removes the disk file. |
 | 18 | Stock Assets | Pending | Not built. No stock library, no downloads from any stock source. The sidebar shows an honest "not yet built" state. (Music is user-provided/licensed only by design.) |
@@ -54,8 +54,9 @@ simplified mobile layout — Implemented as designed.
 
 | Module | Status |
 |--------|--------|
-| Graphic Design Studio | Implemented (text curvature Pending) |
+| Graphic Design Studio | Implemented (text curvature Pending; Magic Resize + Magic Animate presets live in v2.2.2) |
 | Video Editor | Implemented (chroma key, stabilisation, speed ramping, proxy editing, 4K, 3rd track Pending) |
+| Magic Tools (v2.2.2) | Implemented: Magic Resize (local reflow), Magic Animate presets (10), Magic Eraser (needs image key), Magic Expand (AI needs key; solid/blur local), Background Remover + Magic Grab (free local ONNX, no key), Magic Write (LLM, needs key; free Gemini works) |
 | Bulk Video Studio + Dynamic Background Engine | Implemented (AI/prompt backgrounds need an image key; A vs B quiz Pending) |
 | AI Music Sync Director | Implemented (AI generation/mood need keys; multi-track mixing Pending) |
 | Long Video to Shorts | Implemented (face tracking Pending; 60-min end-to-end render not run) |
@@ -128,8 +129,9 @@ simplified mobile layout — Implemented as designed.
 - A vs B quiz format not built; 5-question quiz video at 3s countdown =
   38s, not 45–60s (60s+ needs 8 questions or a 5–6s countdown).
 - Max 2 video tracks, no 4K, no chroma key/stabilisation/proxy editing,
-  no motion paths/easing, no face/subject tracking, no vision model, no
-  background remover, no AI Assistant, no stock assets.
+  no motion paths/easing, no face/subject tracking, no AI Assistant, no stock assets.
+  Background remover and Magic Grab ARE built (v2.2.2, free local ONNX model) —
+  the "no vision model, no background remover" line is retired.
 - 60-minute video not rendered end-to-end (same pipeline; proven on the
   30s known-structure video — see acceptance C).
 - One music track + video audio; beat detection is weaker on
