@@ -1,7 +1,10 @@
-# CreativeStudio AI Pro — v2.2.1: Free AI (Google Gemini) + Super Admin
+# CreativeStudio AI Pro — v2.2.2: Magic Tools (Resize, Animate, Eraser, Expand, Background Remover, Grab, Magic Write)
 
 All-in-one AI graphic design, video editing, bulk video automation & social
-media content platform. **v2.2.1 = Free AI + Super Admin:** Google Gemini
+media content platform. **v2.2.2 = Magic Tools:** Magic Resize (local
+reflow), Magic Animate presets, Magic Eraser + Expand, Background Remover
+and Magic Grab on a free local ONNX model (no key), and Magic Write
+through the LLM provider (free Gemini works). **v2.2.1 = Free AI + Super Admin:** Google Gemini
 joins as a free-tier LLM provider (free Google AI Studio key, no card
 required) and ADMIN becomes a Super Admin with full powers like the OWNER —
 except the OWNER account itself stays untouchable. **v2.2.0 = OWNER Lifetime Free:** the OWNER account
@@ -48,6 +51,40 @@ package are pushed into its `updates/` folder. Until then the status says
 restarts itself (Windows) or asks for a server restart. If the update
 changes dependencies, the app says so plainly and does NOT apply it — that
 one needs a fresh download from Drive.
+
+## What changed in v2.2.2 — Magic Tools ✅
+
+- **Magic Resize.** One click reflows a whole design to another format
+  (Instagram Story, YouTube Thumbnail, …): every layer scales and
+  repositions, text re-wraps and shrinks to fit — never overflows — and
+  anything that still cannot fit is listed as "Needs attention" with a
+  shorter-text suggestion. Pure local, no key. In the Graphic Editor
+  (Canvas tab) and in Magic Tools (creates a NEW design, original untouched).
+- **Magic Animate presets.** 10 one-click presets (fade, slide-up,
+  slide-left, pop, zoom, bounce, float, pulse, spin, typewriter). Design
+  presets apply to a layer in the Graphic Editor (right panel → Animate)
+  and preview live with CSS; clip presets expand into real video
+  keyframes held to the clip end. Typewriter and spin are design-only —
+  video rendering cannot draw them, so they are never offered for clips.
+- **Background Remover + Magic Grab — free local AI, no key.** A U-2-Net
+  segmentation model runs on this computer via `onnxruntime-web` (pure
+  JS/WASM — no native module). The model (~168 MB, Apache 2.0) is NOT
+  bundled: it downloads once on first use into `data/models/u2net.onnx`
+  and is cached; offline it refuses honestly (503) instead of faking a
+  result. Grab reuses the same mask: click the subject and it is lifted
+  out as its own transparent layer. **Install note:** v2.2.2 adds a new
+  dependency, and the in-place updater never touches `node_modules` — so
+  v2.2.2 is a full-reinstall release: install it from the Drive Setup.exe
+  once, then later updates arrive in-app again.
+- **Magic Eraser + Expand.** Paint the region to remove (mask painter in
+  Magic Tools); Eraser repaints it via your image provider key — without
+  one it refuses with 402 `PROVIDER_KEY_NEEDED` and creates nothing.
+  Expand grows the canvas: AI outpainting needs the image key; **solid
+  colour** and **blurred edge** work locally with no key.
+- **Magic Write.** A general AI writing tool in AI Studio (headlines,
+  posts, scripts, blog, rewrite/shorten/tone) routed through the existing
+  LLM provider abstraction — works with the free Gemini provider when
+  configured, reports `key_needed` honestly when no LLM key is set.
 
 ## What changed in v2.2.1 — Free AI (Google Gemini) + Super Admin ✅
 
