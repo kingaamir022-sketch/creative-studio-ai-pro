@@ -1,7 +1,9 @@
-# CreativeStudio AI Pro — v2.1.0: Auto-Update
+# CreativeStudio AI Pro — v2.2.0: OWNER Lifetime Free
 
 All-in-one AI graphic design, video editing, bulk video automation & social
-media content platform. **v2.1.0 = Auto-Update (PageCommand-Pro-style):**
+media content platform. **v2.2.0 = OWNER Lifetime Free:** the OWNER account
+is lifetime-free with everything unlimited (credits, projects, storage),
+forever — no expiry, no renewal, no payment. **v2.1.0 = Auto-Update (PageCommand-Pro-style):**
 the app checks the update feed on start and every 6 hours, shows a
 Dashboard banner once per available version, and applies verified updates
 in place (SHA-256 checked, backed up first, rollback included) — see
@@ -43,6 +45,19 @@ package are pushed into its `updates/` folder. Until then the status says
 restarts itself (Windows) or asks for a server restart. If the update
 changes dependencies, the app says so plainly and does NOT apply it — that
 one needs a fresh download from Drive.
+
+## What changed in v2.2.0 — OWNER Lifetime Free ✅
+
+- **New `Lifetime` plan.** Price 0, credits / storage / projects all
+  unlimited. The first account (OWNER) gets it at signup; existing OWNER
+  accounts are upgraded automatically by a boot migration (regular users
+  are never touched). A regular user requesting Lifetime is refused.
+- **OWNER is always unlimited** — even if the stored plan field says
+  otherwise, the OWNER role itself bypasses every credit/limit gate.
+- **UI honesty.** Unlimited owners see "Unlimited" / ∞ instead of a
+  credit number (header chip, dashboard, Settings, Subscription, Admin
+  user list); the Lifetime card shows "Free forever" and is marked
+  OWNER-only for regular users.
 
 ## What changed in v2.1.0 — Auto-Update ✅
 
