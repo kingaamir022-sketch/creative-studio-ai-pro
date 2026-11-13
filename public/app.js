@@ -21,7 +21,7 @@ const NAV = [
   { id: 'voices', label: 'Voices', icon: '🎙️', phase: 5, live: true, blurb: 'Your own voice from a short sample (default on all videos) plus AI voices — narration for quizzes & bulk videos. AI speech needs a provider key; recorded narration works now.' },
   { id: 'captions', label: 'Auto Captions', icon: '💬', phase: 6, live: true, blurb: 'Multilingual captions incl. Urdu, Roman Urdu and Arabic (RTL), word-by-word burn-in, SRT/VTT export. STT needs a provider key; manual transcripts work now.' },
   { section: 'Tools' },
-  { id: 'bg-remover', label: 'Background Remover', icon: '🪄', phase: 7, blurb: 'One-click background removal for images and video, powered by a configurable AI provider.' },
+  { id: 'bg-remover', label: 'Magic Tools', icon: '🪄', phase: 9, live: true, blurb: 'Magic Resize, Animate presets, Eraser, Expand, Background Remover, Grab and Magic Write — the local tools need no key; Eraser and AI Expand need an image provider key.' },
   { id: 'effects', label: 'Effects & Transitions', icon: '🌈', phase: 3, live: true, blurb: 'Searchable library of filters, transitions, motion effects and text animations.' },
   { id: 'animation', label: 'Animation Studio', icon: '🎞️', phase: 3, live: true, blurb: 'Keyframes with linear interpolation and text fade/slide animations. Motion paths and easing curves are not built yet.' },
   { id: 'brand-kit', label: 'Brand Kit', icon: '🏷️', phase: 2, live: true, blurb: 'Multiple brand profiles: logos, colours and fonts — one-click apply to designs.' },
@@ -260,6 +260,7 @@ async function renderView() {
     if (v === 'export') return await viewExportCenter(c);
     if (v === 'effects') return await viewEffects(c);
     if (v === 'animation') return await viewAnimation(c);
+    if (v === 'bg-remover') return await viewMagicTools(c);
     if (v === 'ai-design') return await viewAIDesign(c);
     if (v === 'ai-studio') return await viewAIStudio(c);
     if (v === 'ai-video') return await viewAIStudio(c, 'video');
@@ -295,7 +296,7 @@ function renderAuth() {
   root.innerHTML = `
   <div class="auth-wrap"><div class="auth-card">
     <div class="logo"><div class="logo-mark">C</div><div class="logo-name">Creative<span>Studio</span> AI Pro</div></div>
-    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.2.1 — Free AI + Super Admin</p>
+    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.2.2 — Magic Tools</p>
     <div class="auth-toggle">
       <button id="tab-login" class="active">Log in</button>
       <button id="tab-signup">Sign up</button>
@@ -1415,6 +1416,9 @@ async function viewEffects(c) {
 /* ---------- Animation Studio (Phase 3 — keyframes live in the Video Editor) ---------- */
 async function viewAnimation(c) {
   const fx = await api('/api/video/effects').catch(() => ({ keyframeProperties: [] }));
+  const presets = await api('/api/magic/animate/presets').catch(() => ({ presets: [] }));
+  const designPresets = (presets.presets || []).filter((p) => p.appliesTo.includes('design'));
+  const clipPresets = (presets.presets || []).filter((p) => p.appliesTo.includes('clip'));
   c.innerHTML = `
   <div class="card"><h3>Keyframe animation</h3>
     <p class="sub">Keyframes live on each clip in the Video Editor (right panel → Keyframes tab). Add a keyframe at the playhead, edit its values, and the render interpolates linearly between points.</p>
@@ -1424,9 +1428,23 @@ async function viewAnimation(c) {
       <button class="btn btn-primary" id="an-open-editor">Open Video Editor →</button>
       <button class="btn" id="an-effects">Effects &amp; Transitions</button>
     </div>
+  </div>
+  <div class="card"><h3>🪄 Magic Animate presets</h3>
+    <p class="sub">One-click animation sets. Design presets apply to a layer in the Graphic Editor (select a layer → right panel → Animate) and preview live with CSS. Clip presets expand into real video keyframes — apply them from the Video Editor, or from a design project via Magic Tools.</p>
+    <h4>Design presets</h4>
+    ${(designPresets).map((p) => `<div class="kv"><span><b>${esc(p.name)}</b><br><small style="color:var(--muted)">${esc(p.description)}</small></span><span>${p.durationMs}ms${p.loop ? ' · loops' : ''}</span></div>`).join('') || '<p class="sub">No presets available.</p>'}
+    <h4 style="margin-top:14px">Video clip presets</h4>
+    ${(clipPresets).map((p) => `<div class="kv"><span><b>${esc(p.name)}</b><br><small style="color:var(--muted)">${esc(p.description)}</small></span><span>${p.durationMs}ms${p.loop ? ' · loops' : ''}</span></div>`).join('') || '<p class="sub">No presets available.</p>'}
+    <p class="sub" style="margin-top:12px">Typewriter and Spin are design-only: video rendering cannot draw them (drawtext has no per-letter reveal), so they are never offered for clips.</p>
+    <div style="margin-top:12px;display:flex;gap:10px">
+      <button class="btn btn-primary" id="an-open-graphic">Open Graphic Editor →</button>
+      <button class="btn" id="an-magic">Magic Tools</button>
+    </div>
   </div>`;
   document.getElementById('an-open-editor').addEventListener('click', () => go('video-editor'));
   document.getElementById('an-effects').addEventListener('click', () => go('effects'));
+  document.getElementById('an-open-graphic').addEventListener('click', () => go('graphic-editor'));
+  document.getElementById('an-magic').addEventListener('click', () => go('bg-remover'));
 }
 
 /* ---------- Later-phase placeholder (honest, no fake UI) ---------- */
