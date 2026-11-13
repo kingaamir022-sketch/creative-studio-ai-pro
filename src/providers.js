@@ -33,6 +33,14 @@ const PROVIDERS = [
     about: 'Chat completions. Powers AI quiz questions, design assist, captions/posts and music mood tags.',
   },
   {
+    id: 'gemini', kind: 'llm', label: 'LLM — Google Gemini (free tier)',
+    envKey: 'GEMINI_API_KEY', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    models: ['gemini-2.0-flash', 'gemini-2.5-flash'], defaultModel: 'gemini-2.0-flash',
+    test: { method: 'GET', path: '/models' },
+    phase: 7,
+    about: 'Chat completions via Google\'s OpenAI-compatible endpoint (beta — same chat/completions shape, Bearer key). Free API key from Google AI Studio (aistudio.google.com), no card required. The free tier has rate limits — check your project\'s limits in AI Studio. Powers AI quiz questions, design assist, captions/posts and music mood tags.',
+  },
+  {
     id: 'image', kind: 'image', label: 'Image — OpenAI Images (DALL·E 3 / GPT Image)',
     envKey: 'OPENAI_API_KEY', defaultBaseUrl: 'https://api.openai.com/v1',
     models: ['dall-e-3', 'gpt-image-1'], defaultModel: 'dall-e-3',
