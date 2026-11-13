@@ -24,6 +24,12 @@ const CREDIT_COSTS = {
   ai_transcribe: 2,
   ai_music_mood: 1,
   ai_music: 5,
+  ai_write: 1,
+  magic_bg_remove: 1,
+  magic_grab: 1,
+  magic_erase: 2,
+  magic_expand_ai: 2,
+  magic_expand_local: 1,
   render: 1,
   bulk_row: 1,
   social_caption: 1,
@@ -42,6 +48,7 @@ const AI_MODE_COSTS = {
   transcribe: 'ai_transcribe',
   'music-mood': 'ai_music_mood',
   'music-generate': 'ai_music',
+  write: 'ai_write',
 };
 
 function costOf(action) {
