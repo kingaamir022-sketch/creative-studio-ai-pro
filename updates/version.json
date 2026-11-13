@@ -1,0 +1,8 @@
+{
+ "app": "CreativeStudio AI Pro",
+ "version": "2.1.0",
+ "notes": "Auto-update system (PageCommand-style): URL feed check, dashboard notification, SHA-verified apply, backup + rollback.",
+ "package": "update-2.1.0.json",
+ "packageSha256": "11f6566bd95b4b2037fbefe670a56fbf9471bdfb08b3d10cb3eaf40d652c8a18",
+ "publishedAt": "2026-11-13T09:02:05.367Z"
+}
