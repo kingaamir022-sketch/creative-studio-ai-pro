@@ -1,8 +1,8 @@
 {
  "app": "CreativeStudio AI Pro",
- "version": "2.2.0",
- "notes": "OWNER Lifetime Free: the OWNER account is now lifetime-free with everything unlimited.",
- "package": "update-2.2.0.json",
- "packageSha256": "835f21153c777e8a37338973960464388d4279e0809bd6a1e9bc9c301e8ddf89",
- "publishedAt": "2026-11-13T12:15:44.496Z"
+ "version": "2.2.1",
+ "notes": "Free AI (Google Gemini, no card) + Super Admin role.",
+ "package": "update-2.2.1.json",
+ "packageSha256": "962b2ad81d5263265b3771356f7b02db34acb32e59c2ac9ad5a4a8cf160f0bed",
+ "publishedAt": "2026-11-13T15:56:01.269Z"
 }
