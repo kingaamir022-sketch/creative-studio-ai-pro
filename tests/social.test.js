@@ -32,6 +32,7 @@ let mockPort;
 let ownerCookie = '';
 let userCookie = '';
 let ownerId = 0;
+let userId = 0;
 let testImage;
 
 function req(path, { method = 'GET', body, cookie, form } = {}) {
@@ -188,6 +189,7 @@ before(async () => {
   const u = await req('/api/auth/signup', { method: 'POST', body: { name: 'Regular User', email: 'regular@test.local', password: 'password123' } });
   assert.equal(u.status, 201, JSON.stringify(u.json));
   userCookie = u.setCookie.split(';')[0];
+  userId = u.json.user.id;
 
   await uploadMedia(testImage, 'social.png', 'image/png');
 });
@@ -199,10 +201,10 @@ after(async () => {
 });
 
 /* ---------------- Health / version ---------------- */
-test('Health reports v2.1.0 phase 9', async () => {
+test('Health reports v2.2.0 phase 9', async () => {
   const r = await req('/api/health');
   assert.equal(r.status, 200);
-  assert.equal(r.json.version, '2.1.0');
+  assert.equal(r.json.version, '2.2.0');
   assert.equal(r.json.phase, 9);
 });
 
@@ -333,52 +335,54 @@ test('Social: AI caption refuses without an LLM key; local caption + hashtags wo
 });
 
 test('Social: AI caption via mock LLM works and charges exactly 1 credit', async () => {
+  // v2.2.0: billing tests run as the regular USER — the OWNER is unlimited
+  // (Lifetime) and is never charged, so the owner cannot prove charging.
   const mockBase = `http://127.0.0.1:${mockPort}`;
   const cfg = await req('/api/providers/llm/config', { method: 'POST', body: { baseUrl: mockBase } });
   assert.equal(cfg.status, 200, JSON.stringify(cfg.json));
   const key = await req('/api/providers/llm/key', { method: 'POST', body: { key: 'mock-test-key-12345' } });
   assert.equal(key.status, 200, JSON.stringify(key.json));
 
-  const beforeBal = await getBalance();
-  const r = await req('/api/social/caption', { method: 'POST', body: { text: 'quiz night caption', platform: 'facebook' } });
+  const beforeBal = await getBalance(userCookie);
+  const r = await req('/api/social/caption', { method: 'POST', cookie: userCookie, body: { text: 'quiz night caption', platform: 'facebook' } });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.source, 'llm');
   assert.match(r.json.caption, /Mock caption/);
   assert.deepEqual(r.json.hashtags, ['#quiz', '#mock']);
   assert.equal(r.json.charged, 1);
-  const afterBal = await getBalance();
+  const afterBal = await getBalance(userCookie);
   assert.equal(afterBal.creditsBalance, beforeBal.creditsBalance - 1, 'exactly 1 credit deducted');
-  const hist = await req('/api/billing/history?limit=5');
+  const hist = await req('/api/billing/history?limit=5', { cookie: userCookie });
   assert.equal(hist.status, 200);
   assert.ok(hist.json.history.some((h) => h.action === 'social_caption' && h.credits === -1), 'ledger shows the -1 charge');
 });
 
 /* ---------------- Credit ledger: zero balance blocks ---------------- */
 test('Billing: zero balance blocks a generation with a clear message', async () => {
-  await resetCredits(ownerId, 0);
-  const bal = await getBalance();
+  await resetCredits(userId, 0);
+  const bal = await getBalance(userCookie);
   assert.equal(bal.creditsBalance, 0);
-  const r = await req('/api/social/caption', { method: 'POST', body: { text: 'blocked caption', platform: 'facebook' } });
+  const r = await req('/api/social/caption', { method: 'POST', cookie: userCookie, body: { text: 'blocked caption', platform: 'facebook' } });
   assert.equal(r.status, 402, JSON.stringify(r.json));
   assert.equal(r.json.code, 'INSUFFICIENT_CREDITS');
   assert.match(r.json.error, /Not enough credits/);
-  await resetCredits(ownerId, 100);
-  const restored = await getBalance();
+  await resetCredits(userId, 100);
+  const restored = await getBalance(userCookie);
   assert.equal(restored.creditsBalance, 100);
 });
 
 test('Billing: bulk start is refused up front when the batch costs more than the balance', async () => {
-  const job = await createQuizBulkJob('Credit Gate Batch');
+  const job = await createQuizBulkJob('Credit Gate Batch', userCookie);
   const csv = 'QUESTION,OPTION_A,OPTION_B,OPTION_C,OPTION_D,CORRECT\nWhat is 2+2?,3,4,5,6,B\nCapital of France?,London,Paris,Rome,Madrid,B';
-  const up = await req(`/api/bulk/${job.id}/dataset`, { method: 'POST', body: { text: csv } });
+  const up = await req(`/api/bulk/${job.id}/dataset`, { method: 'POST', cookie: userCookie, body: { text: csv } });
   assert.equal(up.status, 200, JSON.stringify(up.json));
   assert.equal(up.json.dedupeSummary.unique, 2);
-  await resetCredits(ownerId, 1);
-  const start = await req(`/api/bulk/${job.id}/start`, { method: 'POST' });
+  await resetCredits(userId, 1);
+  const start = await req(`/api/bulk/${job.id}/start`, { method: 'POST', cookie: userCookie });
   assert.equal(start.status, 402, JSON.stringify(start.json));
   assert.equal(start.json.code, 'INSUFFICIENT_CREDITS');
   assert.match(start.json.error, /2 rows/);
-  await resetCredits(ownerId, 100);
+  await resetCredits(userId, 100);
 });
 
 /* ---------------- Google Sheets import ---------------- */
@@ -549,7 +553,11 @@ test('Analytics: numbers match the rows this suite created', async () => {
   assert.ok(pub && pub.count >= 2, 'two scheduler-published posts counted');
   const fb = j.postsByPlatform.find((r) => r.platform === 'facebook');
   assert.ok(fb && fb.count >= 1);
-  const burn = j.creditBurn.find((r) => r.action === 'social_caption');
+  // v2.2.0: the caption charge now lands on the regular USER's ledger (the
+  // OWNER is unlimited and is never charged), so check the burn as the user.
+  const mine = await req('/api/analytics?days=30', { cookie: userCookie });
+  assert.equal(mine.status, 200);
+  const burn = mine.json.creditBurn.find((r) => r.action === 'social_caption');
   assert.ok(burn && burn.count >= 1 && burn.total <= -1, 'caption charge in credit burn');
   assert.match(j.note, /own database/);
   const top = j.topTemplates.find((t) => t.id === templateId);
