@@ -136,6 +136,31 @@ function validateDesign(d) {
       if (l.opacity !== undefined && (!isNumber(l.opacity) || l.opacity < 0 || l.opacity > 1)) errors.push(`${where}: opacity must be 0–1.`);
       if (l.locked !== undefined && !isBool(l.locked)) errors.push(`${where}: locked must be true/false.`);
       if (l.hidden !== undefined && !isBool(l.hidden)) errors.push(`${where}: hidden must be true/false.`);
+      // Magic Animate (v2.2.2): optional one-click animation preset stored
+      // on the layer; the editor previews it with CSS keyframes.
+      if (l.animation !== undefined && l.animation !== null) {
+        const a = l.animation;
+        if (typeof a !== 'object' || Array.isArray(a)) errors.push(`${where}: animation must be an object.`);
+        else {
+          if (typeof a.presetId !== 'string' || !a.presetId) errors.push(`${where}: animation.presetId is required.`);
+          if (a.durationMs !== undefined && (!isNumber(a.durationMs) || a.durationMs < 100 || a.durationMs > 30000)) errors.push(`${where}: animation duration must be 100–30000ms.`);
+          if (a.delayMs !== undefined && (!isNumber(a.delayMs) || a.delayMs < 0 || a.delayMs > 30000)) errors.push(`${where}: animation delay must be 0–30000ms.`);
+          if (a.loop !== undefined && !isBool(a.loop)) errors.push(`${where}: animation.loop must be true/false.`);
+          if (!Array.isArray(a.keyframes) || !a.keyframes.length) errors.push(`${where}: animation.keyframes must be a non-empty array.`);
+          else {
+            a.keyframes.forEach((k, ki) => {
+              if (!k || typeof k !== 'object') { errors.push(`${where}: animation keyframe ${ki + 1} must be an object.`); return; }
+              if (!isNumber(k.offset) || k.offset < 0 || k.offset > 1) errors.push(`${where}: animation keyframe ${ki + 1} offset must be 0–1.`);
+              if (k.opacity !== undefined && (!isNumber(k.opacity) || k.opacity < 0 || k.opacity > 1)) errors.push(`${where}: animation keyframe ${ki + 1} opacity must be 0–1.`);
+              if (k.scale !== undefined && (!isNumber(k.scale) || k.scale < 0.1 || k.scale > 3)) errors.push(`${where}: animation keyframe ${ki + 1} scale must be 0.1–3.`);
+              if (k.rotate !== undefined && (!isNumber(k.rotate) || k.rotate < -360 || k.rotate > 360)) errors.push(`${where}: animation keyframe ${ki + 1} rotate must be -360–360.`);
+              for (const kk of ['translateX', 'translateY']) {
+                if (k[kk] !== undefined && !isNumber(k[kk])) errors.push(`${where}: animation keyframe ${ki + 1} ${kk} must be a number.`);
+              }
+            });
+          }
+        }
+      }
       if (l.type === 'text') {
         const t = l.text;
         if (!t || typeof t !== 'object') errors.push(`${where}: text settings are required.`);
