@@ -1,0 +1,69 @@
+/* Music Sync Director (Phase 5) */
+.mu-limits {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.mu-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) { .mu-grid { grid-template-columns: 1fr; } }
+.mu-track {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  background: var(--bg-2);
+}
+.mu-track:hover { border-color: var(--accent); }
+.mu-track.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.mu-track-main .nm { font-weight: 700; font-size: 14px; }
+.mu-track-main .mt { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+.mu-track-btns { flex-shrink: 0; }
+.mu-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.mu-form label { display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
+.mu-form select, .mu-form input[type="number"], .mu-form input[type="text"] {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+#mu-wave { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2); }
+
+/* Beat ruler + snap toggle in the Video Editor (Phase 5) */
+.ve-beat-ruler {
+  position: relative;
+  height: 18px;
+  margin-left: 92px;
+  border-bottom: 1px solid var(--border);
+}
+.ve-beat-tick {
+  position: absolute;
+  top: 4px;
+  width: 2px;
+  height: 10px;
+  background: var(--cyan);
+  opacity: 0.8;
+}
+.ve-beat-tick.down { height: 14px; top: 2px; background: var(--warning-strong); width: 3px; }
+.ve-beat-tick.drop { background: var(--warning); height: 16px; top: 1px; width: 3px; }
