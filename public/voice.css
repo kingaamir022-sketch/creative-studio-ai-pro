@@ -1,0 +1,5 @@
+/* Voices view (post-Phase-5 quiz upgrade). */
+.voice-segments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.voice-seg { border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 12px; background: var(--bg-2); }
+.voice-seg b { color: var(--warning-strong); }
+.voice-seg .seg-anim { color: var(--text-2); }
