@@ -1,0 +1,71 @@
+# Build Windows portable (no-install EXE-style package) — CreativeStudio AI Pro
+# Runs on GitHub Actions (windows-latest). Output: an artifact
+# "CreativeStudio-Windows-Portable" containing CreativeStudio-AI-Pro-v2.1.0-Windows.zip
+# with the app + production node_modules + bundled node.exe + FFmpeg/FFprobe
+# in bin/ + Start.bat. The user extracts it and double-clicks Start.bat —
+# no Node.js install, no terminal commands needed.
+name: Build Windows Portable
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install production dependencies (Windows native builds)
+        run: npm ci --omit=dev
+
+      - name: Download Node.js Windows runtime (node.exe)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://nodejs.org/dist/v24.22.1/node-v24.22.1-win-x64.zip -OutFile node.zip
+          Expand-Archive node.zip -DestinationPath node-dl
+          Copy-Item node-dl\node-v24.22.1-win-x64\node.exe -Destination .
+
+      - name: Download FFmpeg (Windows essentials build)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bin | Out-Null
+          Invoke-WebRequest -Uri https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-dl
+          $dir = Get-ChildItem ffmpeg-dl -Directory | Select-Object -First 1
+          Copy-Item "$($dir.FullName)\bin\ffmpeg.exe" -Destination bin\
+          Copy-Item "$($dir.FullName)\bin\ffprobe.exe" -Destination bin\
+          .\bin\ffmpeg.exe -version | Select-Object -First 1
+
+      - name: Stage the portable folder
+        shell: pwsh
+        run: |
+          $stage = 'CreativeStudio-AI-Pro-Windows'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item server.js, package.json, package-lock.json, Start.bat, HOW_TO_RUN.txt, README.md, .env.example -Destination $stage
+          Copy-Item -Recurse src, public, docs, scripts -Destination $stage
+          Copy-Item -Recurse node_modules -Destination "$stage\node_modules"
+          New-Item -ItemType Directory -Force -Path "$stage\runtime" | Out-Null
+          Copy-Item node.exe -Destination "$stage\runtime"
+          Copy-Item -Recurse bin -Destination "$stage\bin"
+          if (Test-Path data) { Remove-Item -Recurse -Force data }
+          Get-ChildItem $stage | Select-Object Name
+
+      - name: Zip the portable
+        shell: pwsh
+        run: Compress-Archive -Path CreativeStudio-AI-Pro-Windows -DestinationPath CreativeStudio-AI-Pro-v2.1.0-Windows.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CreativeStudio-Windows-Portable
+          path: CreativeStudio-AI-Pro-v2.1.0-Windows.zip
