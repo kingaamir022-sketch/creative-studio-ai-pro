@@ -1,0 +1,4 @@
+/* Admin panel + Analytics (Phase 8). Uses the shared .card/.grid/.table
+   styles; no admin-specific styling beyond a wider stat number. */
+
+.ad-stat { font-size: var(--fs-30); font-weight: 800; letter-spacing: var(--tracking-display); font-variant-numeric: tabular-nums; }
