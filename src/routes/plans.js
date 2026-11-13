@@ -23,6 +23,14 @@ const PLANS = {
     name: 'Enterprise', price: null, credits: null, storageMB: null, maxProjects: null,
     maxExportsPerMonth: null, features: ['Unlimited everything', 'Custom storage', 'Unlimited credits', 'SSO & audit', 'Dedicated support'],
   },
+  // v2.2.0 — OWNER Lifetime Free: the OWNER account is lifetime-free with
+  // everything unlimited, forever. Never requestable by regular users
+  // (billing.js refuses Lifetime requests) and granted to the first
+  // account at signup + to existing OWNERs by the boot migration in db.js.
+  Lifetime: {
+    name: 'Lifetime', price: 0, credits: null, storageMB: null, maxProjects: null,
+    maxExportsPerMonth: null, features: ['Lifetime free for the OWNER', 'Unlimited everything, forever', 'Unlimited credits', 'Unlimited projects & storage', 'No expiry, no renewal'],
+  },
 };
 
 module.exports = PLANS;
