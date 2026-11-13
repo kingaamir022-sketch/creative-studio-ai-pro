@@ -1,7 +1,10 @@
-# CreativeStudio AI Pro — v2.2.0: OWNER Lifetime Free
+# CreativeStudio AI Pro — v2.2.1: Free AI (Google Gemini) + Super Admin
 
 All-in-one AI graphic design, video editing, bulk video automation & social
-media content platform. **v2.2.0 = OWNER Lifetime Free:** the OWNER account
+media content platform. **v2.2.1 = Free AI + Super Admin:** Google Gemini
+joins as a free-tier LLM provider (free Google AI Studio key, no card
+required) and ADMIN becomes a Super Admin with full powers like the OWNER —
+except the OWNER account itself stays untouchable. **v2.2.0 = OWNER Lifetime Free:** the OWNER account
 is lifetime-free with everything unlimited (credits, projects, storage),
 forever — no expiry, no renewal, no payment. **v2.1.0 = Auto-Update (PageCommand-Pro-style):**
 the app checks the update feed on start and every 6 hours, shows a
@@ -45,6 +48,30 @@ package are pushed into its `updates/` folder. Until then the status says
 restarts itself (Windows) or asks for a server restart. If the update
 changes dependencies, the app says so plainly and does NOT apply it — that
 one needs a fresh download from Drive.
+
+## What changed in v2.2.1 — Free AI (Google Gemini) + Super Admin ✅
+
+- **Google Gemini — free LLM provider.** New provider `LLM — Google Gemini
+  (free tier)` uses Google's OpenAI-compatible endpoint
+  (`generativelanguage.googleapis.com/v1beta/openai`, beta) so the existing
+  chat/completions path works unchanged — same request/response shape,
+  Bearer key, `/models` test. Get a free key at Google AI Studio
+  (aistudio.google.com → Get API key, no card required) → Settings → AI
+  Providers → Gemini → Add key → set it as the active LLM provider.
+  OpenAI stays the default LLM provider. Honest limits: the free tier has
+  rate limits (a 429 means wait and retry); Gemini is a Google service
+  with its own terms and usage limits — check your project's limits in
+  AI Studio. No real Google call was made while building this; the wiring
+  is proven against a local mock only.
+- **Super Admin.** Whoever is made ADMIN now has full powers like the
+  OWNER: suspend/unsuspend users, change roles, reset credits, delete
+  users, change plans and approve plan requests. The OWNER account itself
+  stays untouchable — no ADMIN can change, suspend, reset or delete an
+  OWNER account, grant the OWNER role, or assign the Lifetime plan. The
+  Admin panel shows role/delete controls to ADMINs and marks OWNER rows
+  as 🔒 Protected. Self-demotion is still blocked.
+- **LLM key-needed error** now names Gemini as the free alternative when
+  the OpenAI provider has no key.
 
 ## What changed in v2.2.0 — OWNER Lifetime Free ✅
 
@@ -565,7 +592,7 @@ not just quiz:
 
 - **Provider registry** (`src/providers.js`) — one registry for six AI
   kinds: `image` (OpenAI Images + Stability SD3), `video` (Runway Gen-4),
-  `llm` (OpenAI Chat), `tts` (OpenAI TTS + ElevenLabs cloning), `stt`
+  `llm` (OpenAI Chat + Google Gemini free tier), `tts` (OpenAI TTS + ElevenLabs cloning), `stt`
   (OpenAI Whisper), `music` (Replicate MusicGen). Each provider has a
   configurable base URL + model (Settings → AI Providers, or env keys);
   keys are stored encrypted (AES-256-GCM) and never sent to the frontend.
