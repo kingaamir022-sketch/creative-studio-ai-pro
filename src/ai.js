@@ -28,7 +28,7 @@ const credits = require('./credits');
 const { probeMedia, run } = require('./ffmpeg');
 const { normaliseCues } = require('./captions');
 
-const AI_MODES = ['image', 'image-edit', 'video', 'video-image', 'voice', 'quiz', 'design', 'transcribe', 'music-mood', 'music-generate'];
+const AI_MODES = ['image', 'image-edit', 'video', 'video-image', 'voice', 'quiz', 'design', 'transcribe', 'music-mood', 'music-generate', 'write'];
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -392,6 +392,42 @@ async function designAssist(userId, { prompt, name, projectId } = {}, signal) {
   return { project: { id: project.id, name: project.name, type: project.type }, suggestions: content._ai.suggestions, sourceProjectId: projectId || null };
 }
 
+// --- Magic Write (general AI writing) ----------------------------------------
+// The general-purpose writing tool the audit found missing: headlines,
+// posts, scripts, blog intros, rewrites, shortening and tone changes —
+// routed through the same LLM abstraction as quiz/design, so it works with
+// the free Gemini provider when configured and refuses key_needed honestly
+// when no LLM key is set. Returns { text, alternatives, task }.
+const WRITE_TASKS = {
+  headline: 'Write punchy headlines',
+  post: 'Write a social media post',
+  script: 'Write a short video script',
+  blog: 'Write a blog introduction',
+  rewrite: 'Rewrite the text, keeping the meaning',
+  shorten: 'Shorten the text, keeping the key points',
+  tone: 'Rewrite the text in a different tone',
+};
+
+async function generateWriting(userId, { prompt, task = 'post', tone = '', length = 'medium' } = {}, signal) {
+  const clean = String(prompt || '').trim();
+  if (!clean) throw new Error('Magic Write needs some text or a topic to write about.');
+  if (clean.length > 4000) throw new Error('Magic Write input is too long (max 4000 characters).');
+  const t = WRITE_TASKS[task] ? task : 'post';
+  const toneLine = tone ? ` Tone: ${String(tone).slice(0, 60)}.` : '';
+  const lenLine = ['short', 'medium', 'long'].includes(length) ? ` Length: ${length}.` : '';
+  const out = await chatJson(userId, {
+    system: 'You are a professional copywriter. Reply with valid JSON only, no other text.',
+    user: `Magic Write — ${WRITE_TASKS[t]}. Input: "${clean}".${toneLine}${lenLine} Reply as a JSON object {"text":"the main written piece","alternatives":["up to 3 shorter alternative versions, may be empty"]}. Rules: text is ready to publish (no placeholders, no meta-commentary), alternatives are real rewrites, not copies of text.`,
+  }, signal);
+  const text = String(out.text || '').trim();
+  if (!text) throw new Error('The LLM provider returned no writing.');
+  const alternatives = Array.isArray(out.alternatives)
+    ? out.alternatives.slice(0, 3).map((a) => String(a || '').trim()).filter(Boolean)
+    : [];
+  credits.chargeCredits(userId, 'ai_write', `Magic Write (${t}): "${clean.slice(0, 80)}"`);
+  return { text, alternatives, task: t };
+}
+
 // --- Speech-to-text (Whisper) -------------------------------------------------
 async function transcribeAudio(userId, mediaId, { language } = {}, signal) {
   const media = db.getMedia(userId, mediaId);
@@ -644,6 +680,11 @@ async function runAiJob(jobRow) {
         outputMediaId = gen.media.id;
         break;
       }
+      case 'write': {
+        const w = await generateWriting(userId, params, ctrl.signal);
+        result = { text: w.text, alternatives: w.alternatives, task: w.task };
+        break;
+      }
       default:
         throw new Error(`Unknown AI mode: ${job.mode}`);
     }
@@ -705,6 +746,7 @@ module.exports = {
   AI_MODES,
   generateImage, generateAiBackground, generateVideo, chatJson,
   generateQuizQuestions, designAssist, buildDesignFromSuggestions,
+  generateWriting, WRITE_TASKS,
   transcribeAudio, musicMood, generateMusic, synthesizeVoice,
   saveGeneratedBuffer, publicAiJob, createAiJobEntry, runAiJob,
   startAiQueue, cancelAiJob, retryAiJob, pumpAiQueue,
