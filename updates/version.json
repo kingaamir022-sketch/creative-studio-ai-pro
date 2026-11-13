@@ -1,8 +1,9 @@
 {
  "app": "CreativeStudio AI Pro",
- "version": "2.2.1",
- "notes": "Free AI (Google Gemini, no card) + Super Admin role.",
- "package": "update-2.2.1.json",
- "packageSha256": "962b2ad81d5263265b3771356f7b02db34acb32e59c2ac9ad5a4a8cf160f0bed",
- "publishedAt": "2026-11-13T15:56:01.269Z"
+ "version": "2.2.2",
+ "notes": "Magic Tools: Resize, Animate presets, Eraser, Expand, Background Remover, Grab, Magic Write.",
+ "package": "update-2.2.2.json",
+ "packageSha256": "4be91208d9299e5b2973e67e2edba57460a54e1c3af49333b3cece34ad111fea",
+ "publishedAt": "2026-11-13T17:32:11.915Z",
+ "fullReinstall": true
 }
