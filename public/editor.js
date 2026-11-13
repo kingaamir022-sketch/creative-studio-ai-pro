@@ -86,22 +86,24 @@ window.DesignEditor = (function () {
       container, projectId: project.id, projectName: project.name, design,
       selection: [], undoStack: [], redoStack: [], clipboard: null,
       zoom: 'fit', zoomVal: 1, grid: false, rulers: false, leftTab: 'canvas',
-      sizes: FALLBACK_SIZES, fonts: FALLBACK_FONTS, templates: [], brands: [], media: [],
+      sizes: FALLBACK_SIZES, fonts: FALLBACK_FONTS, templates: [], brands: [], media: [], animPresets: [],
       saveTimer: null, saveState: 'Saved', drag: null, historyArmed: false,
     };
     try {
-      const [s, f, t, b, m] = await Promise.all([
+      const [s, f, t, b, m, ap] = await Promise.all([
         api('/api/design/sizes').catch(() => ({ sizes: FALLBACK_SIZES })),
         api('/api/design/fonts').catch(() => ({ fonts: FALLBACK_FONTS })),
         api('/api/design/templates').catch(() => ({ templates: [] })),
         api('/api/design/brands').catch(() => ({ brands: [] })),
         api('/api/media?kind=image').catch(() => ({ media: [] })),
+        api('/api/magic/animate/presets?target=design').catch(() => ({ presets: [] })),
       ]);
       ed.sizes = s.sizes || FALLBACK_SIZES;
       ed.fonts = f.fonts || FALLBACK_FONTS;
       ed.templates = t.templates || [];
       ed.brands = b.brands || [];
       ed.media = m.media || [];
+      ed.animPresets = (ap.presets || []).filter((p) => p.appliesTo.includes('design'));
     } catch (e) { toast('Could not load editor data: ' + e.message, true); }
     renderShell();
     computeZoom();
@@ -409,6 +411,13 @@ window.DesignEditor = (function () {
     }
     el.addEventListener('pointerdown', (e) => onLayerPointerDown(e, layer));
     el.addEventListener('dblclick', (e) => { e.stopPropagation(); onLayerDblClick(layer); });
+    if (layer.animation && layer.animation.keyframes && layer.animation.keyframes.length) {
+      const inner = el.firstChild;
+      if (inner) {
+        const animName = `ed-anim-${String(layer.id).replace(/[^a-zA-Z0-9]/g, '')}`;
+        inner.style.animation = `${animName} ${layer.animation.durationMs}ms ease ${layer.animation.delayMs || 0}ms ${layer.animation.loop ? 'infinite' : 'forwards'}`;
+      }
+    }
     return el;
   }
 
@@ -425,6 +434,28 @@ window.DesignEditor = (function () {
     canvas.style.transform = `scale(${z})`;
     canvas.classList.toggle('transparent', d.background.type === 'transparent');
     canvas.innerHTML = '';
+    // CSS @keyframes for layers with an animation preset (live preview).
+    const animCss = d.layers.filter((l) => l.animation && l.animation.keyframes && l.animation.keyframes.length).map((l) => {
+      const name = `ed-anim-${String(l.id).replace(/[^a-zA-Z0-9]/g, '')}`;
+      const frames = l.animation.keyframes.map((k) => {
+        const pct = Math.round((k.offset || 0) * 100);
+        if (l.animation.presetId === 'typewriter') {
+          // Letter-by-letter reveal approximated as a left-to-right wipe.
+          return `${pct}% { clip-path: inset(0 ${100 - pct}% 0 0); opacity: 1; }`;
+        }
+        const parts = [];
+        if (k.translateX !== undefined || k.translateY !== undefined) parts.push(`translate(${k.translateX || 0}px, ${k.translateY || 0}px)`);
+        if (k.scale !== undefined) parts.push(`scale(${k.scale})`);
+        if (k.rotate !== undefined) parts.push(`rotate(${k.rotate}deg)`);
+        return `${pct}% { ${parts.length ? `transform: ${parts.join(' ')};` : ''} opacity: ${k.opacity !== undefined ? k.opacity : 1}; }`;
+      }).join(' ');
+      return `@keyframes ${name} { ${frames} }`;
+    }).join('\n');
+    if (animCss) {
+      const style = document.createElement('style');
+      style.textContent = animCss;
+      canvas.appendChild(style);
+    }
     const bg = document.createElement('div');
     bg.className = 'ed-bg';
     if (d.background.type === 'color') bg.style.background = d.background.color;
@@ -872,6 +903,13 @@ window.DesignEditor = (function () {
       <div class="ed-field"><label>Height (px)</label><input type="number" id="ed-ch" value="${d.height}" min="10" max="8000"></div>
     </div>
     <div class="ed-btnrow"><button class="btn btn-sm btn-primary" id="ed-apply-size">Apply size</button></div>
+    <h4>🪄 Magic Resize</h4>
+    <p class="ed-note">Reflow the whole design to a new format — layers scale and reposition, text re-wraps and shrinks to fit (never overflows). Anything that still cannot fit is listed as “Needs attention”.</p>
+    <div class="ed-row">
+      <div class="ed-field"><label>Target size</label><select id="ed-magic-size">${ed.sizes.map((s) => `<option value="${s.id}">${esc(s.name)} — ${s.width}×${s.height}</option>`).join('')}</select></div>
+      <button class="btn btn-sm" id="ed-magic-resize" style="align-self:end">🪄 Magic Resize</button>
+    </div>
+    <div id="ed-magic-report"></div>
     <h4>Background</h4>
     <div class="ed-field"><label>Type</label>
       <select id="ed-bg-type">
@@ -912,6 +950,32 @@ window.DesignEditor = (function () {
       ed.design.width = w; ed.design.height = h;
       computeZoom(); renderAll(); scheduleSave();
       toast(`Canvas resized to ${w}×${h}px.`);
+    });
+    panel.querySelector('#ed-magic-resize').addEventListener('click', async () => {
+      const btn = panel.querySelector('#ed-magic-resize');
+      const targetId = panel.querySelector('#ed-magic-size').value;
+      btn.disabled = true;
+      btn.textContent = 'Resizing…';
+      try {
+        const res = await api('/api/magic/resize', { method: 'POST', body: JSON.stringify({ design: ed.design, targetSizeId: targetId }) });
+        pushHistory();
+        ed.design = res.design;
+        computeZoom();
+        renderAll();
+        scheduleSave();
+        const report = panel.querySelector('#ed-magic-report');
+        const attention = res.report.needsAttention || [];
+        if (report) {
+          report.innerHTML = `<p class="ed-note">✅ Reflowed to ${res.report.to.width}×${res.report.to.height}px (${(res.design.layers || []).length} layers).</p>`
+            + (attention.length ? `<p class="ed-note" style="color:var(--danger, #dc2626)">⚠️ Needs attention: ${attention.map((a) => `${esc(a.name)} — ${esc(a.reason)}${a.suggestedText ? ` (try: “${esc(a.suggestedText)}”)` : ''}`).join('; ')}</p>` : '');
+        }
+        toast('Magic Resize done.');
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🪄 Magic Resize';
+      }
     });
     panel.querySelector('#ed-bg-type').addEventListener('change', (e) => {
       pushHistory();
@@ -1208,6 +1272,65 @@ window.DesignEditor = (function () {
     });
   }
 
+  /* ---------- Magic Animate (v2.2.2) ---------- */
+  function animateSectionHtml(l) {
+    const a = l.animation;
+    const options = (ed.animPresets || []).map((p) => `<option value="${p.id}" ${a && a.presetId === p.id ? 'selected' : ''}>${esc(p.name)} — ${esc(p.description)}</option>`).join('');
+    return `
+      <h4>🪄 Animate</h4>
+      <div class="ed-field"><label>Preset</label><select id="ed-anim-preset">${options || '<option value="">No presets loaded</option>'}</select></div>
+      ${a ? `<div class="kv"><span>Current</span><span>${esc(a.presetId)} · ${a.durationMs}ms${a.loop ? ' · loops' : ''}</span></div>` : '<p class="ed-note">No animation on this layer yet.</p>'}
+      <div class="ed-btnrow">
+        <button class="btn btn-sm" id="ed-anim-apply">Apply preset</button>
+        ${a ? '<button class="btn btn-sm" id="ed-anim-preview">▶ Preview</button><button class="btn btn-sm" id="ed-anim-remove">Remove</button>' : ''}
+      </div>
+      <p class="ed-note">The animation previews live on the canvas with CSS. In video, clip presets become real keyframes.</p>`;
+  }
+
+  function bindAnimateSection(right, l) {
+    const apply = right.querySelector('#ed-anim-apply');
+    if (apply) apply.addEventListener('click', async () => {
+      const presetId = right.querySelector('#ed-anim-preset').value;
+      if (!presetId) { toast('No preset selected.'); return; }
+      apply.disabled = true;
+      apply.textContent = 'Applying…';
+      try {
+        const res = await api('/api/magic/animate', { method: 'POST', body: JSON.stringify({ design: ed.design, layerId: l.id, presetId }) });
+        pushHistory();
+        ed.design = res.design;
+        renderStage();
+        renderProps();
+        scheduleSave();
+        toast('Animation applied — previewing on the canvas.');
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        apply.disabled = false;
+        apply.textContent = 'Apply preset';
+      }
+    });
+    const preview = right.querySelector('#ed-anim-preview');
+    if (preview) preview.addEventListener('click', () => {
+      const el = document.querySelector(`#ed-canvas .ed-layer[data-id="${l.id}"]`);
+      if (el && el.firstChild) {
+        // Restart the CSS animation by re-applying it.
+        const anim = el.firstChild.style.animation;
+        el.firstChild.style.animation = 'none';
+        void el.firstChild.offsetWidth; // reflow
+        el.firstChild.style.animation = anim;
+      }
+    });
+    const remove = right.querySelector('#ed-anim-remove');
+    if (remove) remove.addEventListener('click', () => {
+      pushHistory();
+      l.animation = null;
+      renderStage();
+      renderProps();
+      scheduleSave();
+      toast('Animation removed.');
+    });
+  }
+
   function renderProps() {
     const right = document.getElementById('ed-right');
     if (!right || !ed) return;
@@ -1369,8 +1492,9 @@ window.DesignEditor = (function () {
         <div class="ed-field"><label>${label}: <span>${val}%</span></label><input type="range" data-prop="${path}" value="${val}" min="0" max="40"></div>`).join('')}
       <div class="ed-note">Filters and crop are applied to the real image and are included in PNG/JPG exports.</div>`;
     }
-    right.innerHTML = common + specific;
+    right.innerHTML = common + specific + animateSectionHtml(l);
     bindPropInputs(right, l);
+    bindAnimateSection(right, l);
     right.querySelectorAll('[data-align]').forEach((b) => b.addEventListener('click', () => alignSelection(b.dataset.align)));
     right.querySelector('#ed-p-lock').addEventListener('click', () => toggleLock(l.id));
     right.querySelector('#ed-p-hide').addEventListener('click', () => toggleHide(l.id));
