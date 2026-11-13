@@ -201,10 +201,10 @@ after(async () => {
 });
 
 /* ---------------- Health / version ---------------- */
-test('Health reports v2.2.0 phase 9', async () => {
+test('Health reports v2.2.1 phase 9', async () => {
   const r = await req('/api/health');
   assert.equal(r.status, 200);
-  assert.equal(r.json.version, '2.2.0');
+  assert.equal(r.json.version, '2.2.1');
   assert.equal(r.json.phase, 9);
 });
 
