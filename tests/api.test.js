@@ -64,7 +64,7 @@ test('health endpoint is up', async () => {
   assert.equal(r.status, 200);
   assert.equal(r.json.ok, true);
   assert.equal(r.json.phase, 9);
-  assert.equal(r.json.version, '2.1.0');
+  assert.equal(r.json.version, '2.2.0');
 });
 
 test('unauthenticated API calls are rejected', async () => {
@@ -110,8 +110,8 @@ test('dashboard returns real counts and FFmpeg status', async () => {
   assert.equal(r.json.counts.projects, 0);
   assert.equal(r.json.counts.media, 0);
   assert.equal(r.json.counts.jobs, 0);
-  assert.equal(r.json.plan, 'Free');
-  assert.equal(r.json.creditsBalance, 100);
+  assert.equal(r.json.plan, 'Lifetime');
+  assert.equal(r.json.creditsBalance, 0, 'OWNER on Lifetime has no finite balance');
   assert.ok(r.json.system);
   assert.equal(typeof r.json.system.ffmpeg.available, 'boolean');
 });
@@ -249,10 +249,11 @@ test('providers report key_needed honestly and accept an encrypted key', async (
 test('subscription shows plans, usage log starts empty', async () => {
   const r = await req('/api/subscription', { cookie: ownerCookie });
   assert.equal(r.status, 200);
-  assert.equal(r.json.currentPlan, 'Free');
-  assert.equal(r.json.plans.length, 5);
+  assert.equal(r.json.currentPlan, 'Lifetime');
+  assert.equal(r.json.plans.length, 6);
   assert.deepEqual(r.json.usage, []);
   assert.ok(r.json.plans.find((p) => p.name === 'Enterprise'));
+  assert.ok(r.json.plans.find((p) => p.name === 'Lifetime' && p.price === 0 && p.credits === null));
 });
 
 test('notifications reflect real audit activity', async () => {
