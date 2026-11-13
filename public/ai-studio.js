@@ -20,6 +20,7 @@ const AIStudio = (() => {
     { id: 'voice', label: 'AI Voice', kind: 'tts', icon: '🎙️' },
     { id: 'quiz', label: 'AI Quiz Questions', kind: 'llm', icon: '❓' },
     { id: 'design', label: 'AI Design Assist', kind: 'llm', icon: '✨' },
+    { id: 'write', label: 'Magic Write', kind: 'llm', icon: '✍️' },
     { id: 'transcribe', label: 'AI Transcribe', kind: 'stt', icon: '📝' },
     { id: 'music-mood', label: 'Music Mood Tags', kind: 'llm', icon: '🎵' },
     { id: 'music-generate', label: 'AI Music', kind: 'music', icon: '🎼' },
@@ -89,6 +90,14 @@ const AIStudio = (() => {
       case 'music-generate': return `
         <div class="ed-field"><label>Music prompt</label><textarea id="ai-f-prompt" rows="3" placeholder="e.g. Upbeat pop dance track, 120 BPM, energetic drums and synth"></textarea></div>
         <div class="ed-field"><label>Duration (seconds, 2–30)</label><input id="ai-f-duration" type="number" min="2" max="30" value="8"></div>`;
+      case 'write': return `
+        <div class="ed-field"><label>What to write</label><select id="ai-f-task"><option value="headline">Headline</option><option value="post">Social media post</option><option value="script">Video script</option><option value="blog">Blog paragraph</option><option value="rewrite">Rewrite my text</option><option value="shorten">Shorten my text</option><option value="tone">Change the tone</option></select></div>
+        <div class="ed-field"><label>Topic / text</label><textarea id="ai-f-prompt" rows="3" placeholder="e.g. A summer sale for a shoe store, 50% off sneakers"></textarea></div>
+        <div class="ed-row">
+          <div class="ed-field"><label>Tone</label><select id="ai-f-tone"><option value="professional">Professional</option><option value="friendly">Friendly</option><option value="playful">Playful</option><option value="urgent">Urgent</option><option value="inspiring">Inspiring</option></select></div>
+          <div class="ed-field"><label>Length</label><select id="ai-f-length"><option value="short">Short</option><option value="medium">Medium</option><option value="long">Long</option></select></div>
+        </div>
+        <p class="sub">Magic Write uses your LLM provider (OpenAI or free Gemini). No key configured → it refuses with “key needed” instead of inventing text.</p>`;
       default: return '';
     }
   }
@@ -111,6 +120,9 @@ const AIStudio = (() => {
     const name = val('ai-f-name'); if (name !== undefined) out.name = name;
     const proj = val('ai-f-project'); if (proj) out.projectId = Number(proj);
     const media = val('ai-f-media'); if (media) out.mediaId = Number(media);
+    const task = val('ai-f-task'); if (task) out.task = task;
+    const tone = val('ai-f-tone'); if (tone) out.tone = tone;
+    const length = val('ai-f-length'); if (length) out.length = length;
     return out;
   }
 
@@ -178,6 +190,11 @@ const AIStudio = (() => {
       case 'music-generate':
         return r.url ? `<audio src="${esc(r.url)}" controls style="width:100%"></audio>
           <p class="sub">Provider: ${esc(r.provider || '')} · Saved to your Media Library.</p>` : '';
+      case 'write':
+        return `<p class="sub">Task: <b>${esc(r.task || '')}</b> · Provider: ${esc(r.provider || '')}</p>
+          <div class="ed-field"><label>Result</label><textarea id="ai-write-text" rows="8" readonly>${esc(r.text || '')}</textarea></div>
+          ${(r.alternatives || []).length ? `<div class="ed-field"><label>Alternatives</label>${(r.alternatives || []).map((a) => `<div class="kv"><span>${esc(a)}</span><button class="btn btn-sm" data-copy-alt="${esc(a)}">Copy</button></div>`).join('')}</div>` : ''}
+          <div class="ed-btnrow"><button class="btn" id="ai-copy-write">Copy result</button></div>`;
       default: return '';
     }
   }
@@ -197,6 +214,9 @@ const AIStudio = (() => {
     if (bulk) bulk.addEventListener('click', () => go('bulk-video'));
     const open = document.getElementById('ai-open-design');
     if (open) open.addEventListener('click', () => go('design-editor', { projectId: r.projectId }));
+    const cw = document.getElementById('ai-copy-write');
+    if (cw) cw.addEventListener('click', async () => { await navigator.clipboard.writeText(r.text || ''); toast('Text copied.'); });
+    document.querySelectorAll('[data-copy-alt]').forEach((b) => b.addEventListener('click', async () => { await navigator.clipboard.writeText(b.dataset.copyAlt); toast('Alternative copied.'); }));
   }
 
   async function view(c, presetMode) {
