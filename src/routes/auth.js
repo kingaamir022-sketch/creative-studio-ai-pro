@@ -18,8 +18,13 @@ router.post('/signup', (req, res) => {
 
   const isFirst = db.countUsers() === 0;
   const role = isFirst ? 'OWNER' : 'USER';
-  const plan = 'Free';
-  const credits = PLANS[plan].credits;
+  // v2.2.0 — OWNER Lifetime Free: the first account (OWNER) is lifetime-free
+  // with everything unlimited; later signups stay on Free (100 credits).
+  // Lifetime has no finite credit allowance (credits null), so the stored
+  // balance is 0 — the ledger balance is never drawn from for unlimited
+  // users (see credits.js isUnlimited).
+  const plan = isFirst ? 'Lifetime' : 'Free';
+  const credits = PLANS[plan].credits ?? 0;
   const user = db.createUser({
     name: name.trim(), email: email.trim().toLowerCase(),
     passwordHash: auth.hashPassword(password), role, plan, credits,
