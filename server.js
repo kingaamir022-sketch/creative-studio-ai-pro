@@ -48,7 +48,7 @@ app.use('/api', require('./src/routes/system'));
 
 // Health check (no auth) — used by tests and the dashboard status.
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, version: '2.2.0', phase: 9, db: 'ok' });
+  res.json({ ok: true, version: '2.2.1', phase: 9, db: 'ok' });
 });
 
 // Frontend (single-page app).
@@ -75,7 +75,7 @@ if (require.main === module) {
   // auto-apply is off, applies when it is on).
   require('./src/routes/updates').startUpdateChecker();
   app.listen(config.port, config.host, () => {
-    console.log(`CreativeStudio AI Pro (v2.2.0 — Auto-Update) running at http://${config.host}:${config.port}`);
+    console.log(`CreativeStudio AI Pro (v2.2.1 — Free AI + Super Admin) running at http://${config.host}:${config.port}`);
     console.log(`DB: ${config.dbPath}`);
     console.log(`Uploads: ${config.uploadsDir}`);
   });
