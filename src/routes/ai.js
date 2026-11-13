@@ -24,6 +24,7 @@ const MODE_PARAMS = {
   'transcribe': ['mediaId', 'language', 'shortsJobId'],
   'music-mood': ['mediaId'],
   'music-generate': ['prompt', 'duration'],
+  'write': ['prompt', 'task', 'tone', 'length'],
 };
 
 function cleanParams(mode, body) {
