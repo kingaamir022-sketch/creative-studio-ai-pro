@@ -45,6 +45,15 @@ const NAV = [
 const state = { user: null, view: 'dashboard', params: {}, data: {}, searchTimer: null };
 const root = document.getElementById('root');
 
+// v2.2.0 — OWNER Lifetime Free: Lifetime / Enterprise plans and the OWNER
+// role are unlimited — never show them a finite credit number.
+function isUnlimitedUser(u) {
+  return !!u && (u.plan === 'Lifetime' || u.plan === 'Enterprise' || u.role === 'OWNER');
+}
+function creditsLabel(u) {
+  return isUnlimitedUser(u) ? 'Unlimited credits' : `${u.creditsBalance} credits`;
+}
+
 /* ---------- API ---------- */
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -140,7 +149,7 @@ function render() {
           <div class="search-results" id="search-results"></div>
         </div>
         <div class="top-actions">
-          <span class="credits-pill">⚡ <b>${state.user.creditsBalance}</b> credits · ${esc(state.user.plan)}</span>
+          <span class="credits-pill">⚡ <b>${isUnlimitedUser(state.user) ? 'Unlimited' : state.user.creditsBalance}</b> credits · ${esc(state.user.plan)}</span>
           <button class="icon-btn" id="theme-btn" title="Switch to light theme" aria-label="Switch to light theme">☀️</button>
           <button class="icon-btn" id="notif-btn" title="Notifications">🔔<span class="dot" id="notif-dot" style="display:none"></span></button>
           <div class="profile-wrap">
@@ -148,7 +157,7 @@ function render() {
               <span class="avatar">${esc((state.user.name || '?')[0].toUpperCase())}</span><span>${esc(state.user.name.split(' ')[0])}</span>
             </button>
             <div class="profile-menu" id="profile-menu">
-              <div class="pm-head"><div class="nm">${esc(state.user.name)}</div><div class="em">${esc(state.user.email)}</div><div class="em">${esc(state.user.role)} · ${esc(state.user.plan)} plan · ${state.user.creditsBalance} credits</div></div>
+              <div class="pm-head"><div class="nm">${esc(state.user.name)}</div><div class="em">${esc(state.user.email)}</div><div class="em">${esc(state.user.role)} · ${esc(state.user.plan)} plan · ${creditsLabel(state.user)}</div></div>
               <button class="pm-item" id="pm-settings">⚙️ Settings</button>
               <button class="pm-item" id="pm-subscription">💳 Subscription &amp; Credits</button>
               <button class="pm-item danger" id="pm-logout">Sign out</button>
@@ -286,7 +295,7 @@ function renderAuth() {
   root.innerHTML = `
   <div class="auth-wrap"><div class="auth-card">
     <div class="logo"><div class="logo-mark">C</div><div class="logo-name">Creative<span>Studio</span> AI Pro</div></div>
-    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.1.0 — Auto-Update</p>
+    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.2.0 — Auto-Update</p>
     <div class="auth-toggle">
       <button id="tab-login" class="active">Log in</button>
       <button id="tab-signup">Sign up</button>
@@ -359,7 +368,7 @@ async function viewDashboard(c) {
     <div class="stat"><div class="lbl">Projects</div><div class="num">${d.counts.projects}</div><div class="foot">${d.counts.trashedProjects} in trash</div></div>
     <div class="stat"><div class="lbl">Media files</div><div class="num">${d.counts.media}</div><div class="foot">${esc(d.storage.usedLabel)} used</div></div>
     <div class="stat"><div class="lbl">Render jobs</div><div class="num">${d.counts.jobs}</div><div class="foot">${d.counts.jobsActive} active · FFmpeg render engine live</div></div>
-    <div class="stat"><div class="lbl">AI credits</div><div class="num">${d.creditsBalance}</div><div class="foot">${esc(d.plan)} plan · ledger in Subscription &amp; Credits</div></div>
+    <div class="stat"><div class="lbl">AI credits</div><div class="num">${(d.plan === 'Lifetime' || d.plan === 'Enterprise') ? '∞' : d.creditsBalance}</div><div class="foot">${esc(d.plan)} plan · ledger in Subscription &amp; Credits</div></div>
   </div>
   <div class="quick-actions">
     <button class="btn btn-primary" id="qa-project">＋ New project</button>
@@ -707,7 +716,7 @@ async function viewSettings(c) {
       <div class="kv"><span>Storage used</span><span>${esc(d.storage.usedLabel)} of ${esc(d.storage.limitLabel)}</span></div>
       <div class="kv"><span>Projects</span><span>${d.counts.projects} of ${d.planLimits.maxProjects ?? 'unlimited'}</span></div>
       <div class="kv"><span>Max upload size</span><span>${d.system.maxUploadMB} MB</span></div>
-      <div class="kv"><span>AI credits</span><span>${d.creditsBalance}</span></div>
+      <div class="kv"><span>AI credits</span><span>${(d.plan === 'Lifetime' || d.plan === 'Enterprise') ? 'Unlimited' : d.creditsBalance}</span></div>
       <p class="sub" style="margin-top:12px">Phase 8: storage limits are enforced per plan (see Subscription &amp; Credits).</p>
     </div>
   </div>
@@ -793,7 +802,7 @@ async function viewSettings(c) {
   </div>` : ''}
   ${users.users ? `<div class="card" style="margin-top:16px"><h3>Users (admin)</h3>
     <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Credits</th><th></th></tr></thead><tbody>
-    ${users.users.map((u) => `<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${esc(u.role)}</td><td>${esc(u.plan)}</td><td>${u.credits_balance}</td>
+    ${users.users.map((u) => `<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${esc(u.role)}</td><td>${esc(u.plan)}</td><td>${(u.plan === 'Lifetime' || u.plan === 'Enterprise') ? '∞' : u.credits_balance}</td>
     <td>${u.id !== state.user.id ? `<select data-role-for="${u.id}">
       ${['USER', 'ADMIN', 'OWNER'].map((r) => `<option ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select>` : '<span class="badge">you</span>'}</td></tr>`).join('')}
     </tbody></table></div>` : ''}`;
@@ -935,7 +944,7 @@ async function viewSubscription(c) {
   const pending = myRequests.requests.filter((r) => r.status === 'pending');
   c.innerHTML = `
   <div class="card"><h3>Current plan: ${esc(s.currentPlan)}</h3>
-    <p class="sub">Credit balance: <b style="color:var(--cyan)">${s.creditsBalance}</b> credits. Every AI generation, render and bulk row deducts credits transparently — each charge appears in the usage log below with the exact cost.</p>
+    <p class="sub">Credit balance: <b style="color:var(--cyan)">${(s.currentPlan === 'Lifetime' || s.currentPlan === 'Enterprise') ? 'Unlimited' : s.creditsBalance + ' credits'}</b>${(s.currentPlan === 'Lifetime' || s.currentPlan === 'Enterprise') ? ' — everything unlimited, no ledger deduction.' : '. Every AI generation, render and bulk row deducts credits transparently — each charge appears in the usage log below with the exact cost.'}</p>
     <p class="sub" style="margin-top:8px"><b>No payment is taken in this build.</b> To change plan, request it below — the OWNER approves it in Admin and the plan changes then. No card, no checkout.</p>
     ${pending.length ? `<p class="sub" style="margin-top:8px">⏳ Pending request: <b>${esc(pending.map((r) => r.plan).join(', '))}</b> — waiting for OWNER approval.</p>` : ''}
   </div>
@@ -943,11 +952,11 @@ async function viewSubscription(c) {
     ${s.plans.map((p) => `
     <div class="card" style="${p.name === s.currentPlan ? 'border-color:var(--accent)' : ''}">
       <h3>${esc(p.name)} ${p.name === s.currentPlan ? '<span class="badge ok">Current</span>' : ''}</h3>
-      <div style="font-size:24px;font-weight:800;margin:6px 0">${p.price === null ? 'Custom' : p.price === 0 ? 'Free' : '$' + p.price + '/mo'}</div>
+      <div style="font-size:24px;font-weight:800;margin:6px 0">${p.name === 'Lifetime' ? 'Free forever' : p.price === null ? 'Custom' : p.price === 0 ? 'Free' : '$' + p.price + '/mo'}</div>
       <ul style="list-style:none;color:var(--muted);font-size:13px;line-height:1.9">
         ${p.features.map((f) => `<li>✓ ${esc(f)}</li>`).join('')}
       </ul>
-      ${p.name !== s.currentPlan ? `<button class="btn" style="margin-top:12px" data-plan="${p.name}">Request ${esc(p.name)}</button>` : ''}
+      ${p.name !== s.currentPlan ? (p.name === 'Lifetime' ? '<p class="sub" style="margin-top:12px">OWNER only — the OWNER account is lifetime-free.</p>' : `<button class="btn" style="margin-top:12px" data-plan="${p.name}">Request ${esc(p.name)}</button>`) : ''}
     </div>`).join('')}
   </div>
   ${billing ? `<div class="card" style="margin-top:16px"><h3>Credit costs</h3>
