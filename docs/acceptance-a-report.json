@@ -1,0 +1,18 @@
+{
+  "acceptance": "A — Bulk Video (100-row Excel)",
+  "runAt": "2026-11-13T03:37:19.189Z",
+  "durationSeconds": "268.5",
+  "renderSeconds": 114.1,
+  "rows": 100,
+  "rowsDone": 100,
+  "rowsFailed": 0,
+  "rowsSkipped": 0,
+  "uniqueBackgrounds": 100,
+  "uniqueOutputHashes": 100,
+  "ffprobeFailures": 0,
+  "logoSpotCheck": "5/5",
+  "textSpotCheck": "5/5",
+  "jobStatus": "done",
+  "failures": [],
+  "verdict": "PASS"
+}
