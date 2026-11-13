@@ -2,9 +2,11 @@
 // Admin panel routes (Phase 8). OWNER/ADMIN only; regular users (role USER)
 // get 403. Every admin action is written to the audit log.
 //
-// User management: list (search), role change (OWNER only), suspend /
-// unsuspend (suspended users cannot log in and their sessions die),
-// reset credits, delete (OWNER only, with confirmation in the UI).
+// User management: list (search), role change (OWNER or Super Admin —
+// granting OWNER stays OWNER-only), suspend / unsuspend (suspended users
+// cannot log in and their sessions die), reset credits, delete (OWNER or
+// Super Admin). The OWNER account itself is protected: no ADMIN may
+// change, suspend, reset or delete it.
 // Platform stats, per-user usage detail, audit log, system health.
 const express = require('express');
 const fs = require('fs');
@@ -17,6 +19,21 @@ const router = express.Router();
 
 // All admin routes require OWNER or ADMIN.
 router.use(auth.requireAuth, auth.requireRole('OWNER', 'ADMIN'));
+
+// Super Admin rule (v2.2.1): ADMIN has full powers like the OWNER, except
+// the OWNER account itself is untouchable — no ADMIN may change, suspend,
+// reset or delete an OWNER account, and no ADMIN may grant the OWNER role.
+function ownerTargetBlocked(req, target) {
+  return req.user.role !== 'OWNER' && target && target.role === 'OWNER';
+}
+
+function guardOwnerTarget(req, res, target) {
+  if (ownerTargetBlocked(req, target)) {
+    res.status(403).json({ error: 'The OWNER account is protected — only the OWNER can manage it.' });
+    return true;
+  }
+  return false;
+}
 
 function publicAdminUser(u) {
   return {
@@ -61,13 +78,18 @@ router.get('/users/:id', (req, res) => {
   res.json({ user: publicAdminUser(user), usage: userUsageDetail(user.id) });
 });
 
-// Role change — OWNER only.
-router.patch('/users/:id/role', auth.requireRole('OWNER'), (req, res) => {
+// Role change — OWNER or Super Admin. The OWNER account itself is
+// protected, and granting the OWNER role stays OWNER-only.
+router.patch('/users/:id/role', auth.requireRole('OWNER', 'ADMIN'), (req, res) => {
   const user = db.getUserById(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found.' });
   const role = req.body && req.body.role;
   if (!['OWNER', 'ADMIN', 'USER'].includes(role)) {
     return res.status(400).json({ error: 'Role must be OWNER, ADMIN or USER.' });
+  }
+  if (guardOwnerTarget(req, res, user)) return;
+  if (role === 'OWNER' && req.user.role !== 'OWNER') {
+    return res.status(403).json({ error: 'Only the OWNER can grant the OWNER role.' });
   }
   if (user.id === req.user.id && role !== 'OWNER') {
     return res.status(400).json({ error: 'You cannot demote your own account — another OWNER must do it.' });
@@ -80,6 +102,7 @@ router.patch('/users/:id/role', auth.requireRole('OWNER'), (req, res) => {
 router.post('/users/:id/suspend', (req, res) => {
   const user = db.getUserById(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found.' });
+  if (guardOwnerTarget(req, res, user)) return;
   if (user.id === req.user.id) return res.status(400).json({ error: 'You cannot suspend your own account.' });
   db.updateUser(user.id, { suspended: 1 });
   db.deleteSessionsForUser(user.id);
@@ -90,16 +113,19 @@ router.post('/users/:id/suspend', (req, res) => {
 router.post('/users/:id/unsuspend', (req, res) => {
   const user = db.getUserById(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found.' });
+  if (guardOwnerTarget(req, res, user)) return;
   db.updateUser(user.id, { suspended: 0 });
   db.audit(req.user.id, 'admin_unsuspend', 'user', user.id, `Unsuspended ${user.email}`);
   res.json({ user: publicAdminUser(db.getUserById(user.id)) });
 });
 
 // Reset a user's credit balance to a given amount (default: their plan's
-// allowance). The old balance is recorded in the audit log.
+// allowance). The old balance is recorded in the audit log. The OWNER
+// account is protected from ADMIN callers.
 router.post('/users/:id/reset-credits', (req, res) => {
   const user = db.getUserById(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found.' });
+  if (guardOwnerTarget(req, res, user)) return;
   const PLANS = require('./plans');
   const amount = req.body && req.body.credits !== undefined
     ? Number(req.body.credits)
@@ -112,12 +138,15 @@ router.post('/users/:id/reset-credits', (req, res) => {
   res.json({ user: publicAdminUser(db.getUserById(user.id)) });
 });
 
-// Delete a user — OWNER only. Their sessions, data rows and media stay
-// owned by the deleted id only where foreign keys allow; the user row
-// itself is removed. Confirmation is the UI's job; this is the hard delete.
-router.delete('/users/:id', auth.requireRole('OWNER'), (req, res) => {
+// Delete a user — OWNER or Super Admin, but never an OWNER account (the
+// OWNER is protected; only the OWNER can delete another OWNER). Their
+// sessions, data rows and media stay owned by the deleted id only where
+// foreign keys allow; the user row itself is removed. Confirmation is the
+// UI's job; this is the hard delete.
+router.delete('/users/:id', auth.requireRole('OWNER', 'ADMIN'), (req, res) => {
   const user = db.getUserById(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found.' });
+  if (guardOwnerTarget(req, res, user)) return;
   if (user.id === req.user.id) return res.status(400).json({ error: 'You cannot delete your own account.' });
   db.deleteUserById(user.id);
   db.audit(req.user.id, 'admin_user_delete', 'user', user.id, `Deleted user ${user.email} (${user.role}, ${user.plan})`);
