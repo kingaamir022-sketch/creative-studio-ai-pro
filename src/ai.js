@@ -261,7 +261,12 @@ async function generateVideo(userId, { prompt, sourceMediaId, duration = 5, aspe
 // --- LLM (JSON mode) -----------------------------------------------------------
 async function chatJson(userId, { system, user, model: modelOverride, temperature = 0.3 } = {}, signal) {
   const p = providers.resolveProvider(providers.activeProviderForKind('llm'));
-  if (!p.configured) throw keyNeededError(p.label, 'AI text generation arrives with a key — see Phase 7 (AI Creative Studio).');
+  // Free alternative (v2.2.1): when the paid OpenAI provider has no key,
+  // point the user at Google Gemini — a free Google AI Studio key, no card.
+  const keyHint = p.id === 'llm'
+    ? 'AI text generation arrives with a key — see Phase 7 (AI Creative Studio). Free alternative: Google Gemini — get a free key from Google AI Studio (aistudio.google.com, no card required), add it in Settings → AI Providers, and set Gemini as the active LLM provider.'
+    : 'AI text generation arrives with a key — see Phase 7 (AI Creative Studio).';
+  if (!p.configured) throw keyNeededError(p.label, keyHint);
   const res = await providers.fetchWithTimeout(`${p.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${p.key}`, 'Content-Type': 'application/json' },
