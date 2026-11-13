@@ -52,7 +52,7 @@ jobs:
           $stage = 'CreativeStudio-AI-Pro-Windows'
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item server.js, package.json, package-lock.json, Start.bat, HOW_TO_RUN.txt, README.md, .env.example -Destination $stage
-          Copy-Item -Recurse src, public, docs, scripts -Destination $stage
+          Copy-Item -Recurse src, public, docs, scripts, updates -Destination $stage
           Copy-Item -Recurse node_modules -Destination "$stage\node_modules"
           New-Item -ItemType Directory -Force -Path "$stage\runtime" | Out-Null
           Copy-Item node.exe -Destination "$stage\runtime"
