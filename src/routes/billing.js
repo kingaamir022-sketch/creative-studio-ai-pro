@@ -1,8 +1,10 @@
 'use strict';
 // Billing & credits (Phase 8): real bookkeeping, honest payments.
 //
-// - Plans: Free / Starter / Pro / Business / Enterprise (defined in
-//   src/routes/plans.js) with credit allowances.
+// - Plans: Free / Starter / Pro / Business / Enterprise / Lifetime
+//   (defined in src/routes/plans.js) with credit allowances. Lifetime is
+//   the OWNER-only lifetime-free plan (everything unlimited) and can never
+//   be requested by a regular user.
 // - Credit ledger: every charge writes a usage_log entry (negative
 //   credits) and grants a positive entry, so the balance is always
 //   auditable. Balance and full history are visible to the user.
@@ -50,9 +52,12 @@ router.get('/history', auth.requireAuth, (req, res) => {
 });
 
 // Request a plan upgrade/downgrade. One open request per user per plan.
+// The Lifetime plan is reserved for the OWNER account and can never be
+// requested — regular users asking for it are refused up front.
 router.post('/requests', auth.requireAuth, (req, res) => {
   const { plan } = req.body || {};
   if (!PLANS[plan]) return res.status(400).json({ error: `Unknown plan. Available: ${Object.keys(PLANS).join(', ')}.` });
+  if (plan === 'Lifetime' && req.user.role !== 'OWNER') return res.status(400).json({ error: 'The Lifetime plan is reserved for the OWNER account — it cannot be requested. Regular accounts stay on Free unless the OWNER approves another plan.' });
   if (plan === req.user.plan) return res.status(400).json({ error: `You are already on the ${plan} plan.` });
   const open = db.listPlanRequests({ status: 'pending', userId: req.user.id }).find((r) => r.plan === plan);
   if (open) return res.status(400).json({ error: `You already have a pending request for the ${plan} plan.` });
