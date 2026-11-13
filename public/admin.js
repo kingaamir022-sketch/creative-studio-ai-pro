@@ -19,6 +19,9 @@ async function viewAdmin(c) {
   }
   const s = stats.stats;
   const isOwner = state.user.role === 'OWNER';
+  // Super Admin (v2.2.1): ADMIN has full powers like the OWNER, except
+  // OWNER accounts are protected and only the OWNER can manage them.
+  const isAdmin = isOwner || state.user.role === 'ADMIN';
   c.innerHTML = `
   <div class="card"><h3>Admin panel</h3><p class="sub">Platform-wide numbers, users, plan requests, audit log and system health. Every admin action is written to the audit log.</p></div>
   <div class="grid grid-3" style="margin-top:16px">
@@ -44,15 +47,16 @@ async function viewAdmin(c) {
     <div class="form-row"><input id="ad-q" placeholder="Search by name or email…" value="${esc(state.params.q || '')}" style="flex:1"><button class="btn" id="ad-search">Search</button></div>
     <table style="margin-top:10px"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Credits</th><th>Status</th><th></th></tr></thead><tbody>
     ${users.users.map((u) => `<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>
-      ${isOwner && u.id !== state.user.id ? `<select data-role="${u.id}">${['OWNER', 'ADMIN', 'USER'].map((r) => `<option ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select>` : esc(u.role)}
+      ${isAdmin && u.id !== state.user.id && !(u.role === 'OWNER' && !isOwner) ? `<select data-role="${u.id}">${(isOwner ? ['OWNER', 'ADMIN', 'USER'] : ['ADMIN', 'USER']).map((r) => `<option ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select>` : esc(u.role) + (u.role === 'OWNER' && !isOwner ? ' <span class="badge">🔒 Protected</span>' : '')}
       </td><td>${esc(u.plan)}</td><td>${u.creditsBalance}</td><td>${u.suspended ? '<span class="badge err">Suspended</span>' : '<span class="badge ok">Active</span>'}</td>
       <td>${u.id !== state.user.id ? `
         <button class="btn btn-sm" data-usage="${u.id}">Usage</button>
+        ${u.role === 'OWNER' && !isOwner ? '<span class="badge">🔒 Protected</span>' : `
         ${u.suspended ? `<button class="btn btn-sm" data-unsuspend="${u.id}">Unsuspend</button>` : `<button class="btn btn-sm btn-danger" data-suspend="${u.id}">Suspend</button>`}
         <button class="btn btn-sm" data-reset-credits="${u.id}">Reset credits</button>
-        ${isOwner ? `<button class="btn btn-sm btn-danger" data-del-user="${u.id}">Delete</button>` : ''}` : '<span class="badge">you</span>'}</td></tr>`).join('')}
+        ${isAdmin ? `<button class="btn btn-sm btn-danger" data-del-user="${u.id}">Delete</button>` : ''}`}` : '<span class="badge">you</span>'}</td></tr>`).join('')}
     </tbody></table>
-    ${!isOwner ? '<p class="sub" style="margin-top:8px">Role changes and user deletion need the OWNER role — you are an ADMIN.</p>' : ''}
+    ${!isOwner ? '<p class="sub" style="margin-top:8px">You are a Super Admin: you can suspend, change roles, reset credits and delete any user — except OWNER accounts, which are protected (🔒) and only the OWNER can manage.</p>' : ''}
   </div>
   <div id="ad-usage" style="margin-top:16px"></div>
   <div class="card" style="margin-top:16px"><h3>Audit log (latest ${audit.entries.length})</h3>
