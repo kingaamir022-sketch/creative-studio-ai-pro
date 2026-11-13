@@ -1,0 +1,160 @@
+/* ==========================================================================
+   CreativeStudio AI Pro — Design tokens (v2.0.0 Final Redesign)
+   Three-tier system (Figma / Linear / Notion-Stripe-Vercel research,
+   see docs/REDESIGN.md):
+     1. primitives  -- primitive palette, never used directly in components
+     2. semantics   -- --bg / --surface / --text / --accent / --success …
+     3. components  -- radii, shadows, type scale, spacing (shared by all
+                       11 stylesheets; components use semantic tokens only)
+   Dark is the default theme. Light is a [data-theme="light"] token swap
+   with the SAME token names, so every view has real light parity.
+   Brand gradient lives ONLY on the logo mark (styles.css .logo-mark).
+   ========================================================================== */
+
+/* ---------- Tier 1: primitives ---------- */
+:root {
+  --navy-950: #070a16;
+  --navy-900: #0b1020;
+  --navy-850: #0e1428;
+  --navy-800: #111832;
+  --navy-700: #151d3a;
+  --navy-600: #1a2347;
+  --navy-500: #26305a;
+  --navy-400: #3a4578;
+  --slate-300: #c3cbe4;
+  --slate-200: #e8ecf8;
+  --slate-100: #f4f6fd;
+  --muted-400: #93a0c4;
+  --muted-500: #6b78a3;
+  --muted-600: #55618c;
+  --violet-500: #7c5cff;
+  --violet-600: #6a4ef0;
+  --blue-500: #3b82f6;
+  --blue-600: #2563eb;
+  --cyan-400: #22d3ee;
+  --cyan-500: #0ea5e9;
+  --green-500: #22c55e;
+  --green-600: #16a34a;
+  --amber-500: #f59e0b;
+  --amber-400: #fca311;
+  --red-500: #ef4444;
+  --red-600: #dc2626;
+  --pink-500: #ff5c8a;
+
+  /* ---------- Tier 2: semantic tokens (dark = default) ---------- */
+  --bg: var(--navy-900);
+  --bg-2: var(--navy-800);          /* sidebar / inset panels */
+  --surface: var(--navy-700);       /* cards */
+  --surface-raised: var(--navy-600);/* hover / raised panels, toasts */
+  --surface-sunken: var(--navy-850);/* code / log wells, stage backdrop */
+  --text: var(--slate-200);
+  --text-2: var(--muted-400);       /* secondary text */
+  --text-3: var(--muted-500);       /* tertiary / captions */
+  --border: var(--navy-500);
+  --border-strong: var(--navy-400);
+  --accent: var(--violet-500);
+  --accent-hover: var(--violet-600);
+  --accent-2: var(--blue-500);
+  --accent-2-hover: var(--blue-600);
+  --cyan: var(--cyan-400);
+  --success: var(--green-500);
+  --success-strong: var(--green-600);
+  --warning: var(--amber-500);
+  --warning-strong: var(--amber-400);
+  --danger: var(--red-500);
+  --danger-strong: var(--red-600);
+  --info: var(--cyan-400);
+  --guide: var(--pink-500);         /* canvas alignment guides (content) */
+  --on-accent: #ffffff;             /* text on accent fills */
+  --focus-ring: var(--accent);
+
+  /* Backwards-compatible aliases used by older stylesheets. */
+  --bg2: var(--bg-2);
+  --panel: var(--surface);
+  --panel2: var(--surface-raised);
+  --card: var(--surface);
+  --txt: var(--text);
+  --muted: var(--text-2);
+  --muted2: var(--text-3);
+  --green: var(--success);
+  --amber: var(--warning);
+  --red: var(--danger);
+
+  /* ---------- Tier 3: type scale ---------- */
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;                    /* body */
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --fs-30: 30px;
+  --fs-display: 30px;
+  --lh-body: 1.5;
+  --lh-tight: 1.25;
+  --tracking-body: -0.011em;        /* Linear */
+  --tracking-display: -0.022em;
+  --tracking-heading: -0.01em;
+
+  /* ---------- Tier 3: spacing scale (4px grid) ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+  --section-gap: var(--sp-6);
+  --element-gap: var(--sp-2);
+
+  /* ---------- Tier 3: radii ---------- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius: var(--radius-lg);
+  --radius-pill: 999px;
+
+  /* ---------- Tier 3: shadows (floating elements only) ---------- */
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.5);
+  --shadow-floating: var(--shadow-md);
+
+  /* ---------- Layout ---------- */
+  --sidebar-w: 248px;
+  --sidebar-w-collapsed: 64px;
+  --content-max: 1200px;
+  --topbar-h: 61px;
+}
+
+/* ---------- Light theme: same token names, swapped values ---------- */
+[data-theme="light"] {
+  --bg: #f4f6fd;
+  --bg-2: #ffffff;
+  --surface: #ffffff;
+  --surface-raised: #eef1fb;
+  --surface-sunken: #e8ecf8;
+  --text: #131a2e;
+  --text-2: #4b5878;
+  --text-3: #6b78a3;
+  --border: #d8deee;
+  --border-strong: #b9c2dd;
+  --accent: #6a4ef0;
+  --accent-hover: #5b3fe0;
+  --accent-2: #2563eb;
+  --accent-2-hover: #1d4ed8;
+  --cyan: #0891b2;
+  --success: #15803d;
+  --success-strong: #166534;
+  --warning: #b45309;
+  --warning-strong: #92400e;
+  --danger: #dc2626;
+  --danger-strong: #b91c1c;
+  --info: #0891b2;
+  --on-accent: #ffffff;
+  --focus-ring: var(--accent);
+  --shadow-sm: 0 2px 8px rgba(19, 26, 46, 0.10);
+  --shadow-md: 0 10px 28px rgba(19, 26, 46, 0.14);
+  --shadow-lg: 0 20px 48px rgba(19, 26, 46, 0.18);
+}
