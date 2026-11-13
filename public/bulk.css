@@ -1,0 +1,42 @@
+/* Bulk Studio (Phase 4) */
+.bulk-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
+.bulk-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+.bulk-card-emoji { font-size: 28px; }
+.bulk-card h3 { margin: 8px 0 6px; }
+.bulk-card label { display: block; margin-top: 10px; font-size: 13px; color: var(--text-2); }
+.bulk-card input, .bulk-card select { width: 100%; margin-top: 4px; }
+.quiz-card { border-color: var(--cyan); }
+.bulk-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.bulk-head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.bulk-steps { display: flex; gap: 8px; margin: 16px 0; flex-wrap: wrap; }
+.bulk-step { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 8px 16px; cursor: pointer; }
+.bulk-step.active { background: var(--accent-2); border-color: var(--accent-2); color: var(--on-accent); }
+.form-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 10px; }
+.form-row label { flex: 1; min-width: 160px; }
+.row-skipped { opacity: 0.6; }
+.fit-detail { font-size: 12px; color: var(--text-2); margin-top: 2px; max-width: 320px; }
+.bg-pool { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.bg-pool-item { background: var(--surface-raised); border-radius: 999px; padding: 4px 10px; font-size: 13px; }
+.bg-pool-item button { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 15px; }
+label.disabled { opacity: 0.55; }
+/* Phone-frame preview (9:16) — what the viewer sees */
+.phone-wrap { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; margin-top: 12px; }
+.phone-frame { position: relative; background: #0b1220; border: 3px solid #374151; border-radius: 28px; overflow: hidden; flex-shrink: 0; }
+.phone-notch { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 70px; height: 12px; background: #111827; border-radius: 999px; z-index: 5; }
+.qp-box { position: absolute; border: 1px solid #22d3ee; border-radius: 6px; color: #fff; font-size: 10px; line-height: 1.3; padding: 3px 5px; overflow: hidden; background: rgba(30, 41, 59, 0.85); }
+.qp-attention { border: 2px solid #ef4444; background: rgba(127, 29, 29, 0.6); }
+.qp-bar { position: absolute; background: #fca311; border-radius: 999px; }
+.qp-safebox { position: absolute; border: 1px dashed rgba(252, 163, 17, 0.65); border-radius: 6px; pointer-events: none; }
+.qp-chip { position: absolute; left: 12px; color: #fca311; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; }
+.qp-cta { position: absolute; left: 0; right: 0; text-align: center; color: #fff; font-weight: 800; font-size: 13px; }
+.qp-caption { position: absolute; bottom: 0; left: 0; right: 0; height: 34px; background: rgba(0, 0, 0, 0.45); color: var(--text-2); font-size: 10px; display: flex; align-items: center; justify-content: center; }
+.phone-side { max-width: 340px; }
+.badge.ok { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
+.badge.warn { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning); }
+.badge.err { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+
+@media (max-width: 860px) {
+  .phone-wrap { gap: 12px; }
+  .phone-side { max-width: 100%; }
+  .bulk-cards { grid-template-columns: 1fr; }
+}
