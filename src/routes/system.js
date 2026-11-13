@@ -50,7 +50,7 @@ router.get('/dashboard', auth.requireAuth, async (req, res) => {
       db: 'ok',
       ffmpeg: ff,
       maxUploadMB: config.maxUploadMB,
-      version: '2.2.0 (Auto-Update)',
+      version: '2.2.1 (Free AI + Super Admin)',
     },
     recentProjects: recent.map((p) => ({ id: p.id, name: p.name, type: p.type, updatedAt: p.updated_at })),
     recentMedia: recentMedia.map((m) => ({ id: m.id, originalName: m.original_name, kind: m.kind, url: `/api/media/${m.id}/file`, createdAt: m.created_at })),
@@ -157,10 +157,16 @@ router.get('/subscription', auth.requireAuth, (req, res) => {
   });
 });
 
-// Plan change is OWNER-only and only between listed plans; no payment is taken.
-router.post('/subscription/plan', auth.requireAuth, auth.requireRole('OWNER'), (req, res) => {
+// Plan change is OWNER or Super Admin and only between listed plans; no
+// payment is taken. The Lifetime plan is reserved for the OWNER account —
+// a Super Admin may change their own (or another's) plan to any other
+// listed plan, but never to Lifetime.
+router.post('/subscription/plan', auth.requireAuth, auth.requireRole('OWNER', 'ADMIN'), (req, res) => {
   const { plan } = req.body || {};
   if (!PLANS[plan]) return res.status(400).json({ error: `Unknown plan. Available: ${Object.keys(PLANS).join(', ')}.` });
+  if (plan === 'Lifetime' && req.user.role !== 'OWNER') {
+    return res.status(403).json({ error: 'The Lifetime plan is reserved for the OWNER account.' });
+  }
   const u = db.updateUser(req.user.id, { plan, credits_balance: PLANS[plan].credits === null ? req.user.credits_balance : PLANS[plan].credits });
   db.audit(req.user.id, 'plan_change', 'user', u.id, `Plan changed to ${plan} (no payment taken)`);
   res.json({ user: auth.publicUser(u), planLimits: PLANS[plan] });
@@ -171,12 +177,23 @@ router.get('/users', auth.requireAuth, auth.requireRole('OWNER', 'ADMIN'), (req,
   res.json({ users: db.listUsers() });
 });
 
-router.patch('/users/:id', auth.requireAuth, auth.requireRole('OWNER'), (req, res) => {
+router.patch('/users/:id', auth.requireAuth, auth.requireRole('OWNER', 'ADMIN'), (req, res) => {
   const { role, plan } = req.body || {};
   if (role !== undefined && !['OWNER', 'ADMIN', 'USER'].includes(role)) return res.status(400).json({ error: 'Invalid role.' });
   if (plan !== undefined && !PLANS[plan]) return res.status(400).json({ error: 'Invalid plan.' });
   const target = db.getUserById(req.params.id);
   if (!target) return res.status(404).json({ error: 'User not found.' });
+  // Super Admin rule: the OWNER account is untouchable for ADMIN callers,
+  // and granting the OWNER role (or the Lifetime plan) stays OWNER-only.
+  if (target.role === 'OWNER' && req.user.role !== 'OWNER') {
+    return res.status(403).json({ error: 'The OWNER account is protected — only the OWNER can manage it.' });
+  }
+  if (role === 'OWNER' && req.user.role !== 'OWNER') {
+    return res.status(403).json({ error: 'Only the OWNER can grant the OWNER role.' });
+  }
+  if (plan === 'Lifetime' && req.user.role !== 'OWNER') {
+    return res.status(403).json({ error: 'The Lifetime plan is reserved for the OWNER account.' });
+  }
   if (target.id === req.user.id && role && role !== req.user.role) {
     return res.status(400).json({ error: 'You cannot change your own role.' });
   }
