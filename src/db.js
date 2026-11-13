@@ -363,6 +363,18 @@ ensureColumn('jobs', 'log_path', 'TEXT');
 ensureColumn('jobs', 'project_id', 'INTEGER');
 ensureColumn('bulk_rows', 'fit_report', 'TEXT');
 
+// v2.2.0 — OWNER Lifetime Free: upgrade every OWNER still on a limited plan
+// to Lifetime. Idempotent and safe to run on every boot (the WHERE clause
+// only matches OWNERs whose plan is not already Lifetime); regular users
+// are never touched.
+const ownersToUpgrade = db.prepare("SELECT id FROM users WHERE role = 'OWNER' AND plan IS NOT 'Lifetime'").all();
+if (ownersToUpgrade.length) {
+  db.prepare("UPDATE users SET plan = 'Lifetime' WHERE role = 'OWNER' AND plan IS NOT 'Lifetime'").run();
+  for (const o of ownersToUpgrade) {
+    audit(o.id, 'plan_migrated', 'user', o.id, 'OWNER upgraded to Lifetime plan (v2.2.0: OWNER is lifetime-free, everything unlimited)');
+  }
+}
+
 // --- Users ---
 function createUser({ name, email, passwordHash, role, plan, credits }) {
   const info = db.prepare(
