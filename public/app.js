@@ -65,19 +65,35 @@ function creditsLabel(u) {
 }
 
 /* ---------- API ---------- */
+// v2.6.1 — friendly message when the server itself is unreachable (e.g.
+// Start.bat is not running): fetch() throws a TypeError with a bare
+// browser message. Server-returned errors (wrong password etc.) still
+// surface exactly as the server sends them — only the unreachable-server
+// case is remapped.
+const SERVER_UNREACHABLE_MSG = 'Server se connect nahi ho raha — Start.bat chal raha hai? Page refresh karke dobara koshish karein.';
+function toFriendlyNetworkError(e) {
+  if (e instanceof TypeError) return new Error(SERVER_UNREACHABLE_MSG);
+  return e;
+}
 async function api(path, opts = {}) {
-  const res = await fetch(path, {
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-    ...opts,
-  });
+  let res;
+  try {
+    res = await fetch(path, {
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+      ...opts,
+    });
+  } catch (e) { throw toFriendlyNetworkError(e); }
   let body = null;
   try { body = await res.json(); } catch { /* non-JSON */ }
   if (!res.ok) throw new Error((body && body.error) || `Request failed (${res.status})`);
   return body;
 }
 async function apiForm(path, formData) {
-  const res = await fetch(path, { method: 'POST', credentials: 'same-origin', body: formData });
+  let res;
+  try {
+    res = await fetch(path, { method: 'POST', credentials: 'same-origin', body: formData });
+  } catch (e) { throw toFriendlyNetworkError(e); }
   let body = null;
   try { body = await res.json(); } catch { /* ignore */ }
   if (!res.ok) throw new Error((body && body.error) || `Upload failed (${res.status})`);
@@ -356,7 +372,7 @@ function renderAuth() {
   root.innerHTML = `
   <div class="auth-wrap"><div class="auth-card">
     <div class="logo"><div class="logo-mark">C</div><div class="logo-name">Creative<span>Studio</span> AI Pro</div></div>
-    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.6.0 — Desktop App</p>
+    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.6.1 — Desktop App</p>
     <div class="auth-toggle">
       <button id="tab-login" class="active">Log in</button>
       <button id="tab-signup">Sign up</button>
