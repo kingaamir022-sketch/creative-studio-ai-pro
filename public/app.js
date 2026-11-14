@@ -12,6 +12,7 @@ const NAV = [
   { id: 'presentations', label: 'Presentations', icon: '📊', phase: 9, live: true, blurb: 'Multi-slide decks — layouts, presenter notes, present mode, export to images, PDF or video.' },
   { id: 'documents', label: 'Documents', icon: '📝', phase: 9, live: true, blurb: 'Rich-text documents — headings, lists, tables, images, charts. Export to HTML, DOCX or PDF.' },
   { id: 'charts', label: 'Charts', icon: '📈', phase: 9, live: true, blurb: 'Bar, line, pie and doughnut charts from CSV or a manual table — duplicate rows are skipped, never doubled.' },
+  { id: 'sheets', label: 'Sheets', icon: '🧮', phase: 10, live: true, blurb: 'Spreadsheets — editable grid, formulas, cell formatting, CSV/XLSX import and export; sheets can also feed rows into bulk jobs as a data source.' },
   { section: 'AI Studio' },
   { id: 'ai-studio', label: 'AI Studio', icon: '✨', phase: 7, live: true, blurb: 'Text-to-image, image-to-video, AI voice, quiz questions, transcription, music — one studio, real provider calls, job queue with cancel & retry.' },
   { id: 'ai-video', label: 'AI Video Generator', icon: '🎥', phase: 7, live: true, blurb: 'Text-to-video and image-to-video through configurable providers (Runway Gen-4), with job queue, progress and preview. Needs a video provider key.' },
@@ -40,6 +41,7 @@ const NAV = [
   { section: 'Publish & Grow' },
   { id: 'social', label: 'Social Media Creator', icon: '📣', phase: 8, live: true, blurb: 'AI post/caption/hashtag generator, thumbnails and optional publishing via official platform APIs.' },
   { id: 'calendar', label: 'Content Calendar', icon: '📅', phase: 8, live: true, blurb: 'Plan and schedule content across platforms from one calendar.' },
+  { id: 'planner', label: 'Content Planner', icon: '🗓️', phase: 10, live: true, blurb: 'Drag-and-drop rescheduling, approval workflow, campaigns, recurring posts and best-time suggestions — the planner behind the calendar.' },
   { id: 'website', label: 'Website', icon: '🌐', phase: 9, live: true, blurb: 'Publish a design, deck or document as a static website, hosted locally under /sites/.' },
   { id: 'print', label: 'Print', icon: '🖨️', phase: 9, live: true, blurb: 'Print-ready PDFs: full bleed, crop marks and a safe-zone guide (A4, US Letter, poster).' },
   { id: 'export', label: 'Export Center', icon: '📤', phase: 3, live: true, blurb: 'Batch export: PNG/JPG designs and MP4 videos at 720p/1080p, with ZIP download.' },
@@ -89,7 +91,16 @@ const fmtBytes = (n) => {
   if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
   return (n / 1073741824).toFixed(2) + ' GB';
 };
-const fmtDate = (s) => s ? new Date(s.replace(' ', 'T') + 'Z').toLocaleString() : '—';
+/* v2.5.0 — fmtDate fix ("Invalid Date" in update history): history/lastApplied
+   timestamps are ISO strings (already end in 'Z'), while DB timestamps are
+   'YYYY-MM-DD HH:MM:SS'. Appending 'Z' to an ISO string made '…Z' + 'Z' =
+   Invalid Date. ISO input is used as-is; only space-separated input gets
+   the T + Z treatment. */
+const fmtDate = (s) => {
+  if (!s) return '—';
+  const d = new Date(String(s).includes('T') ? s : String(s).replace(' ', 'T') + 'Z');
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
+};
 
 function toast(msg, isErr) {
   const t = document.createElement('div');
@@ -158,6 +169,7 @@ function render() {
         </div>
         <div class="top-actions">
           <span class="credits-pill">⚡ <b>${isUnlimitedUser(state.user) ? 'Unlimited' : state.user.creditsBalance}</b> credits · ${esc(state.user.plan)}</span>
+          <button class="btn btn-sm" id="pwa-install-btn" style="display:none" title="Install CreativeStudio as an app">⬇ Install app</button>
           <button class="icon-btn" id="theme-btn" title="Switch to light theme" aria-label="Switch to light theme">☀️</button>
           <button class="icon-btn" id="notif-btn" title="Notifications">🔔<span class="dot" id="notif-dot" style="display:none"></span></button>
           <div class="profile-wrap">
@@ -181,6 +193,19 @@ function render() {
   document.getElementById('hamburger').addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
   applyTheme(currentTheme());
   document.getElementById('theme-btn').addEventListener('click', () => applyTheme(currentTheme() === 'light' ? 'dark' : 'light'));
+  // PWA install prompt (v2.5.0 #70): the button only appears once the
+  // browser fires beforeinstallprompt (see the listener near boot()).
+  const installBtn = document.getElementById('pwa-install-btn');
+  if (installBtn) {
+    if (window.__csInstallPrompt) installBtn.style.display = '';
+    installBtn.addEventListener('click', async () => {
+      const evt = window.__csInstallPrompt;
+      if (!evt) return;
+      evt.prompt();
+      const choice = await evt.userChoice.catch(() => null);
+      if (choice && choice.outcome === 'accepted') { window.__csInstallPrompt = null; installBtn.style.display = 'none'; toast('App installed.'); }
+    });
+  }
   const profileBtn = document.getElementById('profile-btn');
   const profileMenu = document.getElementById('profile-menu');
   profileBtn.addEventListener('click', (e) => {
@@ -289,6 +314,7 @@ async function renderView() {
     if (v === 'presentations') return await viewPresentations(c);
     if (v === 'documents') return await viewDocuments(c);
     if (v === 'charts') return await viewCharts(c);
+    if (v === 'sheets') return await viewSheets(c);
     if (v === 'website') return await viewWebsites(c);
     if (v === 'print') return await viewPrint(c);
     if (v === 'ai-design') return await viewAIDesign(c);
@@ -308,6 +334,7 @@ async function renderView() {
     if (v === 'template-builder') return await viewTemplateBuilder(c);
     if (v === 'social') return await viewSocial(c);
     if (v === 'calendar') return await viewCalendar(c);
+    if (v === 'planner') return await viewPlanner(c);
     if (v === 'marketplace') return await viewMarketplace(c);
     if (v === 'stock') return await viewStock(c);
     if (v === 'assistant') return await viewAssistant(c);
@@ -329,7 +356,7 @@ function renderAuth() {
   root.innerHTML = `
   <div class="auth-wrap"><div class="auth-card">
     <div class="logo"><div class="logo-mark">C</div><div class="logo-name">Creative<span>Studio</span> AI Pro</div></div>
-    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.4.0 — CapCut Home & Flow</p>
+    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.5.0 — CapCut Parity Round</p>
     <div class="auth-toggle">
       <button id="tab-login" class="active">Log in</button>
       <button id="tab-signup">Sign up</button>
@@ -469,18 +496,25 @@ function openProjectInEditor(p) {
   else if (p.type === 'video') go('video-timeline', { projectId: p.id });
   else if (p.type === 'deck') go('presentations', { deckId: p.id });
   else if (p.type === 'doc') go('documents', { docId: p.id });
+  else if (p.type === 'sheet') go('sheets');
   else go('project', { id: p.id });
 }
 
 async function viewHome(c) {
-  const [d, upd, tpl, shared] = await Promise.all([
+  const [d, upd, tpl, shared, trend] = await Promise.all([
     api('/api/dashboard'),
     api('/api/updates/status').catch(() => null),
     api('/api/marketplace/builtin').catch(() => ({ templates: [] })),
     api('/api/collab/shared-with-me').catch(() => ({ projects: [] })),
+    api('/api/marketplace/trending').catch(() => null),
   ]);
   const firstName = (state.user.name || 'there').split(' ')[0];
   const allTemplates = tpl.templates || [];
+  const rows = (trend && trend.rows) ? trend.rows : null;
+  const forYou = rows ? rows.forYou : allTemplates.slice(0, 8);
+  const trendingRow = rows ? rows.trending : [];
+  const commercialRow = rows ? rows.commercial : allTemplates.filter((t) => ['Business', 'Promo'].includes(t.category));
+  const socialRow = rows ? rows.social : allTemplates.filter((t) => t.category === 'Social');
   const recent = d.recentProjects || [];
   const sharedCount = (shared.projects || []).length;
   // Quick-access groups: the 7 CapCut sidebar groups, every feature one
@@ -549,6 +583,22 @@ async function viewHome(c) {
     <div class="home-section-head"><h2>✨ Templates</h2><button class="link-btn" id="home-all-templates">All templates →</button></div>
     <div class="home-templates" id="home-template-list" style="margin-top:12px"></div>
   </div>
+  <div>
+    <div class="home-section-head"><h2>🙌 For you</h2><button class="link-btn" id="home-row-foryou-all">All templates →</button></div>
+    <div class="home-templates" id="home-row-foryou" style="margin-top:12px"></div>
+  </div>
+  <div>
+    <div class="home-section-head"><h2>🔥 Trending</h2><span class="sub">${esc(trend && trend.trendingSource === 'community-installs' ? 'Most installed on this install' : 'New built-in starters — nothing trending yet')}</span></div>
+    <div class="home-templates" id="home-row-trending" style="margin-top:12px"></div>
+  </div>
+  <div>
+    <div class="home-section-head"><h2>💼 Commercial</h2></div>
+    <div class="home-templates" id="home-row-commercial" style="margin-top:12px"></div>
+  </div>
+  <div>
+    <div class="home-section-head"><h2>📣 Social</h2></div>
+    <div class="home-templates" id="home-row-social" style="margin-top:12px"></div>
+  </div>
   <div class="home-collab card"><div><h3>🤝 Collaboration</h3>
     <p class="sub">${sharedCount ? `${sharedCount} project${sharedCount === 1 ? '' : 's'} shared with you — open, view and comment (read-only, no live co-editing).` : 'No projects shared with you yet. Share one of your own from any project → Share & comments.'}</p></div>
     <button class="btn btn-primary" id="home-open-collab">Open Collaboration →</button></div>
@@ -590,6 +640,37 @@ async function viewHome(c) {
   };
   renderRecent(recent);
   renderTemplates(allTemplates);
+  // v2.5.0 #56 — category rows on home (For you / Trending / Commercial /
+  // Social). Rows come from the trending feed; community templates install
+  // through the marketplace, built-ins through the built-in installer.
+  const renderRow = (hostId, list) => {
+    const host = document.getElementById(hostId);
+    if (!host) return;
+    host.innerHTML = list.length ? list.slice(0, 8).map(templateCard).join('')
+      : '<div class="home-empty" style="flex:1"><p>Nothing here yet.</p></div>';
+    host.querySelectorAll('[data-template]').forEach((el) => el.addEventListener('click', async () => {
+      const t = allTemplates.find((x) => String(x.id) === String(el.dataset.template))
+        || (list || []).find((x) => String(x.id) === String(el.dataset.template));
+      if (!t) return;
+      try {
+        if (t.builtin === false || (t.builtin === undefined && t.authorName)) {
+          const r = await api(`/api/marketplace/${encodeURIComponent(t.id)}/install`, { method: 'POST' });
+          toast('Template installed.');
+          openProjectInEditor({ id: r.installed.id, type: r.installed.kind });
+        } else {
+          const r = await api(`/api/marketplace/builtin/${encodeURIComponent(t.id)}/install`, { method: 'POST' });
+          toast('Template installed.');
+          openProjectInEditor({ id: r.installed.id, type: r.installed.kind });
+        }
+      } catch (e) { toast(e.message, true); }
+    }));
+  };
+  renderRow('home-row-foryou', forYou);
+  renderRow('home-row-trending', trendingRow);
+  renderRow('home-row-commercial', commercialRow);
+  renderRow('home-row-social', socialRow);
+  const foryouAll = document.getElementById('home-row-foryou-all');
+  if (foryouAll) foryouAll.addEventListener('click', () => go('marketplace'));
   document.getElementById('home-search').addEventListener('input', (e) => {
     const q = e.target.value.trim().toLowerCase();
     if (!q) { renderRecent(recent); renderTemplates(allTemplates); return; }
@@ -856,6 +937,23 @@ async function openNewProjectFlow() {
 }
 
 /* ---------- Projects ---------- */
+// v2.5.0 #71 — project sort is applied client-side here (the server list
+// endpoint takes no sort parameter; sorting the fetched list is what
+// makes the control actually work instead of being ignored).
+function sortProjects(list, sort) {
+  const arr = [...(list || [])];
+  const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''));
+  const byDate = (a, b) => new Date(String(b.updatedAt || b.updated_at || 0)) - new Date(String(a.updatedAt || a.updated_at || 0));
+  switch (sort) {
+    case 'updated-asc': return arr.sort((a, b) => -byDate(a, b));
+    case 'name-asc': return arr.sort(byName);
+    case 'name-desc': return arr.sort((a, b) => -byName(a, b));
+    case 'type': return arr.sort((a, b) => String(a.type).localeCompare(String(b.type)) || byName(a, b));
+    case 'updated-desc':
+    default: return arr.sort(byDate);
+  }
+}
+
 async function viewProjects(c) {
   const [res, folders, shared] = await Promise.all([
     api('/api/projects'), api('/api/projects/folders/list'),
@@ -863,7 +961,7 @@ async function viewProjects(c) {
   ]);
   const trash = await api('/api/projects?trashed=1');
   const showTrash = state.params.trash === true;
-  const list = showTrash ? trash.projects : res.projects;
+  const list = sortProjects(showTrash ? trash.projects : res.projects, state.params.sort || 'updated-desc');
   const sharedProjects = shared.projects || [];
   c.innerHTML = `
   <div class="toolbar">
@@ -871,6 +969,13 @@ async function viewProjects(c) {
     <button class="btn" id="new-folder-btn">＋ Folder</button>
     <input id="proj-search" type="search" placeholder="Search projects…" value="${esc(state.params.q || '')}">
     <select id="proj-type"><option value="">All types</option>${['design', 'video', 'bulk', 'shorts', 'social'].map((t) => `<option ${state.params.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <select id="proj-sort" title="Sort projects">
+      <option value="updated-desc" ${(!state.params.sort || state.params.sort === 'updated-desc') ? 'selected' : ''}>Newest first</option>
+      <option value="updated-asc" ${state.params.sort === 'updated-asc' ? 'selected' : ''}>Oldest first</option>
+      <option value="name-asc" ${state.params.sort === 'name-asc' ? 'selected' : ''}>Name A–Z</option>
+      <option value="name-desc" ${state.params.sort === 'name-desc' ? 'selected' : ''}>Name Z–A</option>
+      <option value="type" ${state.params.sort === 'type' ? 'selected' : ''}>Type</option>
+    </select>
     <button class="btn ${showTrash ? 'btn-danger' : ''}" id="trash-toggle">${showTrash ? '← Back to projects' : `🗑 Trash (${trash.projects.length})`}</button>
   </div>
   <div id="proj-list">
@@ -885,6 +990,8 @@ async function viewProjects(c) {
           <button class="btn btn-sm" data-restore="${p.id}">Restore</button>
           <button class="btn btn-sm btn-danger" data-del="${p.id}">Delete forever</button>`
         : `
+          <button class="btn btn-sm" data-rename="${p.id}" data-rename-name="${esc(p.name)}">✏️ Rename</button>
+          <button class="btn btn-sm" data-settings="${p.id}">⚙️ Settings</button>
           <button class="btn btn-sm" data-dup="${p.id}">Duplicate</button>
           <button class="btn btn-sm btn-danger" data-trash="${p.id}">Trash</button>`}
       </div>`).join('') : `<div class="empty"><div class="big">📁</div><p>${showTrash ? 'Trash is empty.' : 'No projects yet.'}</p><p style="margin-top:6px">Create your first project to get started.</p></div>`}
@@ -894,7 +1001,7 @@ async function viewProjects(c) {
     <p class="sub">Projects other users shared with you — view and comment, never edit. No live co-editing.</p>
     ${sharedProjects.map((p) => `<div class="list-row"><div class="grow" style="cursor:pointer" data-open-shared="${p.id}">
       <div class="t">${esc(p.name)}</div><div class="m">${esc(p.type)} · shared by ${esc(p.ownerName || p.ownerEmail)} · ${fmtDate(p.sharedAt)}</div></div>
-      <span class="badge">view only</span>
+      <span class="badge ${p.permission === 'edit' ? 'ok' : ''}">${p.permission === 'edit' ? '✏️ edit' : '👁 view only'}</span>
       <button class="btn btn-sm btn-primary" data-open-shared="${p.id}">Open →</button>
       <button class="btn btn-sm btn-ghost" data-leave-shared="${p.id}">Leave</button></div>`).join('')}
   </div>` : ''}`;
@@ -916,6 +1023,29 @@ async function viewProjects(c) {
       row.style.display = !t || row.querySelector('.badge').textContent === t ? 'flex' : 'none';
     });
   });
+  // v2.5.0 #71 — sort actually re-sorts (client-side over the fetched list).
+  document.getElementById('proj-sort').addEventListener('change', (e) => go('projects', { ...state.params, sort: e.target.value }));
+  // v2.5.0 #71 — rename from the Projects view (was API-only).
+  c.querySelectorAll('[data-rename]').forEach((el) => el.addEventListener('click', () => {
+    const back = openModal(`
+      <h2>Rename project</h2>
+      <div class="error" id="rn-error"></div>
+      <label for="rn-name">New name</label><input id="rn-name" value="${esc(el.dataset.renameName || '')}">
+      <div class="modal-actions"><button class="btn" id="rn-cancel">Cancel</button><button class="btn btn-primary" id="rn-save">Rename</button></div>`);
+    back.querySelector('#rn-cancel').addEventListener('click', () => back.remove());
+    const input = back.querySelector('#rn-name');
+    input.focus(); input.select();
+    back.querySelector('#rn-save').addEventListener('click', async () => {
+      const name = input.value.trim();
+      if (!name) { const eb = back.querySelector('#rn-error'); eb.textContent = 'Project name cannot be empty.'; eb.style.display = 'block'; return; }
+      try {
+        await api(`/api/projects/${el.dataset.rename}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+        back.remove(); toast('Project renamed.'); renderView();
+      } catch (e) { const eb = back.querySelector('#rn-error'); eb.textContent = e.message; eb.style.display = 'block'; }
+    });
+  }));
+  // Project settings dialog (Ctrl+P) from the Projects view.
+  c.querySelectorAll('[data-settings]').forEach((el) => el.addEventListener('click', () => openProjectSettingsDialog(el.dataset.settings)));
   c.querySelectorAll('[data-open]').forEach((el) => el.addEventListener('click', () => go('project', { id: el.dataset.open })));
   c.querySelectorAll('[data-open-shared]').forEach((el) => el.addEventListener('click', () => go('shared-project', { id: el.dataset.openShared })));
   c.querySelectorAll('[data-leave-shared]').forEach((el) => el.addEventListener('click', async () => {
@@ -959,6 +1089,7 @@ async function viewProjectDetail(c) {
     <span style="flex:1"></span>
     ${project.type === 'design' ? '<button class="btn btn-primary" id="open-editor-btn">🎨 Open in Graphic Editor</button>' : ''}
     ${project.type === 'video' ? '<button class="btn btn-primary" id="open-video-btn">🎬 Open in Video Editor</button>' : ''}
+    <button class="btn" id="proj-settings-btn">⚙️ Project settings (Ctrl+P)</button>
     <button class="btn" id="save-version-btn">💾 Save version</button>
     <button class="btn" id="dup-btn">Duplicate</button>
     <button class="btn btn-danger" id="trash-btn">Move to trash</button>
@@ -991,6 +1122,23 @@ async function viewProjectDetail(c) {
     <textarea id="p-content" class="code" spellcheck="false">${esc(JSON.stringify(project.content, null, 2))}</textarea>
     <div class="error" id="content-error"></div>
   </div>
+  ${project.type === 'design' ? `<div class="card" style="margin-top:16px">
+    <h3>🖨️ Print-ready checklist</h3>
+    <p class="sub">Check bleed, safe zone, resolution and CMYK before you export. Pick a print size — A5, A3, A6, flyer, business card or custom.</p>
+    <div class="form-row" style="margin-top:10px">
+      <label style="flex:1">Print size <select id="pc-size">
+        <option value="A4">A4 — 210×297 mm</option>
+        <option value="A5">A5 — 148×210 mm</option>
+        <option value="A3">A3 — 297×420 mm</option>
+        <option value="A6">A6 — 105×148 mm</option>
+        <option value="flyer">Flyer — 210×297 mm</option>
+        <option value="business-card">Business card — 85×55 mm</option>
+        <option value="custom">Custom (uses the design size)</option>
+      </select></label>
+      <button class="btn btn-primary" id="pc-check">Run checklist</button>
+    </div>
+    <div id="pc-result" style="margin-top:10px"></div>
+  </div>` : ''}
   ${collabPanelHTML()}`;
   const saveState = document.getElementById('save-state');
   const setState = (t, cls) => { saveState.textContent = t; saveState.className = 'badge ' + (cls || ''); };
@@ -1036,6 +1184,18 @@ async function viewProjectDetail(c) {
     try { await api(`/api/projects/${id}/versions/${el.dataset.restoreVer}/restore`, { method: 'POST' }); toast('Version restored.'); renderView(); }
     catch (e) { toast(e.message, true); }
   }));
+  document.getElementById('proj-settings-btn').addEventListener('click', () => openProjectSettingsDialog(id));
+  const pcCheck = document.getElementById('pc-check');
+  if (pcCheck) pcCheck.addEventListener('click', async () => {
+    const box = document.getElementById('pc-result');
+    const size = document.getElementById('pc-size').value;
+    box.innerHTML = '<p class="sub">Checking…</p>';
+    try {
+      const r = await api(`/api/settings/print-checklist?projectId=${id}&size=${encodeURIComponent(size)}`);
+      box.innerHTML = `<p class="sub">${esc(r.summary)} ${r.widthPx}×${r.heightPx} px · ~${r.dpi} dpi · ${esc(r.colorMode)}</p>` +
+        r.items.map((it) => `<div class="kv"><span><b>${esc(it.label)}</b><br><small style="color:var(--muted)">${esc(it.detail)}</small></span><span class="badge ${it.status === 'pass' ? 'ok' : it.status === 'warn' ? 'warn' : 'err'}">${it.status === 'pass' ? '✓ pass' : it.status === 'warn' ? '⚠ check' : '✗ fail'}</span></div>`).join('');
+    } catch (e) { box.innerHTML = `<p style="color:var(--danger)">Checklist failed: ${esc(e.message)}</p>`; }
+  });
   initCollabPanel(id);
 }
 
@@ -1043,11 +1203,34 @@ async function viewProjectDetail(c) {
 async function viewMedia(c) {
   const q = state.params.q || '';
   const kind = state.params.kind || '';
-  const fav = state.params.fav === true;
-  const [res, folders] = await Promise.all([
-    api(`/api/media?search=${encodeURIComponent(q)}&kind=${kind}${fav ? '&favorite=1' : ''}`),
+  // v2.5.0 #57 — smart collections + folder filter/assign + recently
+  // viewed. Collections are computed client-side over the fetched list
+  // (the server list endpoint has no sort/collection parameter).
+  const collection = state.params.fav === true ? 'fav' : (state.params.collection || 'all');
+  const folderFilter = state.params.folderId || '';
+  const [res, folders, settingsInfo] = await Promise.all([
+    api(`/api/media?search=${encodeURIComponent(q)}&kind=${kind}`),
     api('/api/media/folders/list'),
+    api('/api/settings').catch(() => null),
   ]);
+  let items = res.media || [];
+  if (folderFilter === 'unfiled') items = items.filter((m) => !m.folderId);
+  else if (folderFilter) items = items.filter((m) => String(m.folderId) === String(folderFilter));
+  const recentViewed = (() => { try { return JSON.parse(localStorage.getItem('cs-recent-media') || '[]'); } catch { return []; } })();
+  const weekAgo = Date.now() - 7 * 24 * 3600 * 1000;
+  const collections = {
+    all: items,
+    fav: items.filter((m) => m.favorite),
+    recent: items.filter((m) => new Date(m.createdAt).getTime() >= weekAgo),
+    image: items.filter((m) => m.kind === 'image'),
+    video: items.filter((m) => m.kind === 'video'),
+    audio: items.filter((m) => m.kind === 'audio'),
+    unfiled: items.filter((m) => !m.folderId),
+    viewed: recentViewed.map((id) => items.find((m) => String(m.id) === String(id))).filter(Boolean),
+  };
+  const shown = collections[collection] || items;
+  const face = settingsInfo && settingsInfo.faceDetection ? settingsInfo.faceDetection : null;
+  const collBtn = (id, label, n) => `<button class="btn btn-sm ${collection === id ? 'btn-primary' : ''}" data-collection="${id}">${label} (${n})</button>`;
   c.innerHTML = `
   <div class="toolbar">
     <button class="btn btn-primary" id="upload-btn">⬆ Upload files</button>
@@ -1057,12 +1240,26 @@ async function viewMedia(c) {
       <option value="">All types</option>
       ${['image', 'video', 'audio'].map((k) => `<option value="${k}" ${kind === k ? 'selected' : ''}>${k}</option>`).join('')}
     </select>
-    <button class="btn ${fav ? 'btn-primary' : ''}" id="fav-toggle">★ Favorites</button>
+    <select id="media-folder" title="Filter by folder">
+      <option value="">All folders</option>
+      ${folders.folders.map((f) => `<option value="${f.id}" ${String(folderFilter) === String(f.id) ? 'selected' : ''}>📁 ${esc(f.name)}</option>`).join('')}
+      <option value="unfiled" ${folderFilter === 'unfiled' ? 'selected' : ''}>📁 Unfiled</option>
+    </select>
     <input type="file" id="media-file" multiple accept="image/*,video/*,audio/*" style="display:none">
   </div>
   <p class="sub">Images, video and audio up to the configured limit. Files are stored on disk under <span class="mono">uploads/</span> with metadata in the database. Unsupported types are rejected.</p>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px" id="media-collections">
+    ${collBtn('all', '🗂️ All', collections.all.length)}
+    ${collBtn('fav', '★ Favourites', collections.fav.length)}
+    ${collBtn('recent', '🕒 Recent (7 days)', collections.recent.length)}
+    ${collBtn('image', '🖼️ Images', collections.image.length)}
+    ${collBtn('video', '🎬 Videos', collections.video.length)}
+    ${collBtn('audio', '🎵 Audio', collections.audio.length)}
+    ${collBtn('unfiled', '📁 Unfiled', collections.unfiled.length)}
+    ${collBtn('viewed', '👁 Recently viewed', collections.viewed.length)}
+  </div>
   <div id="upload-progress" style="margin-top:12px"></div>
-  ${res.media.length ? `<div class="media-grid" style="margin-top:14px">${res.media.map((m) => `
+  ${shown.length ? `<div class="media-grid" style="margin-top:14px">${shown.map((m) => `
     <div class="media-card">
       <div class="thumb" data-preview="${m.id}" style="cursor:pointer">
         ${m.kind === 'image' ? `<img src="${m.url}" alt="${esc(m.originalName)}" loading="lazy">`
@@ -1073,6 +1270,10 @@ async function viewMedia(c) {
         <div class="nm" title="${esc(m.originalName)}">${esc(m.originalName)}</div>
         <div class="mt">${esc(m.kind)} · ${fmtBytes(m.sizeBytes)} · ${fmtDate(m.createdAt)}</div>
         ${m.tags ? `<div class="mt">🏷 ${esc(m.tags)}</div>` : ''}
+        <div class="mt"><label style="display:flex;gap:6px;align-items:center">📁 <select data-folder-for="${m.id}" style="flex:1;min-height:44px">
+          <option value="">No folder</option>
+          ${folders.folders.map((f) => `<option value="${f.id}" ${String(m.folderId) === String(f.id) ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}
+        </select></label></div>
         <div class="acts">
           <button class="btn btn-sm" data-preview="${m.id}">Preview</button>
           <button class="btn btn-sm" data-fav="${m.id}">${m.favorite ? '★ Unfavorite' : '☆ Favorite'}</button>
@@ -1081,19 +1282,33 @@ async function viewMedia(c) {
         </div>
       </div>
     </div>`).join('')}</div>`
-  : `<div class="empty" style="margin-top:14px"><div class="big">🗂️</div><p>No media found.</p><p style="margin-top:6px">Upload images, videos or audio to build your library.</p><button class="btn btn-primary" id="media-empty-upload">⬆ Upload your first files</button></div>`}
-  ${folders.folders.length ? `<div class="card" style="margin-top:16px"><h3>Folders</h3>${folders.folders.map((f) => `<div class="kv"><span>📁 ${esc(f.name)}</span><button class="btn btn-sm btn-ghost" data-del-mfolder="${f.id}">Delete</button></div>`).join('')}</div>` : ''}`;
+  : `<div class="empty" style="margin-top:14px"><div class="big">🗂️</div><p>No media found${collection !== 'all' ? ' in this collection' : ''}.</p><p style="margin-top:6px">Upload images, videos or audio to build your library.</p><button class="btn btn-primary" id="media-empty-upload">⬆ Upload your first files</button></div>`}
+  ${folders.folders.length ? `<div class="card" style="margin-top:16px"><h3>Folders</h3>${folders.folders.map((f) => `<div class="kv"><span>📁 ${esc(f.name)}</span><button class="btn btn-sm btn-ghost" data-del-mfolder="${f.id}">Delete</button></div>`).join('')}</div>` : ''}
+  <div class="card" style="margin-top:16px"><h3>👤 Face grouping</h3>
+    <p class="sub">${face
+      ? (face.available
+        ? `Available — local face model(s) installed: ${esc((face.models || []).join(', '))}.`
+        : `Not available: ${esc(face.reason)}`)
+      : 'Face grouping status could not be loaded — face detection is not faked; without a local face model it stays unavailable.'}</p>
+  </div>`;
+  const recordViewed = (id) => {
+    try {
+      const list = [id, ...recentViewed.filter((x) => String(x) !== String(id))].slice(0, 12);
+      localStorage.setItem('cs-recent-media', JSON.stringify(list));
+    } catch { /* private mode */ }
+  };
   const fileInput = document.getElementById('media-file');
   document.getElementById('upload-btn').addEventListener('click', () => fileInput.click());
   const emptyUpload = document.getElementById('media-empty-upload');
   if (emptyUpload) emptyUpload.addEventListener('click', () => fileInput.click());
   document.getElementById('media-folder-btn').addEventListener('click', () => openFolderModal('media'));
-  document.getElementById('fav-toggle').addEventListener('click', () => go('media', { ...state.params, fav: !fav }));
+  document.getElementById('media-folder').addEventListener('change', (e) => go('media', { ...state.params, folderId: e.target.value || undefined }));
   document.getElementById('media-kind').addEventListener('change', (e) => go('media', { ...state.params, kind: e.target.value }));
   document.getElementById('media-search').addEventListener('input', (e) => {
     clearTimeout(state.searchTimer);
     state.searchTimer = setTimeout(() => go('media', { ...state.params, q: e.target.value.trim() }), 300);
   });
+  c.querySelectorAll('[data-collection]').forEach((b) => b.addEventListener('click', () => go('media', { ...state.params, collection: b.dataset.collection, fav: undefined })));
   fileInput.addEventListener('change', async () => {
     const files = [...fileInput.files];
     if (!files.length) return;
@@ -1111,16 +1326,22 @@ async function viewMedia(c) {
     renderView();
   });
   c.querySelectorAll('[data-preview]').forEach((el) => el.addEventListener('click', () => {
-    const m = res.media.find((x) => String(x.id) === el.dataset.preview);
-    if (m) openMediaPreview(m);
+    const m = shown.find((x) => String(x.id) === el.dataset.preview) || res.media.find((x) => String(x.id) === el.dataset.preview);
+    if (m) { recordViewed(m.id); openMediaPreview(m); }
   }));
   c.querySelectorAll('[data-fav]').forEach((el) => el.addEventListener('click', async () => {
-    const m = res.media.find((x) => String(x.id) === el.dataset.fav);
+    const m = shown.find((x) => String(x.id) === el.dataset.fav);
     try { await api(`/api/media/${m.id}`, { method: 'PATCH', body: JSON.stringify({ favorite: !m.favorite }) }); renderView(); }
     catch (e) { toast(e.message, true); }
   }));
+  c.querySelectorAll('[data-folder-for]').forEach((el) => el.addEventListener('change', async () => {
+    try {
+      await api(`/api/media/${el.dataset.folderFor}`, { method: 'PATCH', body: JSON.stringify({ folderId: el.value ? Number(el.value) : null }) });
+      toast('Moved to folder.'); renderView();
+    } catch (e) { toast(e.message, true); renderView(); }
+  }));
   c.querySelectorAll('[data-tag]').forEach((el) => el.addEventListener('click', () => {
-    const m = res.media.find((x) => String(x.id) === el.dataset.tag);
+    const m = shown.find((x) => String(x.id) === el.dataset.tag);
     openTagModal(m);
   }));
   c.querySelectorAll('[data-del-media]').forEach((el) => el.addEventListener('click', async () => {
@@ -1135,6 +1356,16 @@ async function viewMedia(c) {
 }
 
 /* ---------- Settings ---------- */
+/* v2.5.0 #21 — Sheets studio (public/sheets.js). Opens the sheet list;
+   the studio itself handles create/open/import/export. */
+async function viewSheets(c) {
+  if (typeof window.initSheets !== 'function') {
+    c.innerHTML = `<div class="empty"><div class="big">⚠️</div><h3>Sheets failed to load</h3><p>The Sheets studio script did not load. Reload the page and try again.</p></div>`;
+    return;
+  }
+  await window.initSheets(c);
+}
+
 async function viewSettings(c) {
   const [prov, users, googleStatus, updStatus, updSettings] = await Promise.all([
     api('/api/providers'),
@@ -1145,6 +1376,74 @@ async function viewSettings(c) {
   ]);
   const d = await api('/api/dashboard');
   const isAdmin = state.user.role === 'OWNER' || state.user.role === 'ADMIN';
+  const settingsData = await api('/api/settings').catch(() => null);
+  const st = settingsData ? settingsData.settings : null;
+  const settingsPagesHTML = settingsData && st ? `
+  <div class="card" style="margin-top:16px"><h3>⚡ Performance</h3>
+    <p class="sub">${esc(settingsData.performance.proxyNote || '')}</p>
+    <div class="form-row" style="margin-top:10px">
+      <label><input type="checkbox" id="st-proxy" ${st.performance.proxyEnabled ? 'checked' : ''}> Proxy media on (lighter editor preview)</label>
+      <label>Proxy resolution <select id="st-proxy-res">${['360p', '540p', '720p'].map((r) => `<option ${st.performance.proxyResolution === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+    </div>
+    <div class="form-row" style="margin-top:10px">
+      <label><input type="checkbox" id="st-hw" ${st.performance.hardwareEncode ? 'checked' : ''} ${settingsData.performance.hardwareEncodeAvailable ? '' : 'disabled'}> Hardware encoding ${settingsData.performance.hardwareEncodeAvailable ? `(available: ${esc(settingsData.performance.hardwareEncoders.join(', '))})` : '— not available on this FFmpeg build (software encoding is used)'}</label>
+      <label>Preview quality <select id="st-preview-q"><option value="full" ${st.performance.previewQuality === 'full' ? 'selected' : ''}>Full quality</option><option value="performance" ${st.performance.previewQuality === 'performance' ? 'selected' : ''}>Performance (lower-res preview)</option></select></label>
+    </div>
+    <div style="margin-top:10px"><button class="btn btn-primary" id="st-save-perf">Save performance settings</button></div>
+    <div class="error" id="st-perf-err" style="display:none"></div>
+  </div>
+  <div class="grid grid-2" style="margin-top:16px">
+    <div class="card"><h3>🗄️ Draft &amp; Cache</h3>
+      <div class="kv"><span>Uploads on disk</span><span>${esc(fmtBytes(settingsData.cache.uploadsBytes))} · ${settingsData.cache.uploadsFiles} files</span></div>
+      <div class="kv"><span>Renders on disk</span><span>${esc(fmtBytes(settingsData.cache.rendersBytes))} · ${settingsData.cache.rendersFiles} files</span></div>
+      <div class="kv"><span>Total</span><span>${esc(fmtBytes(settingsData.cache.totalBytes))}</span></div>
+      <p class="sub" style="margin-top:8px">${esc(settingsData.cache.note)}</p>
+      <div class="form-row" style="margin-top:10px">
+        <label style="flex:2">Cache location <input id="st-cache-loc" value="${esc(st.cache.cacheLocation || 'default')}"></label>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="st-save-cache">Save cache settings</button>
+        <button class="btn btn-danger" id="st-clear-cache">Clear cache (temp files only)</button>
+      </div>
+      <div class="error" id="st-cache-err" style="display:none"></div><div class="success" id="st-cache-ok" style="display:none"></div>
+    </div>
+    <div class="card"><h3>🌐 Language</h3>
+      <label>Interface language <select id="st-lang">${[['en', 'English'], ['ur', 'Urdu'], ['ar', 'Arabic'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German']].map(([v, l]) => `<option value="${v}" ${st.language.language === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <p class="sub" style="margin-top:8px">${esc(settingsData.languageNote)}</p>
+      <div style="margin-top:10px"><button class="btn btn-primary" id="st-save-lang">Save language</button></div>
+      <div class="error" id="st-lang-err" style="display:none"></div>
+    </div>
+  </div>
+  <div class="grid grid-2" style="margin-top:16px">
+    <div class="card"><h3>📁 Project defaults</h3>
+      <p class="sub">Used when a new project is created, and as the starting values in the project settings dialog (Ctrl+P).</p>
+      <div class="form-row" style="margin-top:10px">
+        <label>Default aspect <select id="st-def-aspect">${['16:9', '9:16', '1:1', '4:5'].map((a) => `<option ${st.projectDefaults.defaultAspect === a ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
+        <label>Default resolution <select id="st-def-res"><option value="720p" ${st.projectDefaults.defaultResolution === '720p' ? 'selected' : ''}>720p</option><option value="1080p" ${st.projectDefaults.defaultResolution === '1080p' ? 'selected' : ''}>1080p</option></select></label>
+        <label>Default frame rate <select id="st-def-fps">${[24, 30, 60].map((f) => `<option value="${f}" ${Number(st.projectDefaults.defaultFps) === f ? 'selected' : ''}>${f} fps</option>`).join('')}</select></label>
+      </div>
+      <div class="form-row" style="margin-top:10px">
+        <label><input type="checkbox" id="st-def-autosave" ${st.projectDefaults.defaultAutosave ? 'checked' : ''}> Auto-save new projects</label>
+        <label>Interval (seconds) <input id="st-def-interval" type="number" min="5" max="600" value="${st.projectDefaults.defaultAutosaveIntervalSeconds}"></label>
+        <label><input type="checkbox" id="st-def-proxy" ${st.projectDefaults.defaultProxy ? 'checked' : ''}> Proxy on by default</label>
+      </div>
+      <div class="form-row" style="margin-top:10px">
+        <label>Print colour mode <select id="st-def-cmyk"><option value="RGB" ${st.projectDefaults.printColorMode !== 'CMYK' ? 'selected' : ''}>RGB</option><option value="CMYK" ${st.projectDefaults.printColorMode === 'CMYK' ? 'selected' : ''}>CMYK</option></select></label>
+      </div>
+      <div style="margin-top:10px"><button class="btn btn-primary" id="st-save-defaults">Save project defaults</button></div>
+      <div class="error" id="st-def-err" style="display:none"></div>
+    </div>
+    <div class="card"><h3>🔒 Privacy &amp; data</h3>
+      <label><input type="checkbox" id="st-optout" ${st.privacy.analyticsOptOut ? 'checked' : ''}> Opt out of analytics (usage counts are local-only in this build)</label>
+      <label style="margin-top:8px"><input type="checkbox" id="st-share-usage" ${st.privacy.shareUsageData ? 'checked' : ''}> Share anonymous usage data (off — nothing leaves this install today)</label>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="st-save-privacy">Save privacy settings</button>
+        <button class="btn" id="st-export">⬇ Export my data (JSON)</button>
+      </div>
+      <div class="error" id="st-priv-err" style="display:none"></div>
+      <p class="sub" style="margin-top:10px">Face grouping: ${settingsData.faceDetection.available ? 'available (local face model installed).' : 'not available — ' + esc(settingsData.faceDetection.reason)}</p>
+    </div>
+  </div>` : '';
   c.innerHTML = `
   <div class="grid grid-2">
     <div class="card"><h3>Profile</h3>
@@ -1254,7 +1553,8 @@ async function viewSettings(c) {
     ${users.users.map((u) => `<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${esc(u.role)}</td><td>${esc(u.plan)}</td><td>${(u.plan === 'Lifetime' || u.plan === 'Enterprise') ? '∞' : u.credits_balance}</td>
     <td>${u.id !== state.user.id ? `<select data-role-for="${u.id}">
       ${['USER', 'ADMIN', 'OWNER'].map((r) => `<option ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select>` : '<span class="badge">you</span>'}</td></tr>`).join('')}
-    </tbody></table></div>` : ''}`;
+    </tbody></table></div>` : ''}
+  ${settingsPagesHTML}`;
   document.getElementById('save-profile').addEventListener('click', async () => {
     const errBox = document.getElementById('profile-error'); const okBox = document.getElementById('profile-ok');
     errBox.style.display = 'none'; okBox.style.display = 'none';
@@ -1378,6 +1678,70 @@ async function viewSettings(c) {
       const r = await api('/api/updates/rollback', { method: 'POST' });
       toast(r.message || `Rolled back to ${r.restored}.`);
       setTimeout(() => { window.location.reload(); }, 2000);
+    } catch (e) { toast(e.message, true); }
+  });
+  // v2.5.0 #55 — Settings pages (Performance / Cache / Defaults /
+  // Language / Privacy) wired to /api/settings.
+  const saveSettingsGroup = async (group, body, errId) => {
+    const errBox = errId ? document.getElementById(errId) : null;
+    try {
+      await api(`/api/settings/${group}`, { method: 'PUT', body: JSON.stringify(body) });
+      toast('Settings saved.');
+      renderView();
+    } catch (e) {
+      if (errBox) { errBox.textContent = e.message; errBox.style.display = 'block'; }
+      else toast(e.message, true);
+    }
+  };
+  const stSavePerf = document.getElementById('st-save-perf');
+  if (stSavePerf) stSavePerf.addEventListener('click', () => saveSettingsGroup('performance', {
+    proxyEnabled: document.getElementById('st-proxy').checked,
+    proxyResolution: document.getElementById('st-proxy-res').value,
+    hardwareEncode: document.getElementById('st-hw').checked,
+    previewQuality: document.getElementById('st-preview-q').value,
+  }, 'st-perf-err'));
+  const stSaveCache = document.getElementById('st-save-cache');
+  if (stSaveCache) stSaveCache.addEventListener('click', () => saveSettingsGroup('cache', {
+    cacheLocation: document.getElementById('st-cache-loc').value.trim() || 'default',
+  }, 'st-cache-err'));
+  const stClearCache = document.getElementById('st-clear-cache');
+  if (stClearCache) stClearCache.addEventListener('click', async () => {
+    try {
+      const r = await api('/api/settings/cache/clear', { method: 'POST' });
+      const ok = document.getElementById('st-cache-ok');
+      if (ok) { ok.textContent = `Cache cleared: ${r.removedFiles} temp file(s), ${fmtBytes(r.freedBytes)} freed. Media, thumbnails and renders were kept.`; ok.style.display = 'block'; }
+      toast('Cache cleared.');
+    } catch (e) { toast(e.message, true); }
+  });
+  const stSaveLang = document.getElementById('st-save-lang');
+  if (stSaveLang) stSaveLang.addEventListener('click', () => saveSettingsGroup('language', {
+    language: document.getElementById('st-lang').value,
+  }, 'st-lang-err'));
+  const stSaveDefaults = document.getElementById('st-save-defaults');
+  if (stSaveDefaults) stSaveDefaults.addEventListener('click', () => saveSettingsGroup('projectDefaults', {
+    defaultAspect: document.getElementById('st-def-aspect').value,
+    defaultResolution: document.getElementById('st-def-res').value,
+    defaultFps: Number(document.getElementById('st-def-fps').value),
+    defaultAutosave: document.getElementById('st-def-autosave').checked,
+    defaultAutosaveIntervalSeconds: Math.max(5, Math.min(600, parseInt(document.getElementById('st-def-interval').value, 10) || 30)),
+    defaultProxy: document.getElementById('st-def-proxy').checked,
+    printColorMode: document.getElementById('st-def-cmyk').value,
+  }, 'st-def-err'));
+  const stSavePrivacy = document.getElementById('st-save-privacy');
+  if (stSavePrivacy) stSavePrivacy.addEventListener('click', () => saveSettingsGroup('privacy', {
+    analyticsOptOut: document.getElementById('st-optout').checked,
+    shareUsageData: document.getElementById('st-share-usage').checked,
+  }, 'st-priv-err'));
+  const stExport = document.getElementById('st-export');
+  if (stExport) stExport.addEventListener('click', async () => {
+    try {
+      const data = await api('/api/settings/export');
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'creative-studio-my-data.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
     } catch (e) { toast(e.message, true); }
   });
 }
@@ -1889,13 +2253,13 @@ async function viewCollaboration(c) {
   const list = shared.projects || [];
   c.innerHTML = `
   <div class="page-head"><div><h2>🤝 Collaboration</h2>
-  <p class="muted">Share projects read-only and comment on them. There is no live co-editing — shared users can view and comment, never edit.</p></div></div>
+  <p class="muted">Share projects as view or edit and comment on them. Edit shares can save name/content changes; there is no live co-editing (last write wins). Shares never grant admin or role powers.</p></div></div>
   <div class="card"><h3>Shared with you (${list.length})</h3>
     ${list.length ? list.map((p) => `
       <div class="list-row"><div class="grow" style="cursor:pointer" data-open-shared="${p.id}">
         <div class="t">${esc(p.name)}</div>
         <div class="m">${esc(p.type)} · shared by ${esc(p.ownerName || p.ownerEmail || 'user')} · ${fmtDate(p.sharedAt)}</div></div>
-        <span class="badge">view only</span>
+        <span class="badge ${p.permission === 'edit' ? 'ok' : ''}">${p.permission === 'edit' ? '✏️ edit' : '👁 view only'}</span>
         <button class="btn btn-sm btn-primary" data-open-shared="${p.id}">Open →</button>
         <button class="btn btn-sm btn-ghost" data-leave-shared="${p.id}">Leave</button></div>`).join('')
     : '<p class="sub" style="margin-top:8px">Nothing shared with you yet. When someone shares a project with your email, it appears here.</p>'}
@@ -1911,6 +2275,234 @@ async function viewCollaboration(c) {
     try { await api(`/api/collab/shared-with-me/${b.dataset.leaveShared}/leave`, { method: 'POST' }); toast('Left the shared project.'); renderView(); }
     catch (e) { toast(e.message, true); }
   }));
+}
+
+/* ---------- Content Planner (v2.5.0 #25) ---------- */
+// Drag-and-drop rescheduling, best-time suggestions, recurring/series
+// posts, approval workflow, bulk scheduling, calendar filters by
+// platform/status/campaign, and a campaign view — the planner behind the
+// Content Calendar. The calendar itself (social.js) stays as-is.
+async function viewPlanner(c) {
+  const month = state.params.month || new Date().toISOString().slice(0, 7);
+  const fPlatform = state.params.platform || '';
+  const fStatus = state.params.status || '';
+  const fCampaign = state.params.campaignId || '';
+  const fApproval = state.params.approvalStatus || '';
+  const q = new URLSearchParams({ month });
+  if (fPlatform) q.set('platform', fPlatform);
+  if (fStatus) q.set('status', fStatus);
+  if (fCampaign) q.set('campaignId', fCampaign);
+  if (fApproval) q.set('approvalStatus', fApproval);
+  const [cal, campaigns, best, pending] = await Promise.all([
+    api(`/api/social/calendar?${q.toString()}`),
+    api('/api/social/campaigns').catch(() => ({ campaigns: [] })),
+    api(`/api/social/best-times${fPlatform ? `?platform=${encodeURIComponent(fPlatform)}` : ''}`).catch(() => null),
+    api('/api/social/posts?approvalStatus=pending_approval').catch(() => ({ posts: [] })),
+  ]);
+  const [y, m] = month.split('-').map(Number);
+  const firstDow = new Date(y, m - 1, 1).getDay();
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const prevMonth = new Date(y, m - 2, 1).toISOString().slice(0, 7);
+  const nextMonth = new Date(y, m, 1).toISOString().slice(0, 7);
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push('<div class="cal-day empty"></div>');
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = `${month}-${String(d).padStart(2, '0')}`;
+    const dayPosts = cal.byDay[key] || [];
+    cells.push(`<div class="cal-day" data-day="${key}">
+      <div class="cal-num">${d}</div>
+      ${dayPosts.map((pp) => `<div class="cal-chip st-${pp.status}" draggable="true" data-post="${pp.id}" data-when="${esc(pp.scheduledAt || '')}" title="Drag to another day to reschedule">${esc(pp.platform)} · ${esc(pp.text.slice(0, 28))}${pp.text.length > 28 ? '…' : ''}${pp.approvalStatus === 'pending_approval' ? ' · ⏳ approval' : ''}</div>`).join('')}
+    </div>`);
+  }
+  const campaignPosts = fCampaign ? (await api(`/api/social/campaigns/${fCampaign}`).catch(() => null)) : null;
+  const platforms = ['facebook', 'instagram', 'x', 'tiktok', 'youtube', 'linkedin'];
+  c.innerHTML = `
+  <div class="card"><h3>🗓️ Content Planner — ${esc(month)}</h3>
+    <p class="sub">Drag a post onto another day to reschedule it. Posts waiting for approval stay put until an OWNER or ADMIN approves them — moving the date never approves anything.</p>
+    <div class="form-row" style="margin-top:10px">
+      <button class="btn" id="pl-prev">← ${esc(prevMonth)}</button>
+      <button class="btn" id="pl-next">${esc(nextMonth)} →</button>
+      <button class="btn" id="pl-today">This month</button>
+      <span class="sub">${cal.total} post(s) this month</span>
+    </div>
+    <div class="form-row" style="margin-top:10px">
+      <label>Platform <select id="pl-f-platform"><option value="">All</option>${platforms.map((x) => `<option value="${x}" ${fPlatform === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+      <label>Status <select id="pl-f-status"><option value="">All</option>${['draft', 'scheduled', 'published', 'failed', 'manual'].map((x) => `<option ${fStatus === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+      <label>Campaign <select id="pl-f-campaign"><option value="">All campaigns</option>${(campaigns.campaigns || []).map((x) => `<option value="${x.id}" ${String(fCampaign) === String(x.id) ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      <label>Approval <select id="pl-f-approval"><option value="">All</option>${['draft', 'pending_approval', 'approved', 'rejected'].map((x) => `<option ${fApproval === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+      <button class="btn" id="pl-f-clear">Clear filters</button>
+    </div>
+  </div>
+  <div class="cal-grid" style="margin-top:16px">
+    ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => `<div class="cal-head">${d}</div>`).join('')}
+    ${cells.join('')}
+  </div>
+  <div id="pl-detail" style="margin-top:16px"></div>
+  <div class="grid grid-2" style="margin-top:16px">
+    <div class="card"><h3>⏰ Best time to post</h3>
+      ${best ? `<p class="sub">${esc(best.note)}</p>${best.suggestions.map((sug) => `<div class="kv"><span><b>${esc(sug.label)}</b>${sug.count !== undefined ? ` — ${sug.count} published post(s) at this hour` : ''}</span><span>${esc(sug.note || '')}</span></div>`).join('')}` : '<p class="sub">Best-time suggestions could not be loaded.</p>'}
+      <p class="sub" style="margin-top:8px">Source: ${best ? esc(best.source === 'your-history' ? 'your own published history' : 'general guidance (no history yet)') : '—'}</p>
+    </div>
+    <div class="card"><h3>⏳ Approval queue (${(pending.posts || []).length})</h3>
+      ${(pending.posts || []).length ? (pending.posts || []).map((pp) => `<div class="list-row"><div class="grow">
+        <div class="t">${esc(pp.text.slice(0, 80))}</div>
+        <div class="m">${esc(pp.platform)} · ${pp.scheduledAt ? `scheduled ${fmtDate(pp.scheduledAt)}` : 'draft'}</div></div>
+        <span style="display:flex;gap:6px"><button class="btn btn-sm btn-primary" data-approve="${pp.id}">Approve</button>
+        <button class="btn btn-sm btn-danger" data-reject="${pp.id}">Reject</button></span></div>`).join('')
+      : '<p class="sub">Nothing waiting for approval. Submit a post for approval from Social Studio (or here, after scheduling it) and it will wait here until an OWNER or ADMIN decides.</p>'}
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px"><h3>📣 Campaign view</h3>
+    <div class="form-row" style="margin-top:10px">
+      <input id="pl-camp-name" placeholder="New campaign name" style="flex:2">
+      <button class="btn" id="pl-camp-create">＋ Create campaign</button>
+    </div>
+    ${campaignPosts ? `<h3 style="margin-top:14px">${esc(campaignPosts.campaign.name)} (${campaignPosts.posts.length} post(s))</h3>
+      ${campaignPosts.posts.length ? campaignPosts.posts.map((pp) => `<div class="list-row"><div class="grow"><div class="t">${esc(pp.text.slice(0, 90))}</div><div class="m">${esc(pp.platform)} · ${pp.status}${pp.scheduledAt ? ` · ${fmtDate(pp.scheduledAt)}` : ''} · approval: ${pp.approvalStatus}</div></div>
+      <button class="btn btn-sm" data-open-post="${pp.id}">Open →</button></div>`).join('') : '<p class="sub">No posts in this campaign yet — create posts in Social Studio and assign them to the campaign.</p>'}` : '<p class="sub" style="margin-top:8px">Pick a campaign in the filters above to see its posts here.</p>'}
+  </div>
+  <div class="card" style="margin-top:16px"><h3>📦 Bulk scheduling</h3>
+    <p class="sub">Schedule several posts at once — one row per post. Each row is validated like a single post; one bad row rejects the whole batch, nothing is half-created.</p>
+    <div id="pl-bulk-rows" style="margin-top:10px"></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="pl-bulk-add">＋ Add a row</button>
+      <button class="btn btn-primary" id="pl-bulk-submit">Schedule all rows</button>
+    </div>
+    <div class="error" id="pl-bulk-err" style="display:none"></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h3>🔁 Recurring / series posts</h3>
+    <p class="sub">Pick a scheduled post and repeat it. The original becomes copy #1; the rest are new scheduled posts sharing its series.</p>
+    <div class="form-row" style="margin-top:10px">
+      <label style="flex:2">Post <select id="pl-series-post">${Object.values(cal.byDay).flat().map((pp) => `<option value="${pp.id}">${esc(pp.platform)} — ${esc(pp.text.slice(0, 40))} (${fmtDate(pp.scheduledAt || pp.createdAt)})</option>`).join('') || '<option value="">No scheduled posts this month</option>'}</select></label>
+      <label>Repeat <select id="pl-series-freq"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label>
+      <label>Copies <input id="pl-series-count" type="number" min="2" max="52" value="4"></label>
+      <button class="btn btn-primary" id="pl-series-create">Create series</button>
+    </div>
+    <div class="error" id="pl-series-err" style="display:none"></div>
+  </div>`;
+  const reloadWith = (patch) => go('planner', { month, platform: fPlatform || undefined, status: fStatus || undefined, campaignId: fCampaign || undefined, approvalStatus: fApproval || undefined, ...patch });
+  document.getElementById('pl-prev').addEventListener('click', () => go('planner', { month: prevMonth }));
+  document.getElementById('pl-next').addEventListener('click', () => go('planner', { month: nextMonth }));
+  document.getElementById('pl-today').addEventListener('click', () => go('planner', { month: undefined }));
+  const applyFilters = () => reloadWith({
+    platform: document.getElementById('pl-f-platform').value || undefined,
+    status: document.getElementById('pl-f-status').value || undefined,
+    campaignId: document.getElementById('pl-f-campaign').value || undefined,
+    approvalStatus: document.getElementById('pl-f-approval').value || undefined,
+  });
+  for (const id of ['pl-f-platform', 'pl-f-status', 'pl-f-campaign', 'pl-f-approval']) {
+    document.getElementById(id).addEventListener('change', applyFilters);
+  }
+  document.getElementById('pl-f-clear').addEventListener('click', () => go('planner', { month }));
+  // Drag-and-drop reschedule: chip -> day cell.
+  let dragPost = null;
+  c.querySelectorAll('[data-post]').forEach((chip) => {
+    chip.addEventListener('dragstart', (e) => { dragPost = { id: chip.dataset.post, when: chip.dataset.when }; e.dataTransfer.effectAllowed = 'move'; });
+  });
+  c.querySelectorAll('.cal-day[data-day]').forEach((day) => {
+    day.addEventListener('dragover', (e) => { e.preventDefault(); day.style.outline = '2px dashed var(--accent)'; });
+    day.addEventListener('dragleave', () => { day.style.outline = ''; });
+    day.addEventListener('drop', async (e) => {
+      e.preventDefault(); day.style.outline = '';
+      if (!dragPost) return;
+      const time = dragPost.when ? dragPost.when.slice(11, 16) : '09:00';
+      const at = `${day.dataset.day} ${time}:00`;
+      try {
+        await api(`/api/social/posts/${dragPost.id}/reschedule`, { method: 'POST', body: JSON.stringify({ scheduledAt: at }) });
+        toast(`Rescheduled to ${day.dataset.day} ${time}.`);
+        renderView();
+      } catch (err) { toast(err.message, true); }
+      dragPost = null;
+    });
+    day.addEventListener('click', (ev) => {
+      if (ev.target.dataset.post) return;
+      go('social', { platform: 'facebook' });
+      toast(`Compose a post, then set its schedule date to ${day.dataset.day}.`);
+    });
+  });
+  c.querySelectorAll('[data-post]').forEach((chip) => chip.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    const detail = document.getElementById('pl-detail');
+    try {
+      const r = await api(`/api/social/posts/${chip.dataset.post}`);
+      const pp = r.post;
+      detail.innerHTML = `<div class="card"><h3>${esc(pp.platform)} — ${pp.status} · approval: ${pp.approvalStatus}</h3>
+        <p>${esc(pp.text)}</p>
+        <p class="sub">${pp.scheduledAt ? `Scheduled ${fmtDate(pp.scheduledAt)}` : ''}${pp.publishedAt ? ` · Published ${fmtDate(pp.publishedAt)}` : ''}${pp.campaignName ? ` · Campaign: ${esc(pp.campaignName)}` : ''}${pp.seriesId ? ` · Series: ${esc(pp.seriesId)}` : ''}</p>
+        <div class="form-row">
+          <button class="btn" id="pd-edit">Edit in Social Studio</button>
+          ${pp.approvalStatus === 'draft' ? '<button class="btn" id="pd-submit">Submit for approval</button>' : ''}
+          ${pp.approvalStatus === 'pending_approval' ? '<button class="btn btn-primary" id="pd-approve">Approve</button> <button class="btn btn-danger" id="pd-reject">Reject</button>' : ''}
+        </div></div>`;
+      document.getElementById('pd-edit').addEventListener('click', () => go('social', { postId: pp.id }));
+      const sub = document.getElementById('pd-submit');
+      if (sub) sub.addEventListener('click', async () => { try { await api(`/api/social/posts/${pp.id}/approval`, { method: 'POST', body: JSON.stringify({ action: 'submit' }) }); toast('Submitted for approval.'); renderView(); } catch (e) { toast(e.message, true); } });
+      const ap = document.getElementById('pd-approve');
+      if (ap) ap.addEventListener('click', async () => { try { await api(`/api/social/posts/${pp.id}/approval`, { method: 'POST', body: JSON.stringify({ action: 'approve' }) }); toast('Approved.'); renderView(); } catch (e) { toast(e.message, true); } });
+      const rj = document.getElementById('pd-reject');
+      if (rj) rj.addEventListener('click', async () => { try { await api(`/api/social/posts/${pp.id}/approval`, { method: 'POST', body: JSON.stringify({ action: 'reject' }) }); toast('Rejected.'); renderView(); } catch (e) { toast(e.message, true); } });
+    } catch (e) { detail.innerHTML = `<div class="card"><p class="sub">${esc(e.message)}</p></div>`; }
+  }));
+  c.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', async () => {
+    try { await api(`/api/social/posts/${b.dataset.approve}/approval`, { method: 'POST', body: JSON.stringify({ action: 'approve' }) }); toast('Approved.'); renderView(); }
+    catch (e) { toast(e.message, true); }
+  }));
+  c.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', async () => {
+    try { await api(`/api/social/posts/${b.dataset.reject}/approval`, { method: 'POST', body: JSON.stringify({ action: 'reject' }) }); toast('Rejected.'); renderView(); }
+    catch (e) { toast(e.message, true); }
+  }));
+  c.querySelectorAll('[data-open-post]').forEach((b) => b.addEventListener('click', () => go('social', { postId: b.dataset.openPost })));
+  document.getElementById('pl-camp-create').addEventListener('click', async () => {
+    const name = document.getElementById('pl-camp-name').value.trim();
+    if (!name) { toast('Give the campaign a name.', true); return; }
+    try {
+      const r = await api('/api/social/campaigns', { method: 'POST', body: JSON.stringify({ name }) });
+      toast(`Campaign "${r.campaign.name}" created.`);
+      go('planner', { month, campaignId: r.campaign.id });
+    } catch (e) { toast(e.message, true); }
+  });
+  // Bulk scheduling rows.
+  const bulkHost = document.getElementById('pl-bulk-rows');
+  const bulkRow = () => {
+    const div = document.createElement('div');
+    div.className = 'form-row';
+    div.style.marginTop = '8px';
+    div.innerHTML = `<select class="bk-platform" style="flex:0 0 130px">${platforms.map((x) => `<option value="${x}">${x}</option>`).join('')}</select>
+      <input class="bk-text" placeholder="Post text…" style="flex:2">
+      <input class="bk-when" type="datetime-local" style="flex:1;min-width:200px">`;
+    bulkHost.appendChild(div);
+  };
+  bulkRow(); bulkRow();
+  document.getElementById('pl-bulk-add').addEventListener('click', bulkRow);
+  document.getElementById('pl-bulk-submit').addEventListener('click', async () => {
+    const errBox = document.getElementById('pl-bulk-err');
+    const rows = [...bulkHost.querySelectorAll('.form-row')].map((row) => ({
+      platform: row.querySelector('.bk-platform').value,
+      text: row.querySelector('.bk-text').value.trim(),
+      scheduledAt: row.querySelector('.bk-when').value,
+      status: 'scheduled',
+    })).filter((r) => r.text);
+    if (!rows.length) { errBox.textContent = 'Write at least one post first.'; errBox.style.display = 'block'; return; }
+    errBox.style.display = 'none';
+    try {
+      const r = await api('/api/social/posts/bulk', { method: 'POST', body: JSON.stringify({ posts: rows }) });
+      toast(`Scheduled ${r.count} post(s).`);
+      renderView();
+    } catch (e) { errBox.textContent = e.message; errBox.style.display = 'block'; }
+  });
+  document.getElementById('pl-series-create').addEventListener('click', async () => {
+    const errBox = document.getElementById('pl-series-err');
+    const postId = document.getElementById('pl-series-post').value;
+    if (!postId) { errBox.textContent = 'No scheduled post to repeat — schedule one first.'; errBox.style.display = 'block'; return; }
+    try {
+      const r = await api(`/api/social/posts/${postId}/series`, { method: 'POST', body: JSON.stringify({
+        frequency: document.getElementById('pl-series-freq').value,
+        count: Number(document.getElementById('pl-series-count').value),
+      }) });
+      toast(`Series created: ${r.count} posts.`);
+      renderView();
+    } catch (e) { errBox.textContent = e.message; errBox.style.display = 'block'; }
+  });
 }
 
 /* ---------- Animation Studio (Phase 3 — keyframes live in the Video Editor) ---------- */
@@ -2051,6 +2643,123 @@ function openProviderKeyModal(providerId) {
     } catch (e) {
       const eb = back.querySelector('#pk-error'); eb.textContent = e.message; eb.style.display = 'block';
     }
+  });
+}
+
+/* ---------- PWA install prompt (v2.5.0 #70) ---------- */
+// The service worker itself is registered from index.html (see the exact
+// lines in the v2.5.0 report). This listener only captures the browser's
+// install prompt so the top-bar "Install app" button can offer it.
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  window.__csInstallPrompt = e;
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.style.display = '';
+});
+
+/* ---------- Project settings dialog — Ctrl+P (v2.5.0 #54) ---------- */
+// One dialog: name + aspect + resolution + fps; copy-media-into-project
+// vs link; auto-save on/off + interval; proxy on/off + resolution.
+// Works from the Projects view, the project detail page and the editors
+// (any view that carries a project id). Settings live in the project's
+// content.settings so they travel with the project; name is saved with
+// the normal project PATCH. Proxy is stored and honoured by the editor
+// preview when it supports it — the current preview still renders at
+// full quality, and the dialog says so instead of pretending otherwise.
+const PROJECT_ASPECT_DIMS = {
+  '16:9': { '720p': [1280, 720], '1080p': [1920, 1080] },
+  '9:16': { '720p': [720, 1280], '1080p': [1080, 1920] },
+  '1:1': { '720p': [720, 720], '1080p': [1080, 1080] },
+  '4:5': { '720p': [720, 900], '1080p': [1080, 1350] },
+};
+function currentProjectId() {
+  if (!['project', 'design-editor', 'video-timeline', 'video-editor', 'presentations', 'documents'].includes(state.view)) return null;
+  const p = state.params || {};
+  return p.projectId || p.id || p.deckId || p.docId || null;
+}
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'p' || e.key === 'P')) {
+    const pid = currentProjectId();
+    if (pid) { e.preventDefault(); openProjectSettingsDialog(pid); }
+  }
+});
+
+async function openProjectSettingsDialog(projectId) {
+  let project;
+  try {
+    ({ project } = await api(`/api/projects/${projectId}`));
+  } catch (e) { toast(e.message, true); return; }
+  const content = project.content || {};
+  const settings = content.settings || {};
+  const isVideo = project.type === 'video';
+  const isDesign = project.type === 'design';
+  const dims = isVideo && content.timeline ? { w: content.timeline.width, h: content.timeline.height, fps: content.timeline.fps } : null;
+  const aspect = dims ? (Object.keys(PROJECT_ASPECT_DIMS).find((a) => {
+    const d720 = PROJECT_ASPECT_DIMS[a]['720p'];
+    return dims.w === d720[0] && dims.h === d720[1];
+  }) || '16:9') : (settings.aspect || '16:9');
+  const resolution = dims ? (dims.w >= 1920 || dims.h >= 1920 ? '1080p' : '720p') : (settings.resolution || '1080p');
+  const fps = dims ? dims.fps : (settings.fps || 30);
+  const autosave = settings.autosave || { enabled: true, intervalSeconds: 30 };
+  const proxy = settings.proxy || { enabled: false, resolution: '540p' };
+  const back = openModal(`
+    <h2>⚙️ Project settings — ${esc(project.name)}</h2>
+    <p class="sub">Ctrl+P · ${esc(project.type)} project. Saved with the project.</p>
+    <div class="error" id="ps-error" style="display:none"></div>
+    <label>Project name <input id="ps-name" value="${esc(project.name)}"></label>
+    ${(isVideo || isDesign) ? `
+    <div class="row"><div><label>Aspect ratio</label><select id="ps-aspect" class="input">
+      ${['16:9', '9:16', '1:1', '4:5'].map((a) => `<option value="${a}" ${aspect === a ? 'selected' : ''}>${a}</option>`).join('')}</select></div>
+    <div><label>Resolution</label><select id="ps-resolution" class="input">
+      <option value="720p" ${resolution === '720p' ? 'selected' : ''}>720p</option>
+      <option value="1080p" ${resolution === '1080p' ? 'selected' : ''}>1080p</option></select></div>
+    <div><label>Frame rate</label><select id="ps-fps" class="input">
+      ${[24, 30, 60].map((f) => `<option value="${f}" ${Number(fps) === f ? 'selected' : ''}>${f} fps</option>`).join('')}</select></div></div>`
+    : '<p class="sub">Aspect, resolution and frame rate apply to video and design projects; this is a ' + esc(project.type) + ' project, so they are hidden here.</p>'}
+    <label>Media handling <select id="ps-media-mode" class="input">
+      <option value="copy" ${settings.mediaMode !== 'link' ? 'selected' : ''}>Copy media into the project (current behaviour — files are stored in uploads/)</option>
+      <option value="link" ${settings.mediaMode === 'link' ? 'selected' : ''}>Link to the original file (stored; media added by URL is referenced, not copied — local uploads are still copied into uploads/)</option>
+    </select></label>
+    <div class="row"><div><label><input type="checkbox" id="ps-autosave" ${autosave.enabled !== false ? 'checked' : ''}> Auto-save</label></div>
+    <div><label>Auto-save interval (seconds)</label><input id="ps-autosave-interval" type="number" min="5" max="600" value="${autosave.intervalSeconds || 30}"></div></div>
+    <div class="row"><div><label><input type="checkbox" id="ps-proxy" ${proxy.enabled ? 'checked' : ''}> Proxy media (lighter preview)</label></div>
+    <div><label>Proxy resolution</label><select id="ps-proxy-res" class="input">
+      ${['360p', '540p', '720p'].map((r) => `<option value="${r}" ${proxy.resolution === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div></div>
+    <p class="sub">Proxy note: the setting is stored with the project and the editor preview uses it when it supports proxy renders. The current preview still renders at full quality — this setting does not change it yet.</p>
+    <div class="modal-actions"><button class="btn" id="ps-cancel">Cancel</button><button class="btn btn-primary" id="ps-save">Save settings</button></div>`);
+  back.querySelector('#ps-cancel').addEventListener('click', () => back.remove());
+  back.querySelector('#ps-save').addEventListener('click', async () => {
+    const errBox = back.querySelector('#ps-error');
+    const name = back.querySelector('#ps-name').value.trim();
+    if (!name) { errBox.textContent = 'Project name cannot be empty.'; errBox.style.display = 'block'; return; }
+    const newSettings = {
+      ...(settings || {}),
+      mediaMode: back.querySelector('#ps-media-mode').value,
+      autosave: {
+        enabled: back.querySelector('#ps-autosave').checked,
+        intervalSeconds: Math.max(5, Math.min(600, parseInt(back.querySelector('#ps-autosave-interval').value, 10) || 30)),
+      },
+      proxy: {
+        enabled: back.querySelector('#ps-proxy').checked,
+        resolution: back.querySelector('#ps-proxy-res').value,
+      },
+    };
+    const newContent = { ...content, settings: newSettings };
+    const aspectSel = back.querySelector('#ps-aspect');
+    if (aspectSel) {
+      const a = aspectSel.value;
+      const r = back.querySelector('#ps-resolution').value;
+      const f = parseInt(back.querySelector('#ps-fps').value, 10);
+      const [w, h] = PROJECT_ASPECT_DIMS[a][r];
+      newSettings.aspect = a; newSettings.resolution = r; newSettings.fps = f;
+      if (isVideo && newContent.timeline) { newContent.timeline.width = w; newContent.timeline.height = h; newContent.timeline.fps = f; }
+      if (isDesign) { newContent.width = w; newContent.height = h; }
+    }
+    try {
+      await api(`/api/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ name, content: newContent }) });
+      back.remove(); toast('Project settings saved.');
+      if (state.view === 'project' || state.view === 'projects') renderView();
+    } catch (e) { errBox.textContent = e.message; errBox.style.display = 'block'; }
   });
 }
 

@@ -111,13 +111,25 @@ const DocsSlides = (() => {
     return slide;
   }
 
+  // v2.5.0 #19: entrance animations — an element with entrance {type,
+  // duration, delay} animates in (CSS) in the editor preview, the present
+  // view and thumbnails. The MP4 export keeps the slide's static image and
+  // animates BETWEEN slides with a real xfade transition instead.
+  function entranceStyle(e) {
+    const en = e && e.entrance;
+    if (!en || !en.type || en.type === 'none') return '';
+    const dur = Math.max(0.1, Math.min(5, Number(en.duration) || 0.6));
+    const delay = Math.max(0, Math.min(10, Number(en.delay) || 0));
+    return `animation:ds-ent-${en.type} ${dur}s ease ${delay}s both;`;
+  }
+
   function slideEl(slide) {
     const els = slide.elements || [];
     return els.map((e) => {
-      if (e.type === 'text') return `<div class="ds-slide-el" style="left:${(e.x / 19.2).toFixed(1)}%;top:${(e.y / 10.8).toFixed(1)}%;width:${(e.w / 19.2).toFixed(1)}%;font-size:${Math.max(9, Math.round((e.text.fontSize || 40) / 3.2))}px;color:${esc(e.text.color || '#fff')};text-align:${e.text.align || 'left'}">${esc(e.text.text || '')}</div>`;
-      if (e.type === 'shape') return `<div class="ds-slide-el" style="left:${(e.x / 19.2).toFixed(1)}%;top:${(e.y / 10.8).toFixed(1)}%;width:${(e.w / 19.2).toFixed(1)}%;height:${(e.h / 10.8).toFixed(1)}%;background:${esc(e.shape.fill || '#7c5cff')}"></div>`;
-      if (e.type === 'chart') return `<div class="ds-slide-el ds-chart-ph" style="left:${(e.x / 19.2).toFixed(1)}%;top:${(e.y / 10.8).toFixed(1)}%;width:${(e.w / 19.2).toFixed(1)}%;height:${(e.h / 10.8).toFixed(1)}%">📈 ${esc(e.chart.type)} chart</div>`;
-      if (e.type === 'image') return `<div class="ds-slide-el" style="left:${(e.x / 19.2).toFixed(1)}%;top:${(e.y / 10.8).toFixed(1)}%;width:${(e.w / 19.2).toFixed(1)}%;height:${(e.h / 10.8).toFixed(1)}%;background:#24304f;display:flex;align-items:center;justify-content:center;color:#94a3b8">🖼️ image</div>`;
+      if (e.type === 'text') return `<div class="ds-slide-el" style="left:${(e.x / 19.2).toFixed(1)}%;top:${(e.y / 10.8).toFixed(1)}%;width:${(e.w / 19.2).toFixed(1)}%;font-size:${Math.max(9, Math.round((e.text.fontSize || 40) / 3.2))}px;color:${esc(e.text.color || '#fff')};text-align:${e.text.align || 'left'};${entranceStyle(e)}">${esc(e.text.text || '')}</div>`;
+      if (e.type === 'shape') return `<div class="ds-slide-el" style="left:${(e.x / 19.2).toFixed(1)}%;top:${(e.y / 10.8).toFixed(1)}%;width:${(e.w / 19.2).toFixed(1)}%;height:${(e.h / 10.8).toFixed(1)}%;background:${esc(e.shape.fill || '#7c5cff')};${entranceStyle(e)}"></div>`;
+      if (e.type === 'chart') return `<div class="ds-slide-el ds-chart-ph" style="left:${(e.x / 19.2).toFixed(1)}%;top:${(e.y / 10.8).toFixed(1)}%;width:${(e.w / 19.2).toFixed(1)}%;height:${(e.h / 10.8).toFixed(1)}%;${entranceStyle(e)}">📈 ${esc(e.chart.type)} chart</div>`;
+      if (e.type === 'image') return `<div class="ds-slide-el" style="left:${(e.x / 19.2).toFixed(1)}%;top:${(e.y / 10.8).toFixed(1)}%;width:${(e.w / 19.2).toFixed(1)}%;height:${(e.h / 10.8).toFixed(1)}%;background:#24304f;display:flex;align-items:center;justify-content:center;color:#94a3b8;${entranceStyle(e)}">🖼️ image</div>`;
       return '';
     }).join('');
   }
@@ -157,8 +169,13 @@ const DocsSlides = (() => {
           <textarea id="ds-notes" class="input" rows="2" placeholder="Notes for this slide…">${esc(slide.notes || '')}</textarea></div>
           <div style="margin-top:10px"><label class="muted">Slide duration in video (seconds)</label>
           <input id="ds-duration" class="input" type="number" min="1" max="60" value="${slide.duration || 5}" style="width:90px"></div>
+          <div style="margin-top:10px"><label class="muted">Transition into this slide (video export — real FFmpeg xfade)</label>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <select id="ds-transition" class="input" style="width:150px">${['none', 'fade', 'slide', 'wipe', 'zoom'].map((t) => `<option value="${t}" ${((slide.transition && slide.transition.type) || 'fade') === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+          <label class="muted">Duration <input id="ds-transition-dur" class="input" type="number" min="0.2" max="5" step="0.1" value="${(slide.transition && slide.transition.duration) || 0.5}" style="width:70px"> s</label>
+          <span class="muted" style="font-size:12px">Fade→fade, Slide→slideleft, Wipe→wipeleft, Zoom→circleopen.</span></div></div>
           <div style="margin-top:10px"><label class="muted">Slide text — click a text layer to edit it:</label>
-          <div id="ds-text-layers">${(slide.elements || []).filter((e) => e.type === 'text').map((e, i) => `<div style="margin-top:6px"><div class="muted" style="font-size:12px">${esc(e.name || 'Text')} (${esc(e.role || 'body')})</div><textarea class="input ds-text-edit" data-layer="${e.id}" rows="2">${esc(e.text.text || '')}</textarea></div>`).join('') || '<p class="muted">No text layers on this slide.</p>'}</div></div>`
+          <div id="ds-text-layers">${(slide.elements || []).filter((e) => e.type === 'text').map((e, i) => `<div style="margin-top:6px"><div class="muted" style="font-size:12px">${esc(e.name || 'Text')} (${esc(e.role || 'body')})</div><textarea class="input ds-text-edit" data-layer="${e.id}" rows="2">${esc(e.text.text || '')}</textarea><div style="display:flex;gap:6px;align-items:center;margin-top:4px"><label class="muted" style="font-size:12px">Entrance</label><select class="input ds-entrance" data-layer="${e.id}" style="width:130px">${['none', 'fade', 'slide', 'zoom', 'wipe'].map((t) => `<option value="${t}" ${((e.entrance && e.entrance.type) || 'none') === t ? 'selected' : ''}>${t}</option>`).join('')}</select><span class="muted" style="font-size:12px">animates in the preview &amp; present view (0.6s).</span></div></div>`).join('') || '<p class="muted">No text layers on this slide.</p>'}</div></div>`
           : '<p class="muted">This deck has no slides yet — add one from the layout buttons.</p>'}
         </div>
       </div></div>`;
@@ -205,6 +222,20 @@ const DocsSlides = (() => {
     if (notes) notes.addEventListener('input', () => { slide.notes = notes.value; debounceSave(); });
     const dur = ed.querySelector('#ds-duration');
     if (dur) dur.addEventListener('change', () => { slide.duration = Math.max(1, Math.min(60, +dur.value || 5)); debounceSave(); });
+    // v2.5.0 #19: per-slide transition (xfade in the MP4 export) + per-text
+    // entrance animation (CSS in preview/present).
+    const trSel = ed.querySelector('#ds-transition');
+    const trDur = ed.querySelector('#ds-transition-dur');
+    const saveTransition = () => {
+      slide.transition = { type: trSel ? trSel.value : 'fade', duration: Math.max(0.2, Math.min(5, trDur ? (+trDur.value || 0.5) : 0.5)) };
+      debounceSave();
+    };
+    if (trSel) trSel.addEventListener('change', saveTransition);
+    if (trDur) trDur.addEventListener('change', saveTransition);
+    ed.querySelectorAll('.ds-entrance').forEach((s) => s.addEventListener('change', () => {
+      const el = (slide.elements || []).find((e) => e.id === s.dataset.layer);
+      if (el) { el.entrance = { type: s.value, duration: 0.6, delay: 0 }; debounceSave(); renderDeckEditor(c); }
+    }));
     ed.querySelectorAll('.ds-text-edit').forEach((t) => t.addEventListener('input', () => {
       const el = (slide.elements || []).find((e) => e.id === t.dataset.layer);
       if (el) { el.text.text = t.value; debounceSave(); }
@@ -486,7 +517,9 @@ const DocsSlides = (() => {
       <button class="btn btn-primary" id="ds-site-publish">Publish as website</button></div>
       <div id="ds-site-result" style="margin-top:10px"></div></div>
     <div class="grid grid-3" style="margin-top:16px">${sites.length ? sites.map((s) => `<div class="card"><h3>${esc(s.title)}</h3><p class="muted">${esc(s.kind)} · <a href="${esc(s.url)}" target="_blank">${esc(s.url)}</a></p>
-      <div style="display:flex;gap:6px;margin-top:10px"><a class="btn btn-primary" href="${esc(s.url)}" target="_blank">Open site</a><button class="btn" data-unpub="${esc(s.slug)}">Unpublish</button></div></div>`).join('') : '<div class="empty"><div class="big">🌐</div><p>No websites published yet.</p></div>'}</div>`;
+      <p class="muted" style="font-size:12px">👁 ${s.views || 0} view${s.views === 1 ? '' : 's'}${s.passwordProtected ? ' · 🔒 password protected' : ''}${s.seo && s.seo.title ? ` · SEO: ${esc(s.seo.title)}` : ''}</p>
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap"><a class="btn btn-primary" href="${esc(s.url)}" target="_blank">Open site</a><button class="btn" data-settings="${esc(s.slug)}">⚙️ SEO &amp; password</button><button class="btn" data-unpub="${esc(s.slug)}">Unpublish</button></div>
+      <div id="ds-site-settings-${esc(s.slug)}" style="margin-top:10px"></div></div>`).join('') : '<div class="empty"><div class="big">🌐</div><p>No websites published yet.</p></div>'}</div>`;
     c.querySelector('#ds-site-publish').addEventListener('click', async () => {
       const pid = +c.querySelector('#ds-site-project').value;
       if (!pid) { toast('Pick a project first.', true); return; }
@@ -498,6 +531,49 @@ const DocsSlides = (() => {
         renderView();
       } catch (e) { box.innerHTML = `<div class="alert warn">${esc(e.message)}</div>`; }
     });
+    // v2.5.0 #30: per-site SEO/meta + password protection + local analytics
+    // (page-view counts, no third party). Custom domain stays out by design.
+    c.querySelectorAll('[data-settings]').forEach((b) => b.addEventListener('click', async () => {
+      const slug = b.dataset.settings;
+      const box = c.querySelector(`#ds-site-settings-${CSS.escape(slug)}`);
+      if (!box) return;
+      if (box.dataset.open === '1') { box.innerHTML = ''; box.dataset.open = ''; return; }
+      box.dataset.open = '1';
+      box.innerHTML = '<p class="muted">Loading settings…</p>';
+      try {
+        const [st, an] = await Promise.all([
+          api(`/api/docs-slides/websites/${encodeURIComponent(slug)}/settings`),
+          api(`/api/docs-slides/websites/${encodeURIComponent(slug)}/analytics`).catch(() => ({ views: 0, byDay: [] })),
+        ]);
+        const seo = st.seo || {};
+        box.innerHTML = `<div style="border-top:1px solid var(--border,#2a3352);padding-top:10px">
+          <label class="muted">SEO title</label><input class="input ds-seo-title" value="${esc(seo.title || '')}" placeholder="Page title for search engines">
+          <label class="muted">SEO description</label><textarea class="input ds-seo-desc" rows="2" placeholder="Short description shown in search results">${esc(seo.description || '')}</textarea>
+          <label class="muted">Keywords (comma-separated)</label><input class="input ds-seo-kw" value="${esc(seo.keywords || '')}">
+          <label class="muted">Password (min 4 chars — leave blank to keep, or clear below)</label><input class="input ds-site-pass" type="password" placeholder="Set a site password">
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-primary ds-seo-save">Save settings</button><button class="btn ds-pass-clear">Remove password</button></div>
+          <div class="ds-seo-status" style="margin-top:8px"></div>
+          <p class="muted" style="font-size:12px;margin-top:8px">📊 Analytics (local, no cookies): <b>${an.views || 0}</b> total view${an.views === 1 ? '' : 's'}${(an.byDay || []).length ? ` — ${(an.byDay || []).slice(0, 5).map((d) => `${esc(d.day)}: ${d.views}`).join(', ')}` : ''}. No custom domain — sites live under /sites/ only.</p></div>`;
+        const statusEl = box.querySelector('.ds-seo-status');
+        box.querySelector('.ds-seo-save').addEventListener('click', async () => {
+          const pass = box.querySelector('.ds-site-pass').value;
+          const body = { seo: { title: box.querySelector('.ds-seo-title').value, description: box.querySelector('.ds-seo-desc').value, keywords: box.querySelector('.ds-seo-kw').value } };
+          if (pass) body.password = pass;
+          try {
+            const r = await api(`/api/docs-slides/websites/${encodeURIComponent(slug)}/settings`, { method: 'POST', body: JSON.stringify(body) });
+            statusEl.innerHTML = `<div class="alert ok">✓ Saved${r.passwordProtected ? ' — site is password protected.' : ''} The published site was rebuilt with the new meta tags.</div>`;
+            renderView();
+          } catch (e) { statusEl.innerHTML = `<div class="alert warn">${esc(e.message)}</div>`; }
+        });
+        box.querySelector('.ds-pass-clear').addEventListener('click', async () => {
+          try {
+            await api(`/api/docs-slides/websites/${encodeURIComponent(slug)}/settings`, { method: 'POST', body: JSON.stringify({ clearPassword: true }) });
+            statusEl.innerHTML = '<div class="alert ok">✓ Password removed — the site is public again.</div>';
+            renderView();
+          } catch (e) { statusEl.innerHTML = `<div class="alert warn">${esc(e.message)}</div>`; }
+        });
+      } catch (e) { box.innerHTML = `<div class="alert warn">${esc(e.message)}</div>`; }
+    }));
     c.querySelectorAll('[data-unpub]').forEach((b) => b.addEventListener('click', async () => {
       await api(`/api/docs-slides/websites/${encodeURIComponent(b.dataset.unpub)}`, { method: 'DELETE' });
       toast('Website unpublished.');
@@ -510,10 +586,11 @@ const DocsSlides = (() => {
     const projects = await api('/api/projects?limit=100').catch(() => ({ projects: [] }));
     const printable = (projects.projects || []).filter((p) => ['design', 'deck', 'doc'].includes(p.type));
     const sizes = await api('/api/docs-slides/print-sizes').catch(() => ({ sizes: [] }));
-    c.innerHTML = `<div class="page-head"><div><h2>🖨️ Print</h2><p class="muted">Print-ready PDFs: full bleed, crop marks and a safe-zone guide. Export is PDF — CMYK conversion is not built yet (RGB PDF).</p></div></div>
+    c.innerHTML = `<div class="page-head"><div><h2>🖨️ Print</h2><p class="muted">Print-ready PDFs: full bleed, crop marks and a safe-zone guide. Colour space: RGB (screen) or CMYK — CMYK embeds real DeviceCMYK JPEGs (Pillow-converted) with CMYK vector marks for print.</p></div></div>
     <div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <select id="ds-print-project" class="input" style="flex:1;min-width:220px">${printable.map((p) => `<option value="${p.id}">${esc(p.name)} (${p.type})</option>`).join('') || '<option value="">No printable projects yet</option>'}</select>
       <select id="ds-print-size" class="input" style="width:170px">${(sizes.sizes || []).map((s) => `<option value="${s.id}">${esc(s.name)} — ${s.widthMm}×${s.heightMm} mm</option>`).join('')}</select>
+      <select id="ds-print-colorspace" class="input" style="width:130px"><option value="rgb">RGB</option><option value="cmyk">CMYK (print)</option></select>
       <label class="muted">Bleed <input id="ds-print-bleed" class="input" type="number" min="0" max="10" value="3" style="width:64px"> mm</label>
       <label class="muted">Margin <input id="ds-print-margin" class="input" type="number" min="0" max="50" value="10" style="width:64px"> mm</label>
       <button class="btn btn-primary" id="ds-print-go">Download print PDF</button></div>
@@ -528,7 +605,7 @@ const DocsSlides = (() => {
       if (!pid) { toast('Pick a project first.', true); return; }
       downloadExport('/api/docs-slides/print/pdf', 'print.pdf');
       async function downloadExport(url, fallback) {
-        const res = await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: pid, sizeId: c.querySelector('#ds-print-size').value, bleedMm: +c.querySelector('#ds-print-bleed').value || 0, marginMm: +c.querySelector('#ds-print-margin').value || 0 }) });
+        const res = await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: pid, sizeId: c.querySelector('#ds-print-size').value, bleedMm: +c.querySelector('#ds-print-bleed').value || 0, marginMm: +c.querySelector('#ds-print-margin').value || 0, colorSpace: c.querySelector('#ds-print-colorspace').value || 'rgb' }) });
         if (!res.ok) { const j = await res.json().catch(() => ({})); toast(j.error || 'Print PDF failed.', true); return; }
         const blob = await res.blob();
         const a = document.createElement('a');

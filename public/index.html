@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CreativeStudio AI Pro — v2.4.0 CapCut Home & Flow</title>
+<!-- v2.5.0 PWA (#70): installable app shell, standalone + theme colour. -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#151d3a">
+<title>CreativeStudio AI Pro — v2.5.0 CapCut Parity Round</title>
 <script>
 /* Theme before first paint: saved choice wins, else the OS preference. */
 (function () {
@@ -18,6 +21,7 @@
 <link rel="stylesheet" href="/styles.css">
 <link rel="stylesheet" href="/editor.css">
 <link rel="stylesheet" href="/video-editor.css">
+<link rel="stylesheet" href="/sheets.css">
 <link rel="stylesheet" href="/bulk.css">
 <link rel="stylesheet" href="/music.css">
 <link rel="stylesheet" href="/voice.css">
@@ -48,7 +52,10 @@
 <script src="/social.js"></script>
 <script src="/marketplace.js"></script>
 <script src="/docs-slides.js"></script>
+<script src="/sheets.js"></script>
 <script src="/admin.js"></script>
 <script src="/app.js"></script>
+<!-- v2.5.0 PWA (#70): register the offline app-shell service worker. -->
+<script>if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('Service worker registration failed:', e)); }); }</script>
 </body>
 </html>

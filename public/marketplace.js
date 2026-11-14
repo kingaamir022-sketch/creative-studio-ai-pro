@@ -5,10 +5,11 @@
    jobs, never flattened images. There is no external store. */
 
 async function viewMarketplace(c) {
-  const [list, mine, builtins] = await Promise.all([
+  const [list, mine, builtins, trending] = await Promise.all([
     api(`/api/marketplace?q=${encodeURIComponent(state.params.q || '')}&kind=${state.params.kind || ''}`),
     api('/api/projects?search=').catch(() => ({ projects: [] })),
     api(`/api/marketplace/builtin?q=${encodeURIComponent(state.params.bq || '')}&kind=${state.params.bkind || ''}`).catch(() => ({ templates: [], counts: {} })),
+    api('/api/marketplace/trending').catch(() => null),
   ]);
   const myProjects = (mine.projects || []).filter((p) => ['design', 'video', 'deck'].includes(p.type));
   c.innerHTML = `
@@ -22,6 +23,16 @@ async function viewMarketplace(c) {
         ${['design', 'video', 'deck'].map((k) => `<option value="${k}" ${state.params.kind === k ? 'selected' : ''}>${k}</option>`).join('')}
       </select>
       <button class="btn btn-primary" id="mk-search">Search</button>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px"><h3>🔥 Trending</h3>
+    <p class="sub">${esc(trending ? trending.note : 'Trending templates, ranked by installs on this install.')}</p>
+    <div id="mk-trending" style="margin-top:12px">${(trending && trending.trending && trending.trending.length ? trending.trending : (trending ? trending.starters : [])).map((t) => `
+      <div class="list-row"><div class="grow">
+        <div class="t">${esc(t.name)} <span class="badge">${esc(t.kind)}</span>${t.downloads ? ` <span class="badge">⬇ ${t.downloads} installs</span>` : ''}</div>
+        <div class="m">${esc(t.category)}${t.width ? ` · ${t.width}×${t.height}` : ''}${t.builtin ? ' · built-in starter' : ` · by ${esc(t.authorName || 'user')}`}</div>
+      </div>
+      <button class="btn btn-sm btn-primary" data-trending-install="${esc(t.id)}" data-trending-builtin="${t.builtin ? '1' : ''}">Install →</button></div>`).join('') || '<p class="sub">Nothing trending yet.</p>'}
     </div>
   </div>
   <div class="card" style="margin-top:16px"><h3>Built-in templates (${builtins.templates.length}${builtins.counts.design ? ` · ${builtins.counts.design} design · ${builtins.counts.video} video · ${builtins.counts.deck} deck` : ''})</h3>
@@ -75,8 +86,57 @@ async function viewMarketplace(c) {
     const sel = document.getElementById('mk-pub-src');
     sel.innerHTML = myProjects.filter((p) => p.type === kind).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('') || `<option value="">No ${kind} projects yet</option>`;
   };
-  // v2.4.0 — browse the built-ins by category (client-side filter of the
-  // already-fetched list; every one of the 26 stays one click away).
+  // v2.5.0 #56 — guided placeholder swap: installing a template with
+  // placeholders first offers each one (your picture / your text) and
+  // installs with the swaps applied, so the new project already carries
+  // your own content. Templates without placeholders install directly.
+  async function installBuiltin(id) {
+    let placeholders = [];
+    try {
+      const r = await api(`/api/marketplace/builtin/${encodeURIComponent(id)}/placeholders`);
+      placeholders = r.placeholders || [];
+    } catch { placeholders = []; }
+    if (!placeholders.length) {
+      try {
+        const r = await api(`/api/marketplace/builtin/${encodeURIComponent(id)}/install`, { method: 'POST' });
+        toast(`Installed as ${r.installed.kind} “${r.installed.name}”.`);
+        go('project', { id: r.installed.id });
+      } catch (e) { toast(e.message, true); }
+      return;
+    }
+    let images = [];
+    if (placeholders.some((p) => p.kind === 'image')) {
+      try { images = (await api('/api/media?kind=image')).media || []; } catch { images = []; }
+    }
+    const back = openModal(`<h2>Make it yours — swap the placeholders</h2>
+      <p class="sub">This template has ${placeholders.length} placeholder(s). Swap each one now, or install as-is and edit later in the editor.</p>
+      ${placeholders.map((p) => p.kind === 'image'
+        ? `<label>${esc(p.name)} (photo) <select id="swap-${p.layerId}" class="input"><option value="">Keep the placeholder</option>${images.map((m) => `<option value="${m.id}">${esc(m.originalName)}</option>`).join('')}</select></label>`
+        : `<label>${esc(p.name)} (text) <input id="swap-${p.layerId}" class="input" value="${esc(p.currentText || '')}"></label>`).join('')}
+      <div class="error" id="swap-err"></div>
+      <div class="modal-actions"><button class="btn" id="swap-skip">Install as-is</button><button class="btn btn-primary" id="swap-install">Install with my swaps</button></div>`);
+    back.querySelector('#swap-skip').addEventListener('click', async () => {
+      try {
+        const r = await api(`/api/marketplace/builtin/${encodeURIComponent(id)}/install`, { method: 'POST' });
+        back.remove(); toast(`Installed as ${r.installed.kind} “${r.installed.name}”.`);
+        go('project', { id: r.installed.id });
+      } catch (e) { const eb = back.querySelector('#swap-err'); eb.textContent = e.message; eb.style.display = 'block'; }
+    });
+    back.querySelector('#swap-install').addEventListener('click', async () => {
+      const swaps = [];
+      for (const p of placeholders) {
+        const el = back.querySelector(`#swap-${CSS.escape(p.layerId)}`);
+        if (!el) continue;
+        if (p.kind === 'image' && el.value) swaps.push({ layerId: p.layerId, mediaId: Number(el.value) });
+        if (p.kind === 'text' && el.value.trim() && el.value.trim() !== (p.currentText || '')) swaps.push({ layerId: p.layerId, text: el.value.trim() });
+      }
+      try {
+        const r = await api(`/api/marketplace/builtin/${encodeURIComponent(id)}/install`, { method: 'POST', body: JSON.stringify({ swaps }) });
+        back.remove(); toast(`Installed with ${r.swapsApplied} swap(s).`);
+        go('project', { id: r.installed.id });
+      } catch (e) { const eb = back.querySelector('#swap-err'); eb.textContent = e.message; eb.style.display = 'block'; }
+    });
+  }
   const builtinCats = [...new Set((builtins.templates || []).map((t) => t.category))].sort();
   let activeCat = '';
   const renderBuiltinList = () => {
@@ -89,13 +149,7 @@ async function viewMarketplace(c) {
       </div>
       <button class="btn btn-sm btn-primary" data-builtin-install="${esc(t.id)}">Install →</button></div>`).join('')
       : '<p class="sub" style="margin-top:8px">No built-in templates match — try different words.</p>';
-    host.querySelectorAll('[data-builtin-install]').forEach((b) => b.addEventListener('click', async () => {
-      try {
-        const r = await api(`/api/marketplace/builtin/${encodeURIComponent(b.dataset.builtinInstall)}/install`, { method: 'POST' });
-        toast(`Installed as ${r.installed.kind} “${r.installed.name}”.`);
-        go('project', { id: r.installed.id });
-      } catch (e) { toast(e.message, true); }
-    }));
+    host.querySelectorAll('[data-builtin-install]').forEach((b) => b.addEventListener('click', () => installBuiltin(b.dataset.builtinInstall)));
   };
   const renderBuiltinCats = () => {
     const host = document.getElementById('mk-builtin-cats');
@@ -111,6 +165,14 @@ async function viewMarketplace(c) {
   };
   renderBuiltinCats();
   renderBuiltinList();
+  c.querySelectorAll('[data-trending-install]').forEach((b) => b.addEventListener('click', async () => {
+    if (b.dataset.trendingBuiltin === '1') { installBuiltin(b.dataset.trendingInstall); return; }
+    try {
+      const r = await api(`/api/marketplace/${b.dataset.trendingInstall}/install`, { method: 'POST' });
+      toast(`Installed as ${r.installed.type} “${r.installed.name}”.`);
+      if (r.installed.type === 'project') go('project', { id: r.installed.id });
+    } catch (e) { toast(e.message, true); }
+  }));
   document.getElementById('mk-pub-kind').addEventListener('change', fillSources);
   fillSources();
   document.getElementById('mk-search').addEventListener('click', () => go('marketplace', { q: document.getElementById('mk-q').value.trim() || undefined, kind: document.getElementById('mk-kind').value || undefined }));

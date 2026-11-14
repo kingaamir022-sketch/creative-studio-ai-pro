@@ -1,4 +1,8 @@
-/* Docs & Slides (v2.2.3) — uses the app design tokens. */
+/* v2.5.0 #19: deck entrance animations (applied by slideEl in docs-slides.js). */
+@keyframes ds-ent-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ds-ent-slide { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes ds-ent-zoom { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
+@keyframes ds-ent-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 .ds-deck-wrap { display: grid; grid-template-columns: 300px 1fr; gap: 16px; margin-top: 14px; }
 @media (max-width: 900px) { .ds-deck-wrap { grid-template-columns: 1fr; } }
 .ds-slide-list { display: flex; flex-direction: column; gap: 10px; }

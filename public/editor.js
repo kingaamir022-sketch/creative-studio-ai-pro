@@ -51,6 +51,7 @@ window.DesignEditor = (function () {
         fontWeight: opts.fontWeight || 700, fontStyle: 'normal', underline: false,
         align: opts.align || 'center', color: opts.color || '#ffffff',
         letterSpacing: 0, lineHeight: 1.2, shadow: null, stroke: null, gradient: null,
+        curve: { angle: 0 }, // v2.5.0 #69: arc angle in degrees (-180..180, 0 = flat)
       },
     };
   }
@@ -371,8 +372,42 @@ window.DesignEditor = (function () {
     if (layer.type === 'text') {
       const inner = document.createElement('div');
       inner.className = 'ed-text';
-      inner.textContent = layer.text.text;
       applyStyles(inner, textStyle(layer.text));
+      // v2.5.0 #69: curved text — draw each glyph along the same arc the
+      // server renderer uses (design-render.js): R from the arc angle,
+      // glyphs rotated to the arc tangent. Flat when angle is 0.
+      const curveAngle = layer.text.curve && layer.text.curve.angle ? Number(layer.text.curve.angle) || 0 : 0;
+      if (curveAngle) {
+        const fs = layer.text.fontSize;
+        const chars = [...String(layer.text.text || '').split('\n').join(' ')];
+        const charW = (ch) => (ch === ' ' ? fs * 0.3 : fs * 0.6);
+        const totalW = chars.reduce((s, ch) => s + charW(ch), 0) || 1;
+        const theta = (curveAngle * Math.PI) / 180;
+        const R = Math.abs(theta) > 0.05 ? totalW / (2 * Math.sin(Math.abs(theta) / 2)) : Infinity;
+        const cx = layer.w / 2, cy = layer.h / 2;
+        const dir = theta > 0 ? 1 : -1;
+        let cum = 0;
+        inner.style.position = 'relative';
+        inner.style.height = '100%';
+        for (const ch of chars) {
+          const cw = charW(ch);
+          const frac = (cum + cw / 2) / totalW;
+          cum += cw;
+          if (ch === ' ') continue;
+          const phi = -theta / 2 + frac * theta;
+          const sp = document.createElement('span');
+          sp.textContent = ch;
+          sp.style.position = 'absolute';
+          sp.style.left = `${cx + R * Math.sin(phi) - cw / 2}px`;
+          sp.style.top = `${cy + dir * (R - R * Math.cos(phi)) - fs / 2}px`;
+          sp.style.transform = `rotate(${phi}rad)`;
+          sp.style.transformOrigin = 'center';
+          sp.style.whiteSpace = 'pre';
+          inner.appendChild(sp);
+        }
+      } else {
+        inner.textContent = layer.text.text;
+      }
       el.appendChild(inner);
     } else if (layer.type === 'shape') {
       const s = layer.shape;
@@ -1482,6 +1517,10 @@ window.DesignEditor = (function () {
         <div class="ed-field"><label>Letter spacing: <span id="ed-ls-val">${t.letterSpacing}px</span></label><input type="range" data-prop="text.letterSpacing" value="${t.letterSpacing}" min="-5" max="20"></div>
         <div class="ed-field"><label>Line height: <span id="ed-lh-val">${t.lineHeight}</span></label><input type="range" data-prop="text.lineHeight" value="${t.lineHeight}" min="0.8" max="2" step="0.1"></div>
       </div>
+      <div class="ed-row">
+        <div class="ed-field"><label>Curve angle: <span id="ed-curve-val">${(t.curve && t.curve.angle) || 0}°</span></label><input type="range" id="ed-curve" value="${(t.curve && t.curve.angle) || 0}" min="-180" max="180" step="1"></div>
+      </div>
+      <p class="ed-note">Curve bends the text along an arc (+ = arch up, − = smile). Multi-line text is flattened to one line on export.</p>
       <div class="ed-field"><label><input type="checkbox" data-prop-check="text.underline" ${t.underline ? 'checked' : ''} style="width:auto"> Underline</label></div>
       <div class="ed-field"><label><input type="checkbox" id="ed-t-shadow" ${t.shadow ? 'checked' : ''} style="width:auto"> Text shadow</label></div>
       ${t.shadow ? `<div class="ed-row">
@@ -1594,6 +1633,21 @@ window.DesignEditor = (function () {
       if (gf) gf.addEventListener('input', () => { t.gradient.from = gf.value; updateLayerEl(l); scheduleSave(); });
       const gt = right.querySelector('#ed-t-grad-to');
       if (gt) gt.addEventListener('input', () => { t.gradient.to = gt.value; updateLayerEl(l); scheduleSave(); });
+      // v2.5.0 #69: curved text — dedicated handler (not data-prop: the
+      // nested text.curve object does not exist on older layers, and
+      // setPathValue cannot create intermediate objects).
+      const curveEl = right.querySelector('#ed-curve');
+      if (curveEl) {
+        curveEl.addEventListener('input', () => {
+          beginEdit();
+          t.curve = { angle: parseInt(curveEl.value, 10) || 0 };
+          const lbl = right.querySelector('#ed-curve-val');
+          if (lbl) lbl.textContent = `${t.curve.angle}°`;
+          updateLayerEl(l);
+          scheduleSave();
+        });
+        curveEl.addEventListener('change', () => { renderStage(); renderProps(); scheduleSave(); });
+      }
     }
     if (l.type === 'shape') {
       const s = l.shape;

@@ -1,0 +1,19 @@
+/* Sheets (v2.5.0, item #21) — uses the app design tokens. */
+.sh-wrap { display: grid; grid-template-columns: 280px 1fr; gap: 16px; margin-top: 14px; align-items: start; }
+@media (max-width: 900px) { .sh-wrap { grid-template-columns: 1fr; } }
+.sh-sheet { padding: 8px 10px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.sh-sheet:hover { background: var(--surface-raised); }
+.sh-sheet.active { background: color-mix(in srgb, var(--accent, #7c5cff) 14%, transparent); }
+.sh-formula { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+.sh-formula label { font-weight: 700; color: var(--muted); }
+.sh-formula .input { flex: 1; }
+.sh-gridwrap { overflow: auto; max-height: 560px; border: 1px solid var(--border, #2a3352); border-radius: 10px; }
+.sh-grid { border-collapse: collapse; min-width: 100%; }
+.sh-grid th, .sh-grid td { border: 1px solid var(--border, #2a3352); padding: 4px 8px; font-size: 13px; white-space: nowrap; }
+.sh-grid thead th { position: sticky; top: 0; background: var(--surface-raised); z-index: 2; }
+.sh-grid tbody th { position: sticky; left: 0; background: var(--surface-raised); z-index: 1; }
+.sh-grid .sh-corner { position: sticky; left: 0; top: 0; z-index: 3; }
+.sh-cell { cursor: cell; min-width: 90px; }
+.sh-cell:hover { background: color-mix(in srgb, var(--accent, #7c5cff) 10%, transparent); }
+.sh-cell.sh-sel { outline: 2px solid var(--accent, #7c5cff); outline-offset: -2px; }
+.sh-cell.sh-err { color: #f87171; font-weight: 700; }

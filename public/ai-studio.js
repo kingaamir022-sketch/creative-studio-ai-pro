@@ -6,8 +6,10 @@ const AIStudio = (() => {
   let jobs = [];
   let images = [];
   let audio = [];
+  let videos = [];
   let voices = [];
   let designs = [];
+  let videoProjects = [];
   let mode = 'image';
   let pollTimer = null;
   let currentJob = null;
@@ -30,6 +32,23 @@ const AIStudio = (() => {
     'music-mood': { id: 'music-mood', label: 'Music Mood Tags', kind: 'llm', icon: '🎵' },
     'music-generate': { id: 'music-generate', label: 'AI Music', kind: 'music', icon: '🎼' },
     'deck': { id: 'deck', label: 'AI Deck (Presentation)', kind: 'llm', icon: '📊' },
+    // v2.5.0 new modes (items #44, #45, #60–#69, #29, #63, #64, #66).
+    'autocut': { id: 'autocut', label: 'AutoCut', kind: 'video', icon: '✂️' },
+    'editpilot': { id: 'editpilot', label: 'EditPilot', kind: 'llm', icon: '🧭' },
+    'seedance': { id: 'seedance', label: 'Seedance (Edit / Extend)', kind: 'video', icon: '🌱' },
+    'video-enhance': { id: 'video-enhance', label: 'Video Enhance / Denoise', kind: 'video', icon: '✨' },
+    'video-translate': { id: 'video-translate', label: 'Video Translator / Dubbing', kind: 'stt', icon: '🌍' },
+    'director': { id: 'director', label: 'Director Mode', kind: 'llm', icon: '🎬' },
+    'avatar': { id: 'avatar', label: 'AI Avatar (photo + script)', kind: 'tts', icon: '🗣️' },
+    'infinite-canvas': { id: 'infinite-canvas', label: 'AI Design Studio (Infinite Canvas)', kind: 'llm', icon: '♾️' },
+    'lyrics': { id: 'lyrics', label: 'Auto Lyrics', kind: 'stt', icon: '🎤' },
+    'ai-lab': { id: 'ai-lab', label: 'AI Lab (brainstorm)', kind: 'llm', icon: '💡' },
+    'batch-edit': { id: 'batch-edit', label: 'Batch Edit (many clips)', kind: 'video', icon: '📦' },
+    'retouch': { id: 'retouch', label: 'Retouch / Beauty', kind: 'video', icon: '💄' },
+    'bilingual': { id: 'bilingual', label: 'Bilingual Captions + Speaker ID', kind: 'stt', icon: '💬' },
+    'transcript-edit': { id: 'transcript-edit', label: 'Transcript Editing', kind: 'stt', icon: '📝' },
+    'silence-remove': { id: 'silence-remove', label: 'Silence Removal', kind: 'video', icon: '🔇' },
+    'magic-grab': { id: 'magic-grab', label: 'Magic Grab (per-object)', kind: 'image', icon: '🎯' },
   };
   function modes() {
     if (status && Array.isArray(status.modes) && status.modes.length) {
@@ -40,19 +59,23 @@ const AIStudio = (() => {
   const MODES = Object.values(MODE_META);
 
   async function loadAll() {
-    const [st, js, im, au, vp, pr] = await Promise.all([
+    const [st, js, im, au, vp, pr, vi, vpr] = await Promise.all([
       api('/api/ai/status').catch(() => null),
       api('/api/ai/jobs').catch(() => ({ jobs: [] })),
       api('/api/media?kind=image&limit=100').catch(() => ({ media: [] })),
       api('/api/media?kind=audio&limit=100').catch(() => ({ media: [] })),
       api('/api/voice/profiles').catch(() => ({ profiles: [] })),
       api('/api/projects?type=design&limit=100').catch(() => ({ projects: [] })),
+      api('/api/media?kind=video&limit=100').catch(() => ({ media: [] })),
+      api('/api/projects?type=video&limit=100').catch(() => ({ projects: [] })),
     ]);
     status = st; jobs = js.jobs || [];
     images = (im.media || []).filter((m) => m.kind === 'image');
     audio = (au.media || []).filter((m) => m.kind === 'audio');
+    videos = (vi.media || []).filter((m) => m.kind === 'video');
     voices = vp.profiles || [];
     designs = pr.projects || [];
+    videoProjects = vpr.projects || [];
   }
 
   function kindState(kind) {
@@ -117,6 +140,88 @@ const AIStudio = (() => {
         <div class="ed-field"><label>Style</label><select id="ai-f-style"><option value="professional">Professional</option><option value="creative">Creative</option><option value="minimal">Minimal</option><option value="bold">Bold</option></select></div>
         <div class="ed-field"><label>Audience (optional)</label><input id="ai-f-audience" placeholder="e.g. school students, investors, new customers"></div>
         <p class="sub">Creates a NEW presentation project (title slide first, then text slides, at most one quiz and one chart slide) — nothing existing is changed. Uses your LLM provider.</p>`;
+      case 'autocut': return `
+        <div class="ed-field"><label>Clips / photos (tick 2 or more, in order)</label><div id="ai-f-clips" class="ai-checklist">${[...videos, ...images].map((x) => `<label class="ai-check"><input type="checkbox" value="${x.id}"> ${esc(x.original_name)} <span class="muted">(${x.kind})</span></label>`).join('') || '<p class="sub">No clips yet — upload videos or photos first.</p>'}</div></div>
+        <div class="ed-field"><label>Template</label><select id="ai-f-template"><option value="cinematic">Cinematic (3s clips, fades)</option><option value="energetic">Energetic (1.5s clips, slides)</option><option value="calm">Calm (4s clips, long fades)</option></select></div>
+        <div class="ed-field"><label>Music (optional)</label><select id="ai-f-music"><option value="">No music</option>${audio.map((x) => `<option value="${x.id}">${esc(x.original_name)}</option>`).join('')}</select></div>
+        <div class="ed-field"><label>Edit name</label><input id="ai-f-name" value="AutoCut"></div>
+        <p class="sub">AutoCut assembles a real, editable video project — you can trim, reorder and re-render it in the Video Editor afterwards.</p>`;
+      case 'editpilot': return `
+        <div class="ed-field"><label>Video project</label><select id="ai-f-project">${videoProjects.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('') || '<option value="">No video projects yet</option>'}</select></div>
+        <div class="ed-field"><label>Edit prompt</label><textarea id="ai-f-prompt" rows="3" placeholder="e.g. Trim the slow intro, remove pauses, make it punchier, add fades between scenes"></textarea></div>
+        <div class="ed-field"><label><input type="checkbox" id="ai-f-alternate"> Save as an alternate version (keep the original untouched)</label></div>
+        <p class="sub">The LLM plans timeline ops; only ops that match real clips are applied. Anything it cannot map is listed as skipped, never invented.</p>`;
+      case 'seedance': return `
+        <div class="ed-field"><label>Mode</label><select id="ai-f-seedance-mode"><option value="generate">AI Video (generate)</option><option value="edit">AI Edit (refine existing footage)</option><option value="extend">AI Extend (lengthen a clip)</option></select></div>
+        <div class="ed-field"><label>Prompt</label><textarea id="ai-f-prompt" rows="3" placeholder="e.g. A golden-hour street scene, cinematic camera move"></textarea></div>
+        <div class="ed-field"><label>Edit instruction (AI Edit mode)</label><input id="ai-f-edit-prompt" placeholder="e.g. Make the sky stormy, sharpen the subject"></div>
+        <div class="ed-field"><label>Reference image (optional)</label><select id="ai-f-source"><option value="">None</option>${images.map((x) => `<option value="${x.id}">${esc(x.original_name)}</option>`).join('')}</select></div>
+        <div class="ed-field"><label>Duration (seconds, 2–16)</label><input id="ai-f-duration" type="number" min="2" max="16" value="5"></div>
+        <p class="sub">Needs the Seedance provider key (AI Studio → Providers). Extend needs a publicly reachable source video — a local-only file cannot be extended by Seedance; use Silence Removal / Video Enhance for local edits instead.</p>`;
+      case 'video-enhance': return `
+        <div class="ed-field"><label>Video</label><select id="ai-f-media">${videos.map((x) => `<option value="${x.id}">${esc(x.original_name)}</option>`).join('') || '<option value="">No videos yet</option>'}</select></div>
+        <div class="ed-field"><label>Enhancement</label><select id="ai-f-kind"><option value="denoise">Denoise (hqdn3d, local)</option><option value="deflicker">Remove flickers (local)</option><option value="enhance">Enhance quality — contrast/colour/sharpness (local)</option><option value="upscale">Upscale ×2 (Lanczos, local — not AI)</option><option value="expand">AI Expand (needs video provider key)</option><option value="remix">AI Remix (needs video provider key)</option><option value="relight">AI Relight (needs video provider key)</option></select></div>
+        <div class="ed-field"><label>Strength (1–10)</label><input id="ai-f-strength" type="number" min="1" max="10" value="3"></div>`;
+      case 'video-translate': return `
+        <div class="ed-field"><label>Video</label><select id="ai-f-media">${videos.map((x) => `<option value="${x.id}">${esc(x.original_name)}</option>`).join('') || '<option value="">No videos yet</option>'}</select></div>
+        <div class="ed-field"><label>Translate to</label><select id="ai-f-to-language"><option value="en">English</option><option value="ur">Urdu</option><option value="roman-ur">Roman Urdu</option><option value="ar">Arabic</option><option value="hi">Hindi</option></select></div>
+        <div class="ed-field"><label>Source language (optional)</label><input id="ai-f-language" placeholder="leave blank to auto-detect"></div>
+        <div class="ed-field"><label>Dub voice</label><select id="ai-f-voice"><option value="">Default voice</option>${voices.map((v) => `<option value="${v.id}">${esc(v.name)}</option>`).join('')}</select></div>
+        <p class="sub">Transcribes → translates with the LLM → dubs with TTS → mixes the dub over the original audio (original lowered to 20%). Needs STT + LLM + TTS keys.</p>`;
+      case 'director': return `
+        <div class="ed-field"><label>Drama title</label><input id="ai-f-name" placeholder="e.g. The Last Rickshaw"></div>
+        <div class="ed-field"><label>Premise</label><textarea id="ai-f-prompt" rows="3" placeholder="e.g. A rickshaw driver in Lahore discovers a lost briefcase that changes his family's fate"></textarea></div>
+        <div class="ed-field"><label>Episodes (1–10)</label><input id="ai-f-count" type="number" min="1" max="10" value="3"></div>
+        <p class="sub">Creates a Director Bible document: recurring characters (same look every episode), scenes, props and episode scripts — continuity by design.</p>`;
+      case 'avatar': return `
+        <div class="ed-field"><label>Photo</label><select id="ai-f-source">${images.map((x) => `<option value="${x.id}">${esc(x.original_name)}</option>`).join('') || '<option value="">No photos yet</option>'}</select></div>
+        <div class="ed-field"><label>Script</label><textarea id="ai-f-text" rows="4" placeholder="e.g. Hello! Welcome to our channel — today we talk about healthy breakfasts."></textarea></div>
+        <div class="ed-field"><label>Voice</label><select id="ai-f-voice"><option value="">Default voice</option>${voices.map((v) => `<option value="${v.id}">${esc(v.name)}</option>`).join('')}</select></div>
+        <p class="sub">Photo avatar: your photo with the spoken script. Lip-sync (mouth moving to the words) is not available in this build — the photo stays still while the voice speaks.</p>`;
+      case 'infinite-canvas': return `
+        <div class="ed-field"><label>Canvas brief</label><textarea id="ai-f-prompt" rows="3" placeholder="e.g. A brand board for a coffee shop — warm, minimal, premium"></textarea></div>
+        <div class="ed-field"><label>Skill</label><select id="ai-f-skill"><option value="brand-board">Brand board</option><option value="moodboard">Moodboard</option><option value="storyboard">Storyboard (6 panels)</option><option value="social-kit">Social kit</option><option value="ad-set">Ad set</option></select></div>
+        <p class="sub">The AI agent plans a 3840×2160 canvas (nodes = real editable layers) using the chosen Skill. Open the result in the Graphic Editor to pan, zoom and edit.</p>`;
+      case 'lyrics': return `
+        <div class="ed-field"><label>Song (audio or video)</label><select id="ai-f-media">${[...audio, ...videos].map((x) => `<option value="${x.id}">${esc(x.original_name)} (${x.kind})</option>`).join('') || '<option value="">No audio yet</option>'}</select></div>
+        <div class="ed-field"><label>Language (optional)</label><input id="ai-f-language" placeholder="e.g. en, ur"></div>
+        <p class="sub">Transcribes the song, then the LLM formats timed lyric lines. Returns SRT + VTT. Labelled as lyrics captioning from speech transcription — no dedicated lyrics model.</p>`;
+      case 'ai-lab': return `
+        <div class="ed-field"><label>Topic</label><input id="ai-f-topic" placeholder="e.g. Ramadan recipes for busy families"></div>
+        <div class="ed-field"><label>What to brainstorm</label><select id="ai-f-kind"><option value="ideas">Content ideas</option><option value="hooks">Opening hooks</option><option value="angles">Fresh angles</option><option value="titles">Titles</option><option value="scripts">Short video scripts</option></select></div>
+        <div class="ed-field"><label>How many (1–10)</label><input id="ai-f-count" type="number" min="1" max="10" value="5"></div>`;
+      case 'batch-edit': return `
+        <div class="ed-field"><label>Video projects (tick several)</label><div class="ai-checklist">${videoProjects.map((d) => `<label class="ai-check"><input type="checkbox" class="ai-batch-proj" value="${d.id}"> ${esc(d.name)}</label>`).join('') || '<p class="sub">No video projects yet.</p>'}</div></div>
+        <div class="ed-field"><label>Operation</label><select id="ai-f-batch-op"><option value="transition-all">Set transition on all clips</option><option value="volume-all">Set volume on all clips</option><option value="rename-prefix">Rename with a prefix</option></select></div>
+        <div class="ed-field"><label>Transition / prefix</label><input id="ai-f-batch-arg" placeholder="fade / 0.8 / New — "></div>
+        <p class="sub">Applies one op to many projects at once. Each project reports ok / failed individually — a failure in one never blocks the rest.</p>`;
+      case 'retouch': return `
+        <div class="ed-field"><label>Video or photo</label><select id="ai-f-media">${[...videos, ...images].map((x) => `<option value="${x.id}">${esc(x.original_name)} (${x.kind})</option>`).join('') || '<option value="">No media yet</option>'}</select></div>
+        <div class="ed-field"><label>Effect</label><select id="ai-f-kind"><option value="smooth">Face smooth (frame-level smartblur)</option><option value="skin">Skin tone even-out (frame-level)</option><option value="blemish">Blemish fix — not available (needs face ML)</option><option value="makeup">Makeup — not available (needs face ML)</option><option value="slim">Slim — not available (needs body ML)</option><option value="mosaic">Face mosaic — not available (needs face detection)</option><option value="halo">Halo — not available (needs body ML)</option></select></div>
+        <div class="ed-field"><label>Intensity (0–100)</label><input id="ai-f-strength" type="range" min="0" max="100" value="50" style="width:100%"></div>
+        <p class="sub">Smooth / skin tone work locally on the whole frame (no face tracking). Face/body ML effects are honestly labelled as not available — they are never faked.</p>`;
+      case 'bilingual': return `
+        <div class="ed-field"><label>Video</label><select id="ai-f-media">${videos.map((x) => `<option value="${x.id}">${esc(x.original_name)}</option>`).join('') || '<option value="">No videos yet</option>'}</select></div>
+        <div class="ed-field"><label>Second language</label><select id="ai-f-to-language"><option value="ur">Urdu</option><option value="en">English</option><option value="roman-ur">Roman Urdu</option><option value="ar">Arabic</option><option value="hi">Hindi</option></select></div>
+        <div class="ed-field"><label>Source language (optional)</label><input id="ai-f-language" placeholder="leave blank to auto-detect"></div>
+        <div class="ed-field"><label>Speakers (max)</label><input id="ai-f-count" type="number" min="1" max="6" value="2"></div>
+        <p class="sub">One pass: original + translated subtitles with speaker labels. Speaker labels are inferred by the LLM from the dialogue text, not from acoustic diarization.</p>`;
+      case 'transcript-edit': return `
+        <div class="ed-field"><label>Video</label><select id="ai-f-media">${videos.map((x) => `<option value="${x.id}">${esc(x.original_name)}</option>`).join('') || '<option value="">No videos yet</option>'}</select></div>
+        <div class="ed-field"><label>Transcript cues (JSON: [{start,end,text}])</label><textarea id="ai-f-cues" rows="4" placeholder='[{"start":0,"end":3,"text":"Hello everyone"}]'></textarea></div>
+        <div class="ed-field"><label>Edited transcript — keep only what should stay</label><textarea id="ai-f-keep" rows="4" placeholder="Paste the edited transcript here. Lines whose words are all gone are cut from the video."></textarea></div>
+        <p class="sub">Tip: transcribe the video first (AI Transcribe mode), copy its text, delete the lines you do not want, and paste the result here.</p>`;
+      case 'silence-remove': return `
+        <div class="ed-field"><label>Video or audio</label><select id="ai-f-media">${[...videos, ...audio].map((x) => `<option value="${x.id}">${esc(x.original_name)} (${x.kind})</option>`).join('') || '<option value="">No media yet</option>'}</select></div>
+        <div class="ed-field"><label>Silence threshold (dB, e.g. -35)</label><input id="ai-f-threshold" type="number" min="-60" max="-10" value="-35"></div>
+        <div class="ed-field"><label>Minimum silence length (seconds)</label><input id="ai-f-duration" type="number" min="0.1" max="5" step="0.1" value="0.5"></div>
+        <div class="ed-field"><label><button class="btn" id="ai-detect-silence" type="button">Detect silence first</button></label><div id="ai-silence-preview" class="sub"></div></div>
+        <p class="sub">Uses FFmpeg silencedetect — silent parts are cut out, the rest is joined into a new video. Nothing is faked: the preview shows the real silence list before you cut.</p>`;
+      case 'magic-grab': return `
+        <div class="ed-field"><label>Image</label><select id="ai-f-media">${images.map((x) => `<option value="${x.id}">${esc(x.original_name)}</option>`).join('') || '<option value="">No images yet</option>'}</select></div>
+        <div class="ed-field"><label>Click point — X (px)</label><input id="ai-f-x" type="number" min="0" value="160"></div>
+        <div class="ed-field"><label>Click point — Y (px)</label><input id="ai-f-y" type="number" min="0" value="160"></div>
+        <p class="sub">Clicks extract the SINGLE object at that point (connected-component segmentation on the local U-2-Net mask) — not the whole foreground. No prior Background-Remover run is needed. A click on background fails honestly.</p>`;
       default: return '';
     }
   }
@@ -144,6 +249,39 @@ const AIStudio = (() => {
     const task = val('ai-f-task'); if (task) out.task = task;
     const tone = val('ai-f-tone'); if (tone) out.tone = tone;
     const length = val('ai-f-length'); if (length) out.length = length;
+    // v2.5.0 new-mode params.
+    const template = val('ai-f-template'); if (template) out.template = template;
+    const music = val('ai-f-music'); if (music) out.musicMediaId = Number(music);
+    const alt = document.getElementById('ai-f-alternate'); if (alt) out.alternate = alt.checked;
+    const seedMode = val('ai-f-seedance-mode'); if (seedMode) out.seedanceMode = seedMode;
+    const editPrompt = val('ai-f-edit-prompt'); if (editPrompt) out.editPrompt = editPrompt;
+    const kind = val('ai-f-kind'); if (kind) out.kind = kind;
+    const strength = val('ai-f-strength'); if (strength !== undefined && strength !== '') out.strength = Number(strength);
+    const toLang = val('ai-f-to-language'); if (toLang) out.toLanguage = toLang;
+    const skill = val('ai-f-skill'); if (skill) out.skill = skill;
+    const threshold = val('ai-f-threshold'); if (threshold !== undefined && threshold !== '') out.thresholdDb = Number(threshold);
+    const x = val('ai-f-x'); if (x !== undefined && x !== '') out.x = Number(x);
+    const y = val('ai-f-y'); if (y !== undefined && y !== '') out.y = Number(y);
+    const cues = val('ai-f-cues'); if (cues) { try { out.cues = JSON.parse(cues); } catch { out.cues = []; } }
+    const keep = val('ai-f-keep'); if (keep !== undefined) out.keepText = keep;
+    const speakers = val('ai-f-count');
+    if (mode === 'bilingual' && speakers !== undefined && speakers !== '') out.speakers = Number(speakers);
+    if (mode === 'director' && speakers !== undefined && speakers !== '') out.episodes = Number(speakers);
+    const clips = [...document.querySelectorAll('#ai-f-clips input[type=checkbox]:checked')].map((c) => Number(c.value));
+    if (clips.length) out.mediaIds = clips;
+    const batchProjs = [...document.querySelectorAll('.ai-batch-proj:checked')].map((c) => Number(c.value));
+    if (batchProjs.length) out.projectIds = batchProjs;
+    if (mode === 'batch-edit') {
+      const bop = val('ai-f-batch-op');
+      const barg = val('ai-f-batch-arg');
+      if (bop === 'transition-all') out.op = { op: 'transition-all', type: (barg || 'fade').trim(), duration: 0.5 };
+      else if (bop === 'volume-all') out.op = { op: 'volume-all', volume: Number(barg) || 0.8 };
+      else if (bop === 'rename-prefix') out.op = { op: 'rename-prefix', prefix: barg || '' };
+    }
+    if (mode === 'seedance') out.providerId = 'seedance';
+    if (mode === 'video-enhance' || mode === 'retouch') { const k = val('ai-f-kind'); if (k) out.kind = k; }
+    if (mode === 'avatar') { const s = val('ai-f-source'); if (s) out.photoMediaId = Number(s); }
+    if (mode === 'magic-grab') { const s = val('ai-f-media'); if (s) out.mediaId = Number(s); }
     return out;
   }
 
@@ -221,6 +359,37 @@ const AIStudio = (() => {
           ${(r.needsAttention || []).length ? `<p class="sub" style="color:var(--warning, #d97706)">Needs attention: ${esc(r.needsAttention.join('; '))}</p>` : ''}
           <p class="sub">A NEW presentation project was created — nothing existing was changed.</p>
           <div class="ed-btnrow"><button class="btn btn-primary" id="ai-open-deck">Open in Presentations</button></div>`;
+      case 'seedance':
+      case 'video-enhance':
+      case 'retouch':
+      case 'video-translate':
+      case 'avatar':
+      case 'silence-remove':
+      case 'transcript-edit':
+      case 'magic-grab':
+        return r.url ? `${r.mediaId && (j.mode === 'video-translate' || j.mode === 'avatar' || j.mode === 'silence-remove' || j.mode === 'transcript-edit' || j.mode === 'video-enhance') ? `<video src="${esc(r.url)}" controls style="max-width:100%;border-radius:12px"></video>` : `<img src="${esc(r.url)}" alt="result" style="max-width:100%;border-radius:12px">`}
+          <p class="sub">${esc(r.method || r.provider || '')}${r.note ? ` — ${esc(r.note)}` : ''}${r.removedSeconds !== undefined ? ` · Removed ${r.removedSeconds.toFixed(1)}s of silence.` : ''}${r.cutCues !== undefined ? ` · Cut ${r.cutCues} cue(s), kept ${r.keptCues}.` : ''} Saved to your Media Library.</p>` : '';
+      case 'autocut':
+      case 'editpilot':
+      case 'director':
+      case 'infinite-canvas':
+        return `<p class="sub">Project: <b>${esc(r.projectName || '')}</b>${r.clips ? ` — ${r.clips} clips, ${r.durationSeconds || 0}s, template ${esc(r.template || '')}.` : ''}${r.applied ? ` Applied: ${r.applied.length} op(s)${r.skipped && r.skipped.length ? `; skipped: ${esc(r.skipped.join('; '))}` : ''}.` : ''}${r.nodes ? ` — ${r.nodes} canvas nodes, skill ${esc(r.skill || '')}.` : ''}${r.episodes ? ` — ${r.episodes} episode(s) planned.` : ''}</p>
+          <p class="sub">A ${j.mode === 'editpilot' && !r.alternate ? 'real timeline edit on your project' : 'NEW editable project'} — open it in the editor to keep working.</p>
+          <div class="ed-btnrow"><button class="btn btn-primary" id="ai-open-project">Open project</button></div>`;
+      case 'lyrics':
+        return `<p class="sub">${(r.lines || []).length} lyric lines · ${esc(r.note || '')}</p>
+          <div class="ed-field"><label>SRT</label><textarea rows="8" readonly>${esc(r.srt || '')}</textarea></div>
+          <div class="ed-btnrow"><button class="btn" id="ai-dl-srt">Download SRT</button></div>`;
+      case 'ai-lab':
+        return `<p class="sub">Topic: <b>${esc(r.topic || '')}</b> — ${esc(r.kind || '')}</p>
+          ${(r.items || []).map((it, i) => `<div class="kv"><span><b>${i + 1}. ${esc(it.title || '')}</b><br><small>${esc(it.detail || '')}</small></span><button class="btn btn-sm" data-copy-alt="${esc(it.title || '')}">Copy</button></div>`).join('')}`;
+      case 'batch-edit':
+        return `<p class="sub">Batch edit: ${r.okCount}/${r.total} projects updated.</p>
+          <table><thead><tr><th>Project</th><th>Result</th></tr></thead><tbody>${(r.results || []).map((x) => `<tr><td>${x.projectId}</td><td>${x.ok ? `✓ ${x.changed ?? 0} clip(s) changed` : `✗ ${esc(x.error || '')}`}</td></tr>`).join('')}</tbody></table>`;
+      case 'bilingual':
+        return `<p class="sub">Bilingual captions (${esc(r.secondLanguage || '')}) · ${esc(r.note || '')}</p>
+          <div class="ed-field"><label>SRT (bilingual)</label><textarea rows="8" readonly>${esc(r.srt || '')}</textarea></div>
+          <div class="ed-btnrow"><button class="btn" id="ai-dl-srt">Download SRT</button></div>`;
       default: return '';
     }
   }

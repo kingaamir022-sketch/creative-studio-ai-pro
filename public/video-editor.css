@@ -97,3 +97,25 @@
 .ve-drop { outline: 2px dashed var(--accent); outline-offset: -2px; }
 .ve-ratio { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); font-weight: 600; }
 .ve-ratio select { padding: 4px 6px; font-size: 12px; }
+
+/* v2.5.0 — sub-tabs inside a left panel (Audio / Stickers), context menus,
+   waveforms, compound clips, preview controls, compound bar. */
+.ve-subtabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.ve-subtabs .btn { min-height: 32px; }
+.ve-ctx { box-shadow: 0 8px 30px rgba(0, 0, 0, .35); }
+.ve-ctx .btn { min-height: 36px; }
+.ve-wave { position: absolute; inset: 0; display: flex; align-items: center; gap: 1px; padding: 2px 4px; pointer-events: none; }
+.ve-wave span { flex: 1; background: rgba(255, 255, 255, .75); border-radius: 1px; min-width: 1px; }
+.ve-clip.compound { background: var(--clip-compound, #7c3aed); border-style: dashed; }
+.ve-clip.effect { background: var(--clip-effect, #0e7490); }
+.ve-compound-bar { margin-bottom: 0; }
+.ve-preview-ctl { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
+.ve-preview-ctl label { display: inline-flex; gap: 6px; align-items: center; }
+.ve-preview-ctl select { padding: 4px 6px; font-size: 12px; }
+.ve-sticker-cell { min-height: 44px; }
+.ve-sticker-cell img { pointer-events: none; }
+@media (max-width: 860px) {
+  .ve-subtabs .btn { min-height: 44px; padding: 8px 12px; }
+  .ve-preview-ctl { gap: 8px; }
+  .ve-preview-ctl .btn { min-height: 44px; }
+}
