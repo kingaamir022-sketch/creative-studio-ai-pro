@@ -1,0 +1,27 @@
+/* Docs & Slides (v2.2.3) — uses the app design tokens. */
+.ds-deck-wrap { display: grid; grid-template-columns: 300px 1fr; gap: 16px; margin-top: 14px; }
+@media (max-width: 900px) { .ds-deck-wrap { grid-template-columns: 1fr; } }
+.ds-slide-list { display: flex; flex-direction: column; gap: 10px; }
+.ds-slide-thumb { border: 2px solid transparent; border-radius: 10px; padding: 6px; cursor: pointer; }
+.ds-slide-thumb.active { border-color: var(--accent, #7c5cff); background: var(--card-hover, rgba(124, 92, 255, .08)); }
+.ds-slide-mini { position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 6px; overflow: hidden; }
+.ds-slide-el { position: absolute; white-space: pre-wrap; overflow: hidden; }
+.ds-chart-ph { display: flex; align-items: center; justify-content: center; background: #24304f; color: #c7d2fe; border-radius: 6px; }
+.ds-slide-canvas { position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; }
+.ds-block { border: 1px solid var(--border, #2a3352); border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+.ds-block-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.ds-chart-preview { border: 1px solid var(--border, #2a3352); border-radius: 10px; padding: 8px; min-height: 200px; background: #fff; }
+.ds-chart-preview svg { width: 100%; height: auto; }
+.ds-table { width: 100%; border-collapse: collapse; }
+.ds-table th, .ds-table td { border: 1px solid var(--border, #2a3352); padding: 4px; }
+.ds-table .input { width: 100%; min-width: 60px; }
+.ds-present { position: fixed; inset: 0; z-index: 200; background: #000; display: flex; align-items: center; justify-content: center; }
+.ds-present-slide { position: relative; width: min(96vw, 1600px); aspect-ratio: 16/9; border-radius: 8px; overflow: hidden; }
+.ds-present-bar { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; background: rgba(0, 0, 0, .6); padding: 8px 12px; border-radius: 999px; color: #fff; }
+.ds-present-notes { position: absolute; bottom: 64px; left: 16px; right: 16px; background: rgba(0, 0, 0, .6); color: #e5e7eb; padding: 10px 14px; border-radius: 8px; font-size: 14px; }
+.alert { border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+.alert.ok { background: rgba(22, 163, 74, .12); color: #16a34a; }
+.alert.warn { background: rgba(245, 158, 11, .12); color: #b45309; }
+.modal-back { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 300; display: flex; align-items: center; justify-content: center; }
+.modal { background: var(--card, #1b2340); border-radius: 14px; padding: 20px; width: min(92vw, 520px); }
+.modal .input { width: 100%; margin: 4px 0 10px; }

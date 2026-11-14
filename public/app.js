@@ -9,6 +9,8 @@ const NAV = [
   { id: 'ai-design', label: 'AI Design Studio', icon: '✨', phase: 7, live: true, blurb: 'Prompt-to-editable-design: AI picks layout, assets, typography and colours, then hands you a fully editable design (never a flattened image).' },
   { id: 'ai-studio', label: 'AI Studio', icon: '✨', phase: 7, live: true, blurb: 'Text-to-image, image-to-video, AI voice, quiz questions, transcription, music — one studio, real provider calls, job queue with cancel & retry.' },
   { id: 'graphic-editor', label: 'Graphic Editor', icon: '🎨', phase: 2, live: true, blurb: 'Canvas editor with layers, shapes, text, filters, brand colours and transparent PNG export.' },
+  { id: 'presentations', label: 'Presentations', icon: '📊', phase: 9, live: true, blurb: 'Multi-slide decks — layouts, presenter notes, present mode, export to images, PDF or video.' },
+  { id: 'documents', label: 'Documents', icon: '📝', phase: 9, live: true, blurb: 'Rich-text documents — headings, lists, tables, images, charts. Export to HTML, DOCX or PDF.' },
   { id: 'video-editor', label: 'Video Editor', icon: '🎬', phase: 3, live: true, blurb: 'Multi-track timeline, trimming, transitions, keyframes, colour grading and the FFmpeg render engine.' },
   { id: 'ai-video', label: 'AI Video Generator', icon: '🎥', phase: 7, live: true, blurb: 'Text-to-video and image-to-video through configurable providers (Runway Gen-4), with job queue, progress and preview. Needs a video provider key.' },
   { id: 'ai-image', label: 'AI Image Generator', icon: '🖼️', phase: 7, live: true, blurb: 'Text-to-image and image-to-image (OpenAI Images / Stability SD3). Needs an image provider key.' },
@@ -25,6 +27,7 @@ const NAV = [
   { id: 'effects', label: 'Effects & Transitions', icon: '🌈', phase: 3, live: true, blurb: 'Searchable library of filters, transitions, motion effects and text animations.' },
   { id: 'animation', label: 'Animation Studio', icon: '🎞️', phase: 3, live: true, blurb: 'Keyframes with linear interpolation and text fade/slide animations. Motion paths and easing curves are not built yet.' },
   { id: 'brand-kit', label: 'Brand Kit', icon: '🏷️', phase: 2, live: true, blurb: 'Multiple brand profiles: logos, colours and fonts — one-click apply to designs.' },
+  { id: 'charts', label: 'Charts', icon: '📈', phase: 9, live: true, blurb: 'Bar, line, pie and doughnut charts from CSV or a manual table — duplicate rows are skipped, never doubled.' },
   { section: 'Library' },
   { id: 'media', label: 'Media Library', icon: '🗂️', phase: 1, live: true },
   { id: 'stock', label: 'Stock Assets', icon: '📚', phase: 8, blurb: 'Licensed stock images, videos, music and sound effects with favourites and collections.' },
@@ -32,6 +35,8 @@ const NAV = [
   { id: 'social', label: 'Social Media Creator', icon: '📣', phase: 8, live: true, blurb: 'AI post/caption/hashtag generator, thumbnails and optional publishing via official platform APIs.' },
   { id: 'calendar', label: 'Content Calendar', icon: '📅', phase: 8, live: true, blurb: 'Plan and schedule content across platforms from one calendar.' },
   { id: 'export', label: 'Export Center', icon: '📤', phase: 3, live: true, blurb: 'Batch export: PNG/JPG designs and MP4 videos at 720p/1080p, with ZIP download.' },
+  { id: 'website', label: 'Website', icon: '🌐', phase: 9, live: true, blurb: 'Publish a design, deck or document as a static website, hosted locally under /sites/.' },
+  { id: 'print', label: 'Print', icon: '🖨️', phase: 9, live: true, blurb: 'Print-ready PDFs: full bleed, crop marks and a safe-zone guide (A4, US Letter, poster).' },
   { id: 'projects', label: 'Projects', icon: '📁', phase: 1, live: true },
   { id: 'marketplace', label: 'Templates Marketplace', icon: '🛍️', phase: 8, live: true, blurb: 'Browse, favourite and use community and premium templates.' },
   { id: 'assistant', label: 'AI Assistant', icon: '🤖', phase: 7, blurb: 'A project-aware assistant: "make this more professional", "sync with music", "create five versions" — previews before destructive edits.' },
@@ -261,6 +266,11 @@ async function renderView() {
     if (v === 'effects') return await viewEffects(c);
     if (v === 'animation') return await viewAnimation(c);
     if (v === 'bg-remover') return await viewMagicTools(c);
+    if (v === 'presentations') return await viewPresentations(c);
+    if (v === 'documents') return await viewDocuments(c);
+    if (v === 'charts') return await viewCharts(c);
+    if (v === 'website') return await viewWebsites(c);
+    if (v === 'print') return await viewPrint(c);
     if (v === 'ai-design') return await viewAIDesign(c);
     if (v === 'ai-studio') return await viewAIStudio(c);
     if (v === 'ai-video') return await viewAIStudio(c, 'video');
