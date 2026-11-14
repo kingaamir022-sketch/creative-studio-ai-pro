@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CreativeStudio AI Pro</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #0f1115; color: #e8eaf0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100vh; text-align: center; user-select: none;
+  }
+  .mark {
+    width: 64px; height: 64px; border-radius: 16px;
+    background: linear-gradient(135deg, #7c3aed, #06b6d4);
+    color: #fff; font-size: 34px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 18px;
+  }
+  h1 { font-size: 19px; font-weight: 700; margin-bottom: 6px; }
+  p { font-size: 13px; color: #9aa3b2; }
+  .spinner {
+    width: 34px; height: 34px; margin: 22px auto 0;
+    border: 3px solid #2a2f3a; border-top-color: #7c3aed; border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="mark">C</div>
+  <h1>CreativeStudio AI Pro</h1>
+  <p>CreativeStudio AI Pro start ho raha hai&hellip;</p>
+  <div class="spinner"></div>
+</body>
+</html>
