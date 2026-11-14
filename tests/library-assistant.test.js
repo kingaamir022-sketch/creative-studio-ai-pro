@@ -696,7 +696,9 @@ test('assistant actions: summarise, suggest, make-professional, five-versions', 
   assert.equal(pro.json.newProject.type, 'design');
   assert.ok(pro.json.newProject.name.toLowerCase().includes('professional'), JSON.stringify(pro.json));
   const proDesign = await req(`/api/projects/${pro.json.newProject.id}`, { cookie: ownerCookie });
-  const headlineLayer = proDesign.json.project.content.layers.find((l) => l.type === 'text' && l.text.text === 'A professional headline');
+  // C-13: the headline is fit-checked into its box, so a long headline is
+  // wrapped across lines (never overflowing) — compare whitespace-normalised.
+  const headlineLayer = proDesign.json.project.content.layers.find((l) => l.type === 'text' && String(l.text.text || '').replace(/\s+/g, ' ') === 'A professional headline');
   assert.ok(headlineLayer, 'the professional version must carry the LLM headline');
   const orig = await req(`/api/projects/${design.id}`, { cookie: ownerCookie });
   assert.equal(orig.json.project.content.layers.find((l) => l.id === 'layer-t1').text.text, 'Hello Library', 'the original must be untouched');
