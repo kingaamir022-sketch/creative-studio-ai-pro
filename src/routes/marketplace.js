@@ -12,13 +12,41 @@
 // after the author deletes their original project.
 //
 // Schema note: the table stores tags as a comma-separated string, content
-// as a JSON snapshot, kind is 'design'|'video', and status is
-// 'active'|'removed'.
+// as a JSON snapshot, kind is 'design'|'video'|'deck' (v2.2.4 added deck),
+// and status is 'active'|'removed'.
 const express = require('express');
 const db = require('../db');
 const auth = require('../auth');
+const { listBuiltinTemplates, builtinTemplate } = require('../design-templates');
 
 const router = express.Router();
+const KINDS = ['design', 'video', 'deck'];
+
+// Built-in template library (v2.2.4): 26 templates (20 design, 3 video,
+// 3 deck) — real editable projects, searchable/browsable here. Installing
+// one creates a real project of the matching type.
+router.get('/builtin', auth.requireAuth, (req, res) => {
+  const kind = KINDS.includes(req.query.kind) ? req.query.kind : '';
+  const q = String(req.query.q || '').trim().toLowerCase();
+  const category = String(req.query.category || '').trim();
+  let list = listBuiltinTemplates(kind || undefined);
+  if (q) list = list.filter((t) => t.name.toLowerCase().includes(q) || t.category.toLowerCase().includes(q));
+  if (category) list = list.filter((t) => t.category === category);
+  res.json({
+    templates: list.map((t) => ({ id: t.id, name: t.name, category: t.category, size: t.size, kind: t.kind, builtin: true, width: t.width, height: t.height })),
+    categories: [...new Set(listBuiltinTemplates().map((t) => t.category))].sort(),
+    counts: { design: listBuiltinTemplates('design').length, video: listBuiltinTemplates('video').length, deck: listBuiltinTemplates('deck').length },
+    note: 'Built-in templates — installing one creates a real editable project, never a flattened image.',
+  });
+});
+
+router.post('/builtin/:id/install', auth.requireAuth, (req, res) => {
+  const t = builtinTemplate(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Template not found.' });
+  const p = db.createProject(req.user.id, { name: `${t.name} (template)`, type: t.kind, content: t.content });
+  db.audit(req.user.id, 'builtin_template_install', 'project', p.id, `Installed built-in template "${t.name}" (${t.kind}) as project ${p.id}`);
+  res.status(201).json({ installed: { type: 'project', id: p.id, name: p.name, kind: p.type }, template: { id: t.id, name: t.name, kind: t.kind } });
+});
 
 function publicTemplate(t) {
   if (!t) return null;
@@ -62,8 +90,8 @@ router.get('/:id', auth.requireAuth, (req, res) => {
 router.post('/', auth.requireAuth, (req, res) => {
   const { name, description, kind, tags, category, previewMediaId, sourceProjectId } = req.body || {};
   if (!name || typeof name !== 'string' || !name.trim()) return res.status(400).json({ error: 'A name is required.' });
-  if (!['design', 'video'].includes(kind)) return res.status(400).json({ error: 'Kind must be design or video.' });
-  if (!sourceProjectId) return res.status(400).json({ error: 'A design/video template needs a project to publish from.' });
+  if (!KINDS.includes(kind)) return res.status(400).json({ error: 'Kind must be design, video or deck.' });
+  if (!sourceProjectId) return res.status(400).json({ error: 'A design/video/deck template needs a project to publish from.' });
   const p = db.getProject(req.user.id, sourceProjectId);
   if (!p) return res.status(400).json({ error: 'Project not found.' });
   if (p.type !== kind) return res.status(400).json({ error: `That project is a ${p.type} project, not ${kind}.` });

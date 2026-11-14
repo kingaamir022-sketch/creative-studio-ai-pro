@@ -27,7 +27,10 @@ router.post('/validate', auth.requireAuth, (req, res) => {
 
 // --- Templates ---
 router.get('/templates', auth.requireAuth, (req, res) => {
-  const builtins = listBuiltinTemplates();
+  // Design templates only: the Graphic Editor loads t.design, so video and
+  // deck built-ins (which have timeline/deck content) are not listed here.
+  // They live in the Templates Marketplace (GET /api/marketplace/builtin).
+  const builtins = listBuiltinTemplates('design');
   const mine = db.listUserTemplates(req.user.id).map(publicUserTemplate);
   res.json({ templates: [...builtins, ...mine] });
 });

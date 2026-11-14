@@ -21,6 +21,7 @@ const auth = require('../auth');
 const credits = require('../credits');
 const { validateDesign } = require('../design-model');
 const { reflowDesign, sizeById } = require('../magic-resize');
+const magicSwitch = require('../magic-switch');
 const { listPresets, applyPresetToLayer, applyPresetToClip } = require('../animation-presets');
 const segmentation = require('../segmentation');
 const magic = require('../magic-image');
@@ -71,6 +72,32 @@ router.post('/resize', auth.requireAuth, (req, res) => {
     res.json({ design: out.design, report: out.report });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// --- Magic Switch (v2.2.4) ---------------------------------------------------
+// Convert a design between formats/sizes/platforms AND translate its text.
+// Resize is local (free); translation needs an LLM key and costs 1 credit
+// (ai_write). The original project is never touched — the result is always
+// a NEW project. Without a key the request refuses with 402 key_needed
+// and creates nothing.
+router.get('/switch/targets', auth.requireAuth, (req, res) => {
+  res.json({
+    targets: magicSwitch.SWITCH_TARGETS,
+    languages: magicSwitch.SUPPORTED_LANGUAGES,
+    note: 'Switching creates a NEW project — the original is never changed. Translation needs an LLM key (free Gemini works); without one the request refuses with key_needed and creates nothing.',
+  });
+});
+
+router.post('/switch', auth.requireAuth, async (req, res) => {
+  const { projectId, targetSizeId, translateTo, name } = req.body || {};
+  if (!projectId) return res.status(400).json({ error: 'projectId is required.' });
+  if (translateTo && !creditGate(req, res, 'ai_write')) return;
+  try {
+    const out = await magicSwitch.switchDesign(req.user.id, { projectId, targetSizeId, translateTo, name });
+    res.status(201).json(out);
+  } catch (err) {
+    handleMagicError(res, err);
   }
 });
 

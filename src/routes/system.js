@@ -50,7 +50,7 @@ router.get('/dashboard', auth.requireAuth, async (req, res) => {
       db: 'ok',
       ffmpeg: ff,
       maxUploadMB: config.maxUploadMB,
-      version: '2.2.3 (Docs & Slides)',
+      version: '2.2.4 (Library & Assistant)',
     },
     recentProjects: recent.map((p) => ({ id: p.id, name: p.name, type: p.type, updatedAt: p.updated_at })),
     recentMedia: recentMedia.map((m) => ({ id: m.id, originalName: m.original_name, kind: m.kind, url: `/api/media/${m.id}/file`, createdAt: m.created_at })),
@@ -114,9 +114,12 @@ router.post('/providers/:id/config', auth.requireAuth, auth.requireRole('OWNER',
   if (baseUrl !== undefined && (typeof baseUrl !== 'string' || !/^https?:\/\//.test(baseUrl.trim()))) {
     return res.status(400).json({ error: 'Base URL must start with http:// or https://.' });
   }
-  if (model !== undefined && (typeof model !== 'string' || !model.trim() || model.trim().length > 120)) {
-    return res.status(400).json({ error: 'Model must be a short non-empty string.' });
+  if (model !== undefined && (typeof model !== 'string' || model.trim().length > 120)) {
+    return res.status(400).json({ error: 'Model must be at most 120 characters.' });
   }
+  // An empty model clears the override — the provider's current default
+  // is used again (this is what the Settings UI sends when the field is
+  // emptied, and what the retired-model error message tells users to do).
   const saved = db.upsertProviderConfig(def.id, {
     baseUrl: baseUrl === undefined ? undefined : baseUrl.trim(),
     model: model === undefined ? undefined : model.trim(),

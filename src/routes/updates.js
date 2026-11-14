@@ -83,9 +83,9 @@ router.post('/apply', auth.requireAuth, auth.requireRole(...ADMIN), async (req, 
       if (!res2.available) return res.status(409).json({ error: 'No update is available.' });
       manifest = res2.manifest;
     }
-    if (manifest.fullReinstall) {
+    if (manifest.fullReinstall || manifest.hasNativeModules) {
       return res.status(409).json({
-        error: 'This update needs a fresh download (it changes dependencies). It was NOT applied — download the new portable/source package from Drive instead.',
+        error: 'This update needs a fresh download (it changes dependencies in a way that cannot be applied in place). It was NOT applied — download the new portable/source package from Drive instead.',
         fullReinstall: true,
       });
     }
