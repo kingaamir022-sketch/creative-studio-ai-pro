@@ -500,6 +500,10 @@ function getUserById(id) {
 function countUsers() {
   return db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
 }
+function countOwners() {
+  // v2.6.1 — Multi-Owner: last-OWNER guards use this count.
+  return db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'OWNER'").get().c;
+}
 function listUsers() {
   return db.prepare('SELECT id, name, email, role, plan, credits_balance, created_at FROM users ORDER BY id').all();
 }
@@ -1541,7 +1545,7 @@ function dashboardCounts(userId) {
 }
 
 module.exports = {
-  db, createUser, getUserByEmail, getUserById, countUsers, listUsers, updateUser, setPassword,
+  db, createUser, getUserByEmail, getUserById, countUsers, countOwners, listUsers, updateUser, setPassword,
   createSession, getSession, deleteSession, deleteSessionsForUser,
   listFolders, createFolder, deleteFolder,
   listProjects, getProject, getProjectAny, createProject, updateProject, saveProjectVersion, listProjectVersions,
