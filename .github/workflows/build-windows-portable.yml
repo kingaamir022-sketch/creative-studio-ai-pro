@@ -1,9 +1,13 @@
 # Build Windows portable (no-install EXE-style package) — CreativeStudio AI Pro
 # Runs on GitHub Actions (windows-latest). Output: an artifact
 # "CreativeStudio-Windows-Portable" containing CreativeStudio-AI-Pro-v2.1.0-Windows.zip
-# with the app + production node_modules + bundled node.exe + FFmpeg/FFprobe
-# in bin/ + Start.bat. The user extracts it and double-clicks Start.bat —
-# no Node.js install, no terminal commands needed.
+# with the ELECTRON-PACKAGED desktop app: a top-level folder
+# "CreativeStudio AI Pro-win32-x64" holding "CreativeStudio AI Pro.exe" +
+# resources/app/ (server.js, src/, public/, docs/, scripts/, electron/,
+# production node_modules, data/) + bundled runtime/node.exe + bin/ffmpeg.
+# The user extracts it and double-clicks "CreativeStudio AI Pro.exe" —
+# no Node.js install, no terminal commands needed. (Start.bat is still
+# shipped inside resources/app/ as a fallback.)
 name: Build Windows Portable
 
 on:
@@ -25,8 +29,12 @@ jobs:
           node-version: '24'
           cache: npm
 
-      - name: Install production dependencies (Windows native builds)
-        run: npm ci --omit=dev
+      - name: Install dependencies (full install — electron-packager is a devDependency)
+        # CHANGED for v2.6.0: was `npm ci --omit=dev`. The packaging step
+        # below needs electron-packager, so the full install runs here; the
+        # packager strips devDependencies back out (prune:true), so the
+        # packaged app still ships production-only node_modules.
+        run: npm ci
 
       - name: Download Node.js Windows runtime (node.exe)
         shell: pwsh
@@ -52,7 +60,7 @@ jobs:
           $stage = 'CreativeStudio-AI-Pro-Windows'
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item server.js, package.json, package-lock.json, Start.bat, HOW_TO_RUN.txt, README.md, .env.example -Destination $stage
-          Copy-Item -Recurse src, public, docs, scripts, updates -Destination $stage
+          Copy-Item -Recurse src, public, docs, scripts, updates, electron -Destination $stage
           Copy-Item -Recurse node_modules -Destination "$stage\node_modules"
           New-Item -ItemType Directory -Force -Path "$stage\runtime" | Out-Null
           Copy-Item node.exe -Destination "$stage\runtime"
@@ -60,9 +68,18 @@ jobs:
           if (Test-Path data) { Remove-Item -Recurse -Force data }
           Get-ChildItem $stage | Select-Object Name
 
-      - name: Zip the portable
+      - name: Package the Electron desktop app (v2.6.0)
         shell: pwsh
-        run: Compress-Archive -Path CreativeStudio-AI-Pro-Windows -DestinationPath CreativeStudio-AI-Pro-v2.1.0-Windows.zip
+        run: |
+          # electron-packager turns the staged portable folder into a real
+          # desktop app: "CreativeStudio AI Pro.exe" + resources/app/.
+          # Icon embedding (.ico via rcedit) happens here on Windows only.
+          node scripts/package-electron.js --platform win32 --src CreativeStudio-AI-Pro-Windows --out electron-dist
+          Get-ChildItem electron-dist -Recurse -Depth 1 | Select-Object FullName
+
+      - name: Zip the packaged app
+        shell: pwsh
+        run: Compress-Archive -Path "electron-dist\CreativeStudio AI Pro-win32-x64" -DestinationPath CreativeStudio-AI-Pro-v2.1.0-Windows.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
