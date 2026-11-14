@@ -30,8 +30,13 @@ function statusPayload() {
   const st = updater.state();
   const settings = getSettings();
   const available = st.available;
+  // v2.7.1 — lastApplied is only meaningful for the version actually
+  // running: a stale record from a previous version must not surface.
+  const lastApplied = (st.lastApplied && st.lastApplied.version === updater.currentVersion())
+    ? st.lastApplied : null;
   return {
     current: updater.currentVersion(),
+    desktop: Boolean(process.env.CS_DESKTOP_APP),
     feed: { type: effectiveFeed(settings).type, url: settings.feedUrl, storedType: settings.feedType },
     autoCheck: settings.autoCheck,
     autoApply: settings.autoApply,
@@ -43,10 +48,28 @@ function statusPayload() {
     latest: available ? available.version : updater.currentVersion(),
     staged: st.staged || null,
     pendingRestart: Boolean(st.pendingRestart),
-    lastApplied: st.lastApplied || null,
+    lastApplied,
     backups: updater.backupsCount(),
     history: (st.history || []).slice(-10),
   };
+}
+
+// Shared Windows apply (POST /apply and auto-apply). In the desktop app
+// the server is Electron's child process, so the apply must relaunch the
+// desktop exe (not Start.bat) and wait for Electron to exit; otherwise
+// the batch path is exactly as before. Callers keep the exit
+// setTimeout(..., 600); process.exit(0) as before.
+let warnedNoDesktopExe = false;
+function applyWindowsUpdate(req) {
+  if (process.env.CS_DESKTOP_APP) {
+    const launcher = process.env.CS_DESKTOP_EXE || undefined;
+    if (!launcher && !warnedNoDesktopExe) {
+      warnedNoDesktopExe = true;
+      console.warn('[updater] CS_DESKTOP_APP is set but CS_DESKTOP_EXE is not — falling back to the default Start.bat launcher.');
+    }
+    return updater.applyViaBatch({ desktop: true, launcher, electronPid: process.ppid });
+  }
+  return updater.applyViaBatch();
 }
 
 // --- Status (any signed-in user may see it) ---
@@ -92,7 +115,7 @@ router.post('/apply', auth.requireAuth, auth.requireRole(...ADMIN), async (req, 
     await updater.downloadAndStage(feed, manifest);
     let out;
     if (process.platform === 'win32') {
-      out = updater.applyViaBatch();
+      out = applyWindowsUpdate(req);
       // Give the HTTP response a moment to leave, then exit so the batch
       // can swap the files and relaunch Start.bat.
       setTimeout(() => { console.log('[updater] exiting for update apply, batch will relaunch.'); process.exit(0); }, 600);
@@ -160,7 +183,7 @@ async function autoApplyAvailable(res2) {
     const manifest = res2.manifest;
     await updater.downloadAndStage(effectiveFeed(settings), manifest);
     if (process.platform === 'win32') {
-      updater.applyViaBatch();
+      applyWindowsUpdate();
       setTimeout(() => { console.log('[updater] exiting for auto-update apply.'); process.exit(0); }, 600);
     } else {
       const out = updater.applyStaged();
