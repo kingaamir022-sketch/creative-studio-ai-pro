@@ -23,14 +23,14 @@ const NAV = [
   { id: 'voices', label: 'Voices', icon: '🎙️', phase: 5, live: true, blurb: 'Your own voice from a short sample (default on all videos) plus AI voices — narration for quizzes & bulk videos. AI speech needs a provider key; recorded narration works now.' },
   { id: 'captions', label: 'Auto Captions', icon: '💬', phase: 6, live: true, blurb: 'Multilingual captions incl. Urdu, Roman Urdu and Arabic (RTL), word-by-word burn-in, SRT/VTT export. STT needs a provider key; manual transcripts work now.' },
   { section: 'Tools' },
-  { id: 'bg-remover', label: 'Magic Tools', icon: '🪄', phase: 9, live: true, blurb: 'Magic Resize, Animate presets, Eraser, Expand, Background Remover, Grab and Magic Write — the local tools need no key; Eraser and AI Expand need an image provider key.' },
+  { id: 'bg-remover', label: 'Magic Tools', icon: '🪄', phase: 9, live: true, blurb: 'Magic Resize, Magic Switch (resize + translate), Animate presets, Eraser, Expand, Background Remover, Grab and Magic Write — the local tools need no key; Eraser, AI Expand and Switch translation need a provider key.' },
   { id: 'effects', label: 'Effects & Transitions', icon: '🌈', phase: 3, live: true, blurb: 'Searchable library of filters, transitions, motion effects and text animations.' },
   { id: 'animation', label: 'Animation Studio', icon: '🎞️', phase: 3, live: true, blurb: 'Keyframes with linear interpolation and text fade/slide animations. Motion paths and easing curves are not built yet.' },
   { id: 'brand-kit', label: 'Brand Kit', icon: '🏷️', phase: 2, live: true, blurb: 'Multiple brand profiles: logos, colours and fonts — one-click apply to designs.' },
   { id: 'charts', label: 'Charts', icon: '📈', phase: 9, live: true, blurb: 'Bar, line, pie and doughnut charts from CSV or a manual table — duplicate rows are skipped, never doubled.' },
   { section: 'Library' },
   { id: 'media', label: 'Media Library', icon: '🗂️', phase: 1, live: true },
-  { id: 'stock', label: 'Stock Assets', icon: '📚', phase: 8, blurb: 'Licensed stock images, videos, music and sound effects with favourites and collections.' },
+  { id: 'stock', label: 'Stock Assets', icon: '📚', phase: 8, live: true, blurb: 'Free stock photos and audio from Openverse (no key) — save straight into the Media Library with attribution. Video search is not available through Openverse.' },
   { section: 'Publish & Grow' },
   { id: 'social', label: 'Social Media Creator', icon: '📣', phase: 8, live: true, blurb: 'AI post/caption/hashtag generator, thumbnails and optional publishing via official platform APIs.' },
   { id: 'calendar', label: 'Content Calendar', icon: '📅', phase: 8, live: true, blurb: 'Plan and schedule content across platforms from one calendar.' },
@@ -39,7 +39,7 @@ const NAV = [
   { id: 'print', label: 'Print', icon: '🖨️', phase: 9, live: true, blurb: 'Print-ready PDFs: full bleed, crop marks and a safe-zone guide (A4, US Letter, poster).' },
   { id: 'projects', label: 'Projects', icon: '📁', phase: 1, live: true },
   { id: 'marketplace', label: 'Templates Marketplace', icon: '🛍️', phase: 8, live: true, blurb: 'Browse, favourite and use community and premium templates.' },
-  { id: 'assistant', label: 'AI Assistant', icon: '🤖', phase: 7, blurb: 'A project-aware assistant: "make this more professional", "sync with music", "create five versions" — previews before destructive edits.' },
+  { id: 'assistant', label: 'AI Assistant', icon: '🤖', phase: 7, live: true, blurb: 'A project-aware assistant: summarise, suggest improvements, “make this more professional”, “create five versions” — new projects are created, the original is never changed.' },
   { id: 'analytics', label: 'Analytics', icon: '📊', phase: 8, live: true, blurb: 'Projects, renders, exports and credit usage over time.' },
   { section: 'Account' },
   { id: 'admin', label: 'Admin Panel', icon: '🛡️', phase: 8, live: true, blurb: 'Users, plan requests, platform stats, audit log and system health (OWNER/ADMIN only).' },
@@ -289,6 +289,9 @@ async function renderView() {
     if (v === 'social') return await viewSocial(c);
     if (v === 'calendar') return await viewCalendar(c);
     if (v === 'marketplace') return await viewMarketplace(c);
+    if (v === 'stock') return await viewStock(c);
+    if (v === 'assistant') return await viewAssistant(c);
+    if (v === 'shared-project') return await viewSharedProject(c);
     if (v === 'admin') return await viewAdmin(c);
     if (v === 'analytics') return await viewAnalytics(c);
     if (v === 'settings') return await viewSettings(c);
@@ -306,7 +309,7 @@ function renderAuth() {
   root.innerHTML = `
   <div class="auth-wrap"><div class="auth-card">
     <div class="logo"><div class="logo-mark">C</div><div class="logo-name">Creative<span>Studio</span> AI Pro</div></div>
-    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.2.2 — Magic Tools</p>
+    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.2.4 — Library & Assistant</p>
     <div class="auth-toggle">
       <button id="tab-login" class="active">Log in</button>
       <button id="tab-signup">Sign up</button>
@@ -439,10 +442,14 @@ async function viewDashboard(c) {
 
 /* ---------- Projects ---------- */
 async function viewProjects(c) {
-  const [res, folders] = await Promise.all([api('/api/projects'), api('/api/projects/folders/list')]);
+  const [res, folders, shared] = await Promise.all([
+    api('/api/projects'), api('/api/projects/folders/list'),
+    api('/api/collab/shared-with-me').catch(() => ({ projects: [] })),
+  ]);
   const trash = await api('/api/projects?trashed=1');
   const showTrash = state.params.trash === true;
   const list = showTrash ? trash.projects : res.projects;
+  const sharedProjects = shared.projects || [];
   c.innerHTML = `
   <div class="toolbar">
     <button class="btn btn-primary" id="new-project-btn">＋ New project</button>
@@ -467,7 +474,15 @@ async function viewProjects(c) {
           <button class="btn btn-sm btn-danger" data-trash="${p.id}">Trash</button>`}
       </div>`).join('') : `<div class="empty"><div class="big">📁</div><p>${showTrash ? 'Trash is empty.' : 'No projects yet.'}</p><p style="margin-top:6px">Create your first project to get started.</p></div>`}
   </div>
-  ${folders.folders.length ? `<div class="card" style="margin-top:16px"><h3>Folders</h3>${folders.folders.map((f) => `<div class="kv"><span>📁 ${esc(f.name)}</span><button class="btn btn-sm btn-ghost" data-del-folder="${f.id}">Delete</button></div>`).join('')}</div>` : ''}`;
+  ${folders.folders.length ? `<div class="card" style="margin-top:16px"><h3>Folders</h3>${folders.folders.map((f) => `<div class="kv"><span>📁 ${esc(f.name)}</span><button class="btn btn-sm btn-ghost" data-del-folder="${f.id}">Delete</button></div>`).join('')}</div>` : ''}
+  ${!showTrash && sharedProjects.length ? `<div class="card" style="margin-top:16px"><h3>Shared with me (read-only)</h3>
+    <p class="sub">Projects other users shared with you — view and comment, never edit. No live co-editing.</p>
+    ${sharedProjects.map((p) => `<div class="list-row"><div class="grow" style="cursor:pointer" data-open-shared="${p.id}">
+      <div class="t">${esc(p.name)}</div><div class="m">${esc(p.type)} · shared by ${esc(p.ownerName || p.ownerEmail)} · ${fmtDate(p.sharedAt)}</div></div>
+      <span class="badge">view only</span>
+      <button class="btn btn-sm btn-primary" data-open-shared="${p.id}">Open →</button>
+      <button class="btn btn-sm btn-ghost" data-leave-shared="${p.id}">Leave</button></div>`).join('')}
+  </div>` : ''}`;
   document.getElementById('new-project-btn').addEventListener('click', () => openProjectModal());
   document.getElementById('new-folder-btn').addEventListener('click', () => openFolderModal('project'));
   document.getElementById('trash-toggle').addEventListener('click', () => go('projects', { trash: !showTrash }));
@@ -487,6 +502,12 @@ async function viewProjects(c) {
     });
   });
   c.querySelectorAll('[data-open]').forEach((el) => el.addEventListener('click', () => go('project', { id: el.dataset.open })));
+  c.querySelectorAll('[data-open-shared]').forEach((el) => el.addEventListener('click', () => go('shared-project', { id: el.dataset.openShared })));
+  c.querySelectorAll('[data-leave-shared]').forEach((el) => el.addEventListener('click', async () => {
+    if (!confirm('Stop viewing this shared project? The owner can share it with you again.')) return;
+    try { await api(`/api/collab/shared-with-me/${el.dataset.leaveShared}/leave`, { method: 'POST' }); toast('Left the shared project.'); renderView(); }
+    catch (e) { toast(e.message, true); }
+  }));
   c.querySelectorAll('[data-dup]').forEach((el) => el.addEventListener('click', async () => {
     try { await api(`/api/projects/${el.dataset.dup}/duplicate`, { method: 'POST' }); toast('Project duplicated.'); renderView(); }
     catch (e) { toast(e.message, true); }
@@ -554,7 +575,8 @@ async function viewProjectDetail(c) {
     <p class="sub">Edit freely — changes autosave after 1 second. Invalid JSON is rejected with an error, never silently saved.</p>
     <textarea id="p-content" class="code" spellcheck="false">${esc(JSON.stringify(project.content, null, 2))}</textarea>
     <div class="error" id="content-error"></div>
-  </div>`;
+  </div>
+  ${collabPanelHTML()}`;
   const saveState = document.getElementById('save-state');
   const setState = (t, cls) => { saveState.textContent = t; saveState.className = 'badge ' + (cls || ''); };
   let timer = null;
@@ -599,6 +621,7 @@ async function viewProjectDetail(c) {
     try { await api(`/api/projects/${id}/versions/${el.dataset.restoreVer}/restore`, { method: 'POST' }); toast('Version restored.'); renderView(); }
     catch (e) { toast(e.message, true); }
   }));
+  initCollabPanel(id);
 }
 
 /* ---------- Media Library ---------- */
@@ -750,7 +773,7 @@ async function viewSettings(c) {
         <div class="sub" id="prov-test-${p.id}" style="margin-top:6px"></div>
       </span></div>`).join('')}</div>
     <p class="sub" style="margin-top:12px">Active provider per kind (used when a kind has several providers):</p>
-    <div>${['image', 'tts'].map((kind) => {
+    <div>${[...new Set(prov.providers.map((p) => p.kind))].map((kind) => {
       const list = prov.providers.filter((p) => p.kind === kind);
       if (list.length < 2) return '';
       const active = list.find((p) => p.active) || list[0];

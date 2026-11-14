@@ -6,6 +6,8 @@ const MagicTools = (() => {
   let designs = [];
   let sizes = [];
   let presets = [];
+  let switchTargets = [];
+  let switchLanguages = [];
   let model = null;
   let tool = 'remove-background';
   let selectedImageId = null;
@@ -21,22 +23,26 @@ const MagicTools = (() => {
     { id: 'erase', label: 'Magic Eraser', icon: '🧽' },
     { id: 'expand', label: 'Magic Expand', icon: '↔️' },
     { id: 'resize', label: 'Magic Resize', icon: '📐' },
+    { id: 'switch', label: 'Magic Switch', icon: '🔀' },
     { id: 'animate', label: 'Magic Animate', icon: '🎞️' },
   ];
 
   async function loadAll() {
-    const [im, pr, ms, ps, sz] = await Promise.all([
+    const [im, pr, ms, ps, sz, sw] = await Promise.all([
       api('/api/media?kind=image&limit=100').catch(() => ({ media: [] })),
       api('/api/projects?type=design&limit=100').catch(() => ({ projects: [] })),
       api('/api/magic/model/status').catch(() => null),
       api('/api/magic/animate/presets').catch(() => ({ presets: [] })),
       api('/api/design/sizes').catch(() => ({ sizes: [] })),
+      api('/api/magic/switch/targets').catch(() => ({ targets: [], languages: [] })),
     ]);
     images = (im.media || []).filter((m) => m.kind === 'image');
     designs = pr.projects || [];
     model = ms;
     presets = (ps.presets || []);
     sizes = (sz.sizes || []);
+    switchTargets = (sw.targets || []);
+    switchLanguages = (sw.languages || []);
     if (!selectedImageId && images.length) selectedImageId = images[0].id;
     if (!selectedDesignId && designs.length) selectedDesignId = designs[0].id;
   }
@@ -120,6 +126,22 @@ const MagicTools = (() => {
         <div class="ed-field"><label>Target size</label><select id="mg-size">${sizes.map((s) => `<option value="${s.id}">${esc(s.name)} — ${s.width}×${s.height}</option>`).join('')}</select></div>
         ${d && d.content ? `<p class="sub">Current size: ${d.content.width}×${d.content.height}px · ${(d.content.layers || []).length} layers.</p>` : ''}
         <div class="ed-btnrow"><button class="btn btn-primary" id="mg-run-resize">Magic Resize → new design</button></div>`;
+      }
+      case 'switch': {
+        const d = selectedDesign();
+        return `
+        <p class="sub">Switch a design to another platform format AND translate its text — in one step. Resize is local and free; translation uses your LLM key (free Gemini works) and costs 1 credit. Without a key the request refuses honestly and creates nothing. A NEW design project is created; the original is never changed.</p>
+        <div class="ed-field"><label>Design</label><select id="mg-design">${designOptions()}</select></div>
+        <div class="ed-field"><label>Target format</label><select id="mg-switch-size">
+          <option value="">Keep the same size (translate only)</option>
+          ${switchTargets.map((s) => `<option value="${s.id}">${esc(s.name)} — ${s.width}×${s.height}</option>`).join('')}
+        </select></div>
+        <div class="ed-field"><label>Translate text to</label><select id="mg-switch-lang">
+          <option value="">No translation (resize only)</option>
+          ${switchLanguages.map((l) => `<option value="${l.code}">${esc(l.name)}</option>`).join('')}
+        </select></div>
+        ${d && d.content ? `<p class="sub">Current size: ${d.content.width}×${d.content.height}px · ${(d.content.layers || []).length} layers · ${(d.content.layers || []).filter((l) => l.type === 'text').length} text layers.</p>` : ''}
+        <div class="ed-btnrow"><button class="btn btn-primary" id="mg-run-switch">Magic Switch → new design</button></div>`;
       }
       case 'animate': {
         const d = selectedDesign();
@@ -278,7 +300,7 @@ const MagicTools = (() => {
     const img = selectedImage();
     c.innerHTML = `
     <div class="card"><h3>🪄 Magic Tools</h3>
-      <p class="sub">One-click magic, built on the real tools: Background Remover and Grab run a free local AI model on this computer (no key, nothing uploaded). Eraser and AI Expand use your image provider key — without one they refuse honestly. Magic Resize and Animate are pure local transforms.</p>
+      <p class="sub">One-click magic, built on the real tools: Background Remover and Grab run a free local AI model on this computer (no key, nothing uploaded). Eraser and AI Expand use your image provider key — without one they refuse honestly. Magic Resize and Animate are pure local transforms. Magic Switch resizes AND translates (translation needs an LLM key; free Gemini works).</p>
       <div class="ai-modes">${TOOLS.map((t) => `<button class="ai-mode-btn ${t.id === tool ? 'active' : ''}" data-tool="${t.id}">${t.icon} ${t.label}</button>`).join('')}</div>
     </div>
     <div class="grid grid-2">
@@ -416,6 +438,36 @@ const MagicTools = (() => {
         toast('Resized design created.');
       } catch (err) {
         setBusy(runResize, false, 'Magic Resize → new design');
+        showError(err.message);
+      }
+    });
+    const runSwitch = document.getElementById('mg-run-switch');
+    if (runSwitch) runSwitch.addEventListener('click', async () => {
+      const d = selectedDesign();
+      if (!d) { showError('Pick a design first.'); return; }
+      const targetSizeId = document.getElementById('mg-switch-size').value || undefined;
+      const translateTo = document.getElementById('mg-switch-lang').value || undefined;
+      if (!targetSizeId && !translateTo) { showError('Pick a target format, a language, or both.'); return; }
+      clearError();
+      setBusy(runSwitch, true, 'Magic Switch → new design');
+      try {
+        const res = await api('/api/magic/switch', { method: 'POST', body: JSON.stringify({ projectId: d.id, targetSizeId, translateTo }) });
+        const attention = (res.report && res.report.needsAttention) || [];
+        result = {
+          title: `🔀 Magic Switch — “${esc(res.project.name)}”`,
+          media: null,
+          note: `${res.target ? `Now ${res.target.width}×${res.target.height} (${esc(res.target.name)}). ` : ''}${res.translated ? `Text translated to ${esc(res.language.name)}. ` : ''}New design project created — the original was not changed.`,
+          extraHtml: `${attention.length
+            ? `<div class="ed-note" style="margin-top:10px"><b>⚠️ Needs attention (${attention.length}):</b><ul>${attention.map((a) => `<li>${esc(a.name)} — ${esc(a.reason)}${a.suggestedText ? ` Try: “${esc(a.suggestedText)}”` : ''}</li>`).join('')}</ul></div>`
+            : '<p class="sub">✅ Every layer fit — no attention needed.</p>'}
+            <div class="ed-btnrow" style="margin-top:10px"><button class="btn btn-primary" id="mg-open-switched">Open the new design →</button></div>`,
+        };
+        designs = (await api('/api/projects?type=design&limit=100').catch(() => ({ projects: [] }))).projects || designs;
+        view(c);
+        document.getElementById('mg-open-switched').addEventListener('click', () => go('design-editor', { projectId: res.project.id }));
+        toast('Switched design created.');
+      } catch (err) {
+        setBusy(runSwitch, false, 'Magic Switch → new design');
         showError(err.message);
       }
     });
