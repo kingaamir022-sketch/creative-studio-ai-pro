@@ -1,9 +1,8 @@
 {
  "app": "CreativeStudio AI Pro",
- "version": "2.6.0",
- "notes": "Desktop app: Electron shell (own window + icon, single-instance, loading screen, quit kills server), real multi-size .ico, Windows packaging via electron-packager, NSIS installer with v2.5.0 data migration (data/uploads/renders/.env move into resources/app). One-time Setup.exe install from Drive (fullReinstall), then in-app updates resume.",
- "package": "update-2.6.0.json",
- "packageSha256": "d747a55d6701865a1bd8a484cd92dfadd4ebbd3760d2e12e00292440f966a379",
- "publishedAt": "2026-11-14T11:30:20.270Z",
- "fullReinstall": true
+ "version": "2.6.1",
+ "notes": "",
+ "package": "update-2.6.1.json",
+ "packageSha256": "29381d08c52459d876eae90024cea07c02419b69f96e8f11052e11940786c107",
+ "publishedAt": "2026-11-14T12:58:18.640Z"
 }
