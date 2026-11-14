@@ -21,6 +21,20 @@ function formatBytes(n) {
 }
 
 // --- Dashboard ---
+// v2.4.0 — recent projects carry a duration for video projects (total
+// timeline length, seconds) so the Home screen can show dates + durations.
+function recentProjectDuration(p) {
+  if (p.type !== 'video') return null;
+  try {
+    const content = JSON.parse(p.content || '{}');
+    const tl = content.timeline || content;
+    if (!tl || !Array.isArray(tl.tracks)) return null;
+    const { totalDuration } = require('../video-model');
+    const d = totalDuration(tl);
+    return Number.isFinite(d) && d > 0 ? Math.round(d * 10) / 10 : null;
+  } catch { return null; }
+}
+
 router.get('/dashboard', auth.requireAuth, async (req, res) => {
   const counts = db.dashboardCounts(req.user.id);
   const ff = await detectFFmpeg();
@@ -50,9 +64,9 @@ router.get('/dashboard', auth.requireAuth, async (req, res) => {
       db: 'ok',
       ffmpeg: ff,
       maxUploadMB: config.maxUploadMB,
-      version: '2.3.1 (Fix Round)',
+      version: '2.4.0 (CapCut Home & Flow)',
     },
-    recentProjects: recent.map((p) => ({ id: p.id, name: p.name, type: p.type, updatedAt: p.updated_at })),
+    recentProjects: recent.map((p) => ({ id: p.id, name: p.name, type: p.type, updatedAt: p.updated_at, durationSeconds: recentProjectDuration(p) })),
     recentMedia: recentMedia.map((m) => ({ id: m.id, originalName: m.original_name, kind: m.kind, url: `/api/media/${m.id}/file`, createdAt: m.created_at })),
   });
 });

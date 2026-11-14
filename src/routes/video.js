@@ -101,12 +101,16 @@ router.post('/jobs', auth.requireAuth, async (req, res) => {
   if (!vm.RESOLUTIONS.find((r) => r.id === resolution) && settings.width === undefined) {
     return res.status(400).json({ error: `Unknown resolution "${resolution}".` });
   }
+  const format = settings.format || 'mp4';
+  if (!['mp4', 'mov'].includes(format)) return res.status(400).json({ error: 'Format must be "mp4" or "mov".' });
   // Every referenced media file must exist and belong to this user.
   for (const c of vm.allClips(tl)) {
     if (!c.mediaId) continue;
     const m = db.getMedia(req.user.id, c.mediaId);
     if (!m) return res.status(400).json({ error: `Media file #${c.mediaId} used by clip "${c.name}" was not found. Re-add it to the timeline.` });
-    if (c.kind === 'video' && m.kind !== 'video') return res.status(400).json({ error: `Clip "${c.name}" is on a video track but its media is ${m.kind}, not video.` });
+    // v2.4.0 — stickers: image media on a video track renders as a looped
+    // still (see src/render.js inputForMedia), so it is allowed here.
+    if (c.kind === 'video' && m.kind !== 'video' && m.kind !== 'image') return res.status(400).json({ error: `Clip "${c.name}" is on a video track but its media is ${m.kind}, not video or image.` });
     if (c.kind === 'audio' && m.kind !== 'audio' && m.kind !== 'video') return res.status(400).json({ error: `Clip "${c.name}" is on an audio track but its media is ${m.kind}.` });
   }
   // Phase 8: a render costs 1 credit — refuse up front when the balance
@@ -116,9 +120,9 @@ router.post('/jobs', auth.requireAuth, async (req, res) => {
   const job = db.createJob(req.user.id, {
     type: 'render',
     projectId: project ? project.id : null,
-    payload: { timeline: tl, settings: { resolution, fps, width: settings.width, height: settings.height } },
+    payload: { timeline: tl, settings: { resolution, fps, format, width: settings.width, height: settings.height } },
   });
-  db.audit(req.user.id, 'render_queued', 'job', job.id, `Render queued for "${project ? project.name : 'timeline'}" (${resolution}, ${fps}fps)`);
+  db.audit(req.user.id, 'render_queued', 'job', job.id, `Render queued for "${project ? project.name : 'timeline'}" (${resolution}, ${fps}fps, ${format.toUpperCase()})`);
   res.status(201).json({ job: publicJob(job) });
 });
 
@@ -166,8 +170,9 @@ router.get('/jobs/:id/download', auth.requireAuth, (req, res) => {
   if (j.status !== 'done' || !j.output_path || !fs.existsSync(j.output_path)) {
     return res.status(404).json({ error: 'No finished render is available for this job yet.' });
   }
-  res.type('video/mp4');
-  res.set('Content-Disposition', `attachment; filename="creative-studio-render-${j.id}.mp4"`);
+  const ext = path.extname(j.output_path).toLowerCase() === '.mov' ? 'mov' : 'mp4';
+  res.type(ext === 'mov' ? 'video/quicktime' : 'video/mp4');
+  res.set('Content-Disposition', `attachment; filename="creative-studio-render-${j.id}.${ext}"`);
   fs.createReadStream(j.output_path).pipe(res);
 });
 
@@ -188,15 +193,16 @@ router.post('/jobs/:id/save-to-library', auth.requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Only a finished render can be saved to the Media Library.' });
   }
   const crypto = require('crypto');
-  const storedName = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}.mp4`;
+  const ext = path.extname(j.output_path).toLowerCase() === '.mov' ? 'mov' : 'mp4';
+  const storedName = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}.${ext}`;
   const userDir = path.join(config.uploadsDir, String(req.user.id));
   fs.mkdirSync(userDir, { recursive: true });
   fs.copyFileSync(j.output_path, path.join(userDir, storedName));
   const probe = await probeMedia(j.output_path);
   const m = db.createMedia(req.user.id, {
-    originalName: `render-${j.id}.mp4`,
+    originalName: `render-${j.id}.${ext}`,
     storedName,
-    mimeType: 'video/mp4',
+    mimeType: ext === 'mov' ? 'video/quicktime' : 'video/mp4',
     kind: 'video',
     sizeBytes: fs.statSync(j.output_path).size,
     width: probe ? probe.width : null,
