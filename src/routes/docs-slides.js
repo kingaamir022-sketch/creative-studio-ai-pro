@@ -33,12 +33,83 @@ const {
   CHART_TYPES, validateChart, normalizeChart, parseCsvTable, dedupeTable,
   chartToSvg, renderChartPng,
 } = require('../chart');
-const { writeImagePdf, pngToJpeg } = require('../pdf-writer');
+const { writeImagePdf, pngToJpeg, pngToCmykJpeg } = require('../pdf-writer');
 const { renderDesign } = require('../design-render');
 
 const router = express.Router();
 const WEBSITES_DIR = path.join(config.root, 'data', 'websites');
 
+// v2.5.0, item #30 — website extras tables (created here, in our own
+// module, never a db.js schema edit):
+//   website_settings: SEO/meta + password hash per site slug.
+//   site_views: one row per page view (local analytics — no third party).
+try {
+  db.db.exec(`CREATE TABLE IF NOT EXISTS website_settings (
+    slug TEXT PRIMARY KEY,
+    seo_title TEXT, seo_description TEXT, seo_keywords TEXT, og_image TEXT,
+    password_hash TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`);
+  db.db.exec(`CREATE TABLE IF NOT EXISTS site_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL,
+    path TEXT NOT NULL DEFAULT 'index.html',
+    viewed_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`);
+  db.db.exec('CREATE INDEX IF NOT EXISTS idx_site_views_slug ON site_views(slug, viewed_at)');
+} catch (e) { console.error('[docs-slides] website tables failed:', e.message); }
+
+const crypto = require('crypto');
+function hashSitePassword(pw) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(pw), salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+function checkSitePassword(pw, stored) {
+  if (!stored) return false;
+  const [salt, hash] = String(stored).split(':');
+  if (!salt || !hash) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(crypto.scryptSync(String(pw), salt, 64).toString('hex')), Buffer.from(hash));
+  } catch { return false; }
+}
+function getSiteSettings(slug) {
+  try { return db.db.prepare('SELECT * FROM website_settings WHERE slug = ?').get(slug) || null; } catch { return null; }
+}
+function upsertSiteSettings(slug, fields) {
+  const cur = getSiteSettings(slug) || {};
+  const next = {
+    seo_title: fields.seoTitle !== undefined ? (fields.seoTitle || null) : cur.seo_title,
+    seo_description: fields.seoDescription !== undefined ? (fields.seoDescription || null) : cur.seo_description,
+    seo_keywords: fields.seoKeywords !== undefined ? (fields.seoKeywords || null) : cur.seo_keywords,
+    og_image: fields.ogImage !== undefined ? (fields.ogImage || null) : cur.og_image,
+    password_hash: fields.passwordHash !== undefined ? fields.passwordHash : cur.password_hash,
+  };
+  db.db.prepare(`INSERT INTO website_settings (slug, seo_title, seo_description, seo_keywords, og_image, password_hash)
+    VALUES (?,?,?,?,?,?) ON CONFLICT(slug) DO UPDATE SET
+    seo_title = excluded.seo_title, seo_description = excluded.seo_description,
+    seo_keywords = excluded.seo_keywords, og_image = excluded.og_image,
+    password_hash = excluded.password_hash, updated_at = datetime('now')`)
+    .run(slug, next.seo_title, next.seo_description, next.seo_keywords, next.og_image, next.password_hash);
+  return getSiteSettings(slug);
+}
+function siteSeo(slug) {
+  const s = getSiteSettings(slug);
+  if (!s) return {};
+  return { title: s.seo_title || undefined, description: s.seo_description || undefined, keywords: s.seo_keywords || undefined, ogImage: s.og_image || undefined };
+}
+function recordSiteView(slug, p) {
+  try { db.db.prepare('INSERT INTO site_views (slug, path) VALUES (?,?)').run(slug, p || 'index.html'); } catch { /* analytics is best-effort */ }
+}
+function siteAnalytics(slug) {
+  const total = db.db.prepare('SELECT COUNT(*) c FROM site_views WHERE slug = ?').get(slug).c;
+  const byDay = db.db.prepare(`SELECT substr(viewed_at,1,10) day, COUNT(*) views FROM site_views WHERE slug = ? GROUP BY day ORDER BY day DESC LIMIT 30`).all(slug);
+  return { slug, views: total, byDay };
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 function publicMedia(m) {
   return {
     id: m.id, originalName: m.original_name, mimeType: m.mime_type, kind: m.kind,
@@ -233,6 +304,7 @@ router.post('/decks/:id/export/images', auth.requireAuth, async (req, res) => {
 router.post('/decks/:id/export/pdf', auth.requireAuth, async (req, res) => {
   const p = deckProjectOr400(req, res);
   if (!p) return;
+  const colorSpace = (req.body && req.body.colorSpace) === 'cmyk' ? 'cmyk' : 'rgb';
   const workDir = tmpWorkDir(req.user.id, 'deck-pdf');
   try {
     const designs = deckToDesigns(p.content);
@@ -254,12 +326,14 @@ router.post('/decks/:id/export/pdf', auth.requireAuth, async (req, res) => {
       const pngPath = path.join(workDir, `slide-${i + 1}.png`);
       await renderDesign({ design: designs[i], mediaById: mb, outPath: pngPath });
       const jpegPath = path.join(workDir, `slide-${i + 1}.jpg`);
-      const { width, height } = await pngToJpeg(pngPath, jpegPath, 2);
+      const { width, height } = colorSpace === 'cmyk'
+        ? await pngToCmykJpeg(pngPath, jpegPath, 92)
+        : await pngToJpeg(pngPath, jpegPath, 2);
       pages.push({ jpegPath, imgWidth: width, imgHeight: height, widthPt: (p.content.width / p.content.height) * 720, heightPt: 720 });
     }
     const pdfPath = path.join(workDir, `${p.name.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 60) || 'deck'}.pdf`);
-    const result = writeImagePdf(pages, pdfPath);
-    db.audit(req.user.id, 'deck_export_pdf', 'project', p.id, `Exported deck "${p.name}" as PDF (${result.pages} pages)`);
+    const result = writeImagePdf(pages, pdfPath, { colorSpace });
+    db.audit(req.user.id, 'deck_export_pdf', 'project', p.id, `Exported deck "${p.name}" as PDF (${result.pages} pages, ${colorSpace.toUpperCase()})`);
     sendDownload(res, pdfPath, path.basename(pdfPath));
   } catch (err) {
     console.error('[docs-slides] failed:', err);
@@ -339,6 +413,7 @@ router.post('/docs/:id/export/docx', auth.requireAuth, async (req, res) => {
 router.post('/docs/:id/export/pdf', auth.requireAuth, async (req, res) => {
   const p = docProjectOr400(req, res);
   if (!p) return;
+  const colorSpace = (req.body && req.body.colorSpace) === 'cmyk' ? 'cmyk' : 'rgb';
   const workDir = tmpWorkDir(req.user.id, 'doc-pdf');
   try {
     const mediaIds = new Set();
@@ -365,13 +440,15 @@ router.post('/docs/:id/export/pdf', auth.requireAuth, async (req, res) => {
       const pngPath = path.join(workDir, `page-${i + 1}.png`);
       await renderDesign({ design: designs[i], mediaById: mb, outPath: pngPath });
       const jpegPath = path.join(workDir, `page-${i + 1}.jpg`);
-      const { width, height } = await pngToJpeg(pngPath, jpegPath, 2);
+      const { width, height } = colorSpace === 'cmyk'
+        ? await pngToCmykJpeg(pngPath, jpegPath, 92)
+        : await pngToJpeg(pngPath, jpegPath, 2);
       pages.push({ jpegPath, imgWidth: width, imgHeight: height, widthPt: 595.28, heightPt: 841.89 });
     }
     const filename = `${p.name.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 60) || 'document'}.pdf`;
     const pdfPath = path.join(workDir, filename);
-    const result = writeImagePdf(pages, pdfPath);
-    db.audit(req.user.id, 'doc_export_pdf', 'project', p.id, `Exported document "${p.name}" as PDF (${result.pages} pages)`);
+    const result = writeImagePdf(pages, pdfPath, { colorSpace });
+    db.audit(req.user.id, 'doc_export_pdf', 'project', p.id, `Exported document "${p.name}" as PDF (${result.pages} pages, ${colorSpace.toUpperCase()})`);
     sendDownload(res, pdfPath, filename);
   } catch (err) {
     console.error('[docs-slides] failed:', err);
@@ -383,15 +460,77 @@ router.post('/docs/:id/export/pdf', auth.requireAuth, async (req, res) => {
 function siteDir(slug) { return path.join(WEBSITES_DIR, slug); }
 
 router.get('/websites', auth.requireAuth, (req, res) => {
-  const sites = db.listWebsites(req.user.id).map((s) => ({
-    id: s.id, slug: s.slug, kind: s.kind, title: s.title, projectId: s.project_id,
-    url: `/sites/${s.slug}/`, createdAt: s.created_at,
-  }));
+  const sites = db.listWebsites(req.user.id).map((s) => {
+    const st = getSiteSettings(s.slug);
+    return {
+      id: s.id, slug: s.slug, kind: s.kind, title: s.title, projectId: s.project_id,
+      url: `/sites/${s.slug}/`, createdAt: s.created_at,
+      passwordProtected: Boolean(st && st.password_hash),
+      seo: st ? { title: st.seo_title, description: st.seo_description, keywords: st.seo_keywords, ogImage: st.og_image } : null,
+      views: (() => { try { return db.db.prepare('SELECT COUNT(*) c FROM site_views WHERE slug = ?').get(s.slug).c; } catch { return 0; } })(),
+    };
+  });
   res.json({ sites });
 });
 
+// v2.5.0, item #30: per-site SEO/meta + password settings, and local
+// analytics (page-view counts — no third party, no cookies beyond the
+// password session cookie).
+router.get('/websites/:slug/settings', auth.requireAuth, (req, res) => {
+  const site = db.getWebsite(req.user.id, req.params.slug);
+  if (!site) return res.status(404).json({ error: 'Website not found.' });
+  const st = getSiteSettings(req.params.slug);
+  res.json({
+    slug: site.slug, passwordProtected: Boolean(st && st.password_hash),
+    seo: st ? { title: st.seo_title, description: st.seo_description, keywords: st.seo_keywords, ogImage: st.og_image } : { title: null, description: null, keywords: null, ogImage: null },
+  });
+});
+
+router.post('/websites/:slug/settings', auth.requireAuth, (req, res) => {
+  const site = db.getWebsite(req.user.id, req.params.slug);
+  if (!site) return res.status(404).json({ error: 'Website not found.' });
+  const { seo, password, clearPassword } = req.body || {};
+  const fields = {};
+  if (seo && typeof seo === 'object') {
+    if (seo.title !== undefined) fields.seoTitle = String(seo.title).slice(0, 120);
+    if (seo.description !== undefined) fields.seoDescription = String(seo.description).slice(0, 300);
+    if (seo.keywords !== undefined) fields.seoKeywords = String(seo.keywords).slice(0, 300);
+    if (seo.ogImage !== undefined) fields.ogImage = String(seo.ogImage).slice(0, 500);
+  }
+  if (password) {
+    if (typeof password !== 'string' || password.length < 4) return res.status(400).json({ error: 'Site password must be at least 4 characters.' });
+    fields.passwordHash = hashSitePassword(password);
+  } else if (clearPassword) fields.passwordHash = null;
+  const st = upsertSiteSettings(req.params.slug, fields);
+  // Rebuild the published HTML so the new SEO meta lands in <head>
+  // (password protection applies immediately at serve time).
+  try {
+    const p = getProjectOr404(req, site.project_id);
+    if (p) {
+      const rebuild = async () => {
+        if (p.type === 'design') {
+          const { validateDesign } = require('../design-model');
+          if (validateDesign(p.content).ok) buildWebsite({ kind: 'design', title: p.name, design: p.content, mediaById: {}, outDir: site.dir, seo: siteSeo(site.slug) });
+        } else if (p.type === 'deck') {
+          if (validateDeck(p.content).ok) buildWebsite({ kind: 'deck', title: p.name, deck: p.content, mediaById: {}, outDir: site.dir, seo: siteSeo(site.slug) });
+        } else if (p.type === 'doc') {
+          if (validateDoc(p.content).ok) buildWebsite({ kind: 'doc', title: p.name, doc: p.content, mediaById: {}, outDir: site.dir, seo: siteSeo(site.slug) });
+        }
+      };
+      rebuild().catch((e) => console.error('[docs-slides] site rebuild failed:', e.message));
+    }
+  } catch { /* settings still saved */ }
+  res.json({ ok: true, slug: site.slug, passwordProtected: Boolean(st && st.password_hash), seo: { title: st.seo_title, description: st.seo_description, keywords: st.seo_keywords, ogImage: st.og_image } });
+});
+
+router.get('/websites/:slug/analytics', auth.requireAuth, (req, res) => {
+  const site = db.getWebsite(req.user.id, req.params.slug);
+  if (!site) return res.status(404).json({ error: 'Website not found.' });
+  res.json(siteAnalytics(req.params.slug));
+});
+
 router.post('/websites/publish', auth.requireAuth, (req, res) => {
-  const { projectId } = req.body || {};
+  const { projectId, seo, password, clearPassword } = req.body || {};
   if (!projectId) return res.status(400).json({ error: 'projectId is required.' });
   const p = getProjectOr404(req, projectId);
   if (!p) return res.status(404).json({ error: 'Project not found.' });
@@ -435,13 +574,29 @@ router.post('/websites/publish', auth.requireAuth, (req, res) => {
       // URL) instead of minting a second live site with a new random slug.
       const existing = db.getWebsiteByProject(req.user.id, p.id);
       const slug = existing ? existing.slug : slugify(p.name);
+      // v2.5.0, item #30: SEO/meta + password protection are saved with
+      // the site and applied on (re)publish.
+      if (seo || password || clearPassword) {
+        const fields = {};
+        if (seo && typeof seo === 'object') {
+          if (seo.title !== undefined) fields.seoTitle = String(seo.title).slice(0, 120);
+          if (seo.description !== undefined) fields.seoDescription = String(seo.description).slice(0, 300);
+          if (seo.keywords !== undefined) fields.seoKeywords = String(seo.keywords).slice(0, 300);
+          if (seo.ogImage !== undefined) fields.ogImage = String(seo.ogImage).slice(0, 500);
+        }
+        if (password) {
+          if (typeof password !== 'string' || password.length < 4) throw new Error('Site password must be at least 4 characters.');
+          fields.passwordHash = hashSitePassword(password);
+        } else if (clearPassword) fields.passwordHash = null;
+        upsertSiteSettings(slug, fields);
+      }
       const outDir = siteDir(slug);
       if (existing) {
         // Wipe the old build so stale assets from the previous version do
         // not linger alongside the new one.
         try { fs.rmSync(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
       }
-      const built = buildWebsite({ kind: p.type, title: p.name, design, deck, doc, mediaById, chartFiles, outDir });
+      const built = buildWebsite({ kind: p.type, title: p.name, design, deck, doc, mediaById, chartFiles, outDir, seo: siteSeo(slug) });
       try { fs.rmSync(workDir, { recursive: true, force: true }); } catch { /* ignore */ }
       const site = existing
         ? db.updateWebsite(req.user.id, existing.id, { kind: p.type, title: p.name, dir: outDir })
@@ -466,6 +621,10 @@ router.delete('/websites/:slug', auth.requireAuth, (req, res) => {
 });
 
 // Public site serving (mounted at /sites in server.js — no auth).
+// v2.5.0, item #30: password-protected sites ask for the password first
+// (a simple form; a correct password sets a session cookie for that site
+// only). Every authorised page view is counted in site_views (local
+// analytics). Custom domains stay out — local hosting only.
 function siteStatic(req, res, next) {
   const parts = req.path.split('/').filter(Boolean);
   const slug = parts[0];
@@ -474,15 +633,32 @@ function siteStatic(req, res, next) {
   if (!site) return res.status(404).send('Site not found.');
   const rel = parts.slice(1).join('/') || 'index.html';
   if (rel.includes('..')) return res.status(400).send('Bad path.');
+  const settings = getSiteSettings(slug);
+  const cookieName = `cs_site_${slug.replace(/[^A-Za-z0-9]/g, '')}`;
+  const cookies = {};
+  for (const pair of String(req.headers.cookie || '').split(';')) {
+    const [k, ...v] = pair.trim().split('=');
+    if (k) cookies[k] = decodeURIComponent(v.join('='));
+  }
+  if (settings && settings.password_hash) {
+    const pw = req.query.pw || (req.body && req.body.pw);
+    if (pw && checkSitePassword(pw, settings.password_hash)) {
+      res.cookie(cookieName, '1', { httpOnly: true, sameSite: 'lax', maxAge: 24 * 3600 * 1000 });
+    } else if (cookies[cookieName] !== '1') {
+      return res.status(401).send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Password protected</title><style>body{font-family:Inter,Arial,sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}form{background:#fff;padding:32px;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.1);width:min(92vw,360px)}input{width:100%;padding:14px;border:1px solid #d1d5db;border-radius:8px;font-size:16px;box-sizing:border-box;margin:12px 0}button{width:100%;padding:14px;border:none;border-radius:8px;background:#7c5cff;color:#fff;font-size:16px;min-height:44px;cursor:pointer}</style></head><body><form method="GET"><h2 style="margin:0">🔒 ${escHtml(site.title)}</h2><p style="color:#6b7280">This site is password protected.</p><input type="password" name="pw" placeholder="Site password" autofocus><button type="submit">Open site</button></form></body></html>`);
+    }
+  }
   const file = path.join(site.dir, rel);
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return res.status(404).send('Page not found.');
+  if (rel === 'index.html') recordSiteView(slug, rel);
   res.sendFile(file);
 }
 
 // --- Print ----------------------------------------------------------------------
 router.post('/print/pdf', auth.requireAuth, async (req, res) => {
-  const { projectId, design, deck, doc, sizeId = 'a4', bleedMm = 3, marginMm = 10 } = req.body || {};
+  const { projectId, design, deck, doc, sizeId = 'a4', bleedMm = 3, marginMm = 10, colorSpace = 'rgb' } = req.body || {};
   if (!PRINT_SIZES[sizeId]) return res.status(400).json({ error: `Unknown print size: ${sizeId}.` });
+  if (!['rgb', 'cmyk'].includes(colorSpace)) return res.status(400).json({ error: "colorSpace must be 'rgb' or 'cmyk'." });
   let designs = null;
   let name = 'print';
   try {
@@ -550,8 +726,8 @@ router.post('/print/pdf', auth.requireAuth, async (req, res) => {
     }
     const filename = `${String(name).replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 60) || 'print'}-print.pdf`;
     const outPath = path.join(workDir, filename);
-    const result = await designsToPrintPdf(designs, { sizeId, bleedMm: Number(bleedMm), marginMm: Number(marginMm), mediaById, chartFiles, workDir, outPath });
-    db.audit(req.user.id, 'print_pdf', 'project', projectId || null, `Print-ready PDF (${result.size}, ${result.pages} pages, ${bleedMm}mm bleed)`);
+    const result = await designsToPrintPdf(designs, { sizeId, bleedMm: Number(bleedMm), marginMm: Number(marginMm), mediaById, chartFiles, workDir, outPath, colorSpace });
+    db.audit(req.user.id, 'print_pdf', 'project', projectId || null, `Print-ready PDF (${result.size}, ${result.pages} pages, ${bleedMm}mm bleed, ${colorSpace.toUpperCase()})`);
     sendDownload(res, outPath, filename);
   } catch (err) {
     console.error('[print] failed:', err);

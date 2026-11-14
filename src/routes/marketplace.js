@@ -24,7 +24,8 @@ const KINDS = ['design', 'video', 'deck'];
 
 // Built-in template library (v2.2.4): 26 templates (20 design, 3 video,
 // 3 deck) — real editable projects, searchable/browsable here. Installing
-// one creates a real project of the matching type.
+// one creates a real project of the matching type. v2.5.0: 6 more built-ins
+// (résumé, logo, certificate, menu, invitation, presentation set).
 router.get('/builtin', auth.requireAuth, (req, res) => {
   const kind = KINDS.includes(req.query.kind) ? req.query.kind : '';
   const q = String(req.query.q || '').trim().toLowerCase();
@@ -40,12 +41,109 @@ router.get('/builtin', auth.requireAuth, (req, res) => {
   });
 });
 
+// --- v2.5.0 #56: trending feed + guided placeholder swap -------------------
+// Trending = the community's most-installed templates on this install,
+// plus the newest built-ins. When the community list is still empty (a
+// fresh install), the feed says so and shows the built-in starters
+// instead — labelled as starters, never as if they were trending installs.
+const TRENDING_BUILTIN_IDS = ['builtin-resume', 'builtin-logo', 'builtin-certificate', 'builtin-menu', 'builtin-birthday-invite', 'builtin-deck-presentation-set'];
+router.get('/trending', auth.requireAuth, (req, res) => {
+  const community = db.listMarketplaceTemplates({ q: '', kind: '' })
+    .sort((a, b) => (b.downloads || 0) - (a.downloads || 0)).slice(0, 8)
+    .map(publicTemplate);
+  const starters = TRENDING_BUILTIN_IDS
+    .map((id) => builtinTemplate(id)).filter(Boolean)
+    .map((t) => ({ id: t.id, name: t.name, category: t.category, size: t.size, kind: t.kind, builtin: true, width: t.width, height: t.height }));
+  res.json({
+    trending: community,
+    trendingSource: community.length ? 'community-installs' : 'none-yet',
+    starters,
+    rows: {
+      forYou: listBuiltinTemplates().slice(0, 8).map((t) => ({ id: t.id, name: t.name, category: t.category, size: t.size, kind: t.kind, builtin: true, width: t.width, height: t.height })),
+      trending: community.length ? community : starters,
+      commercial: listBuiltinTemplates().filter((t) => ['Business', 'Promo'].includes(t.category)).map((t) => ({ id: t.id, name: t.name, category: t.category, size: t.size, kind: t.kind, builtin: true, width: t.width, height: t.height })),
+      social: listBuiltinTemplates().filter((t) => t.category === 'Social').map((t) => ({ id: t.id, name: t.name, category: t.category, size: t.size, kind: t.kind, builtin: true, width: t.width, height: t.height })),
+    },
+    note: community.length
+      ? 'Trending is ranked by installs on this install.'
+      : 'No community template has been installed yet — trending is empty, so the feed shows new built-in starters instead.',
+  });
+});
+
+// Placeholders of a built-in template: image layers (swap the picture)
+// and text layers whose name/text reads like a placeholder ("YOUR …",
+// "Photo placeholder", "Your Name" …). The guided swap flow in the UI
+// offers exactly these — nothing is guessed from other layers.
+//
+// Layer ids are STABLE across builds: listBuiltinTemplates() rebuilds the
+// template (and its random layer ids) on every call, so a layerId returned
+// by GET /placeholders would not exist in the fresh build used by POST
+// /install. The placeholder id is therefore the layer's index
+// ("layer:<index>"), resolved back to that index at install time.
+function templatePlaceholders(t) {
+  const out = [];
+  const content = t.content || {};
+  if (t.kind === 'design' && Array.isArray(content.layers)) {
+    for (let i = 0; i < content.layers.length; i++) {
+      const layer = content.layers[i];
+      if (layer.type === 'image') {
+        out.push({ layerId: `layer:${i}`, index: i, name: layer.name || 'Image', kind: 'image', currentText: '' });
+      } else if (layer.type === 'text') {
+        const text = String((layer.text && layer.text.text) || '');
+        const name = String(layer.name || '');
+        if (/^(YOUR|Your Name|Your Title|Your Business|Your Property|YOUR PROPERTY)/.test(name)
+          || /^(YOUR|Your Name|Your Title|Your Business|Your Property|YOUR PROPERTY)/.test(text)
+          || /placeholder/i.test(name)) {
+          out.push({ layerId: `layer:${i}`, index: i, name: name || 'Text', kind: 'text', currentText: text });
+        }
+      }
+    }
+  }
+  return out;
+}
+router.get('/builtin/:id/placeholders', auth.requireAuth, (req, res) => {
+  const t = builtinTemplate(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Template not found.' });
+  res.json({ template: { id: t.id, name: t.name, kind: t.kind }, placeholders: templatePlaceholders(t) });
+});
+
 router.post('/builtin/:id/install', auth.requireAuth, (req, res) => {
   const t = builtinTemplate(req.params.id);
   if (!t) return res.status(404).json({ error: 'Template not found.' });
-  const p = db.createProject(req.user.id, { name: `${t.name} (template)`, type: t.kind, content: t.content });
-  db.audit(req.user.id, 'builtin_template_install', 'project', p.id, `Installed built-in template "${t.name}" (${t.kind}) as project ${p.id}`);
-  res.status(201).json({ installed: { type: 'project', id: p.id, name: p.name, kind: p.type }, template: { id: t.id, name: t.name, kind: t.kind } });
+  // Guided placeholder swap (v2.5.0 #56): swaps = [{ layerId, text?, mediaId? }]
+  // applied to the template content BEFORE the project is created, so the
+  // installed project already carries the user's own picture/text.
+  const swaps = Array.isArray((req.body || {}).swaps) ? req.body.swaps : [];
+  let content = t.content;
+  if (swaps.length && t.kind === 'design' && content && Array.isArray(content.layers)) {
+    const byId = new Map(content.layers.map((l) => [l.id, l]));
+    for (const s of swaps) {
+      // Stable placeholder ids are "layer:<index>" (see templatePlaceholders);
+      // a raw layer id also resolves, for a swap sent against the same build.
+      let layer = null;
+      const m = /^layer:(\d+)$/.exec(String(s.layerId || ''));
+      if (m) layer = content.layers[Number(m[1])] || null;
+      else layer = byId.get(s.layerId) || null;
+      if (!layer) return res.status(400).json({ error: `Placeholder layer ${s.layerId} not found in this template.` });
+      if (s.mediaId !== undefined && s.mediaId !== null) {
+        if (layer.type !== 'image') return res.status(400).json({ error: `Layer "${layer.name || layer.id}" is not an image placeholder — pick a text swap for it instead.` });
+        const m = db.getMedia(req.user.id, Number(s.mediaId));
+        if (!m) return res.status(400).json({ error: `Media ${s.mediaId} not found in your library.` });
+        layer.image = { ...(layer.image || {}), mediaId: m.id, src: `/api/media/${m.id}/file` };
+        layer.name = m.original_name || layer.name;
+      }
+      if (s.text !== undefined && s.text !== null) {
+        if (layer.type !== 'text') return res.status(400).json({ error: `Layer "${layer.name || layer.id}" is not a text placeholder.` });
+        if (typeof s.text !== 'string' || !s.text.trim() || s.text.length > 500) {
+          return res.status(400).json({ error: 'Swap text must be 1–500 characters.' });
+        }
+        layer.text = { ...(layer.text || {}), text: s.text.trim() };
+      }
+    }
+  }
+  const p = db.createProject(req.user.id, { name: `${t.name} (template)`, type: t.kind, content });
+  db.audit(req.user.id, 'builtin_template_install', 'project', p.id, `Installed built-in template "${t.name}" (${t.kind}) as project ${p.id}${swaps.length ? ` with ${swaps.length} placeholder swap(s)` : ''}`);
+  res.status(201).json({ installed: { type: 'project', id: p.id, name: p.name, kind: p.type }, template: { id: t.id, name: t.name, kind: t.kind }, swapsApplied: swaps.length });
 });
 
 function publicTemplate(t) {

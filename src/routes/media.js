@@ -10,6 +10,9 @@ const db = require('../db');
 const auth = require('../auth');
 const config = require('../config');
 const { probeMedia, makeThumbnail } = require('../ffmpeg');
+// v2.5.0 #37 — canonical waveform endpoint (render-side handler lives in
+// routes/video.js; the same handler also serves /api/video/media/:id/waveform).
+const { waveformHandler } = require('./video');
 
 const router = express.Router();
 
@@ -135,6 +138,10 @@ router.get('/:id/thumbnail', auth.requireAuth, (req, res) => {
   res.type('image/jpeg');
   fs.createReadStream(filePath).pipe(res);
 });
+
+// v2.5.0 #37 — audio waveform peaks for the timeline (100–200 values 0..1;
+// 404 when the media has no audio). Same handler as /api/video/media/:id/waveform.
+router.get('/:id/waveform', auth.requireAuth, waveformHandler);
 
 router.patch('/:id', auth.requireAuth, (req, res) => {
   const { tags, favorite, folderId, licenseNote } = req.body || {};

@@ -26,6 +26,23 @@ const MODE_PARAMS = {
   'music-generate': ['prompt', 'duration'],
   'write': ['prompt', 'task', 'tone', 'length'],
   'deck': ['topic', 'slideCount', 'style', 'audience'],
+  // v2.5.0 new modes.
+  'autocut': ['mediaIds', 'template', 'musicMediaId', 'name'],
+  'editpilot': ['projectId', 'prompt', 'alternate'],
+  'seedance': ['providerId', 'prompt', 'sourceMediaId', 'duration', 'aspect', 'seedanceMode', 'editPrompt'],
+  'video-enhance': ['mediaId', 'kind', 'strength'],
+  'video-translate': ['mediaId', 'fromLanguage', 'toLanguage', 'voiceProfileId'],
+  'director': ['title', 'premise', 'characters', 'episodes'],
+  'avatar': ['script', 'photoMediaId', 'voiceProfileId', 'name'],
+  'infinite-canvas': ['prompt', 'skill'],
+  'lyrics': ['mediaId', 'language'],
+  'ai-lab': ['topic', 'kind', 'count'],
+  'batch-edit': ['projectIds', 'op'],
+  'retouch': ['mediaId', 'kind', 'intensity'],
+  'bilingual': ['mediaId', 'language', 'secondLanguage', 'speakers'],
+  'transcript-edit': ['mediaId', 'cues', 'keepText'],
+  'silence-remove': ['mediaId', 'thresholdDb', 'minDuration', 'keepPadding'],
+  'magic-grab': ['mediaId', 'x', 'y'],
 };
 
 function cleanParams(mode, body) {
@@ -47,7 +64,62 @@ router.get('/status', auth.requireAuth, (req, res) => {
       configured: list.some((p) => p.configured),
     };
   }
-  res.json({ kinds: byKind, modes: ai.AI_MODES });
+  // v2.5.0: extended providers (Kling/Veo/PixVerse/Sora/Seedance,
+  // Seedream/Nano Banana, Pexels) — same shape, listed under their kind.
+  const ext = ai.extendedProviderStatus();
+  for (const p of ext) {
+    if (!byKind[p.kind]) byKind[p.kind] = { active: db.getActiveProvider(p.kind), providers: [], configured: false };
+    byKind[p.kind].providers.push(p);
+    if (p.configured) byKind[p.kind].configured = true;
+    if (db.getActiveProvider(p.kind) === p.id) byKind[p.kind].active = p.id;
+  }
+  res.json({ kinds: byKind, modes: ai.AI_MODES, extendedProviders: ext, canvasSkills: ai.CANVAS_SKILLS });
+});
+
+// v2.5.0: save / remove a key for an extended provider (encrypted store,
+// same as the core providers in routes/system.js — which only knows the
+// core registry). Pexels included (id 'pexels', kind 'stock').
+router.post('/providers/:id/key', auth.requireAuth, auth.requireRole('OWNER', 'ADMIN'), (req, res) => {
+  const { encrypt } = require('../crypto-util');
+  const { key } = req.body || {};
+  const def = ai.getExtendedProvider(req.params.id);
+  if (!def) return res.status(404).json({ error: 'Unknown extended provider. Core providers are managed in Settings → AI Providers.' });
+  if (!key || typeof key !== 'string' || key.trim().length < 8) {
+    return res.status(400).json({ error: 'A valid API key is required (at least 8 characters).' });
+  }
+  db.upsertProvider(def.id, def.label, encrypt(key.trim()), 'stored');
+  db.audit(req.user.id, 'provider_key_saved', 'provider', null, `API key saved for ${def.label} (encrypted, never shown in full)`);
+  res.json({ ok: true, provider: ai.extendedProviderStatus().find((p) => p.id === def.id) });
+});
+
+router.delete('/providers/:id/key', auth.requireAuth, auth.requireRole('OWNER', 'ADMIN'), (req, res) => {
+  const def = ai.getExtendedProvider(req.params.id);
+  if (!def) return res.status(404).json({ error: 'Unknown extended provider.' });
+  db.upsertProvider(def.id, def.label, null, 'none');
+  db.audit(req.user.id, 'provider_key_removed', 'provider', null, `API key removed for ${def.label}`);
+  res.json({ ok: true });
+});
+
+// Set the active provider per kind (extended ids included).
+router.post('/providers/active', auth.requireAuth, auth.requireRole('OWNER', 'ADMIN'), (req, res) => {
+  const { kind, provider } = req.body || {};
+  const ext = ai.getExtendedProvider(provider);
+  if (!ext || ext.kind !== kind) return res.status(400).json({ error: `Unknown extended provider "${provider}" for kind "${kind}".` });
+  db.setActiveProvider(kind, provider);
+  db.audit(req.user.id, 'provider_active_set', 'provider', null, `Active ${kind} provider set to ${ext.label}`);
+  res.json({ ok: true, kind, provider });
+});
+
+// --- Silence detection (sync, local FFmpeg) — #45 --------------------------
+router.post('/silence/detect', auth.requireAuth, async (req, res) => {
+  const { mediaId, thresholdDb, minDuration } = req.body || {};
+  if (!mediaId) return res.status(400).json({ error: 'mediaId is required.' });
+  try {
+    const out = await ai.detectSilenceFor(req.user.id, { mediaId, thresholdDb, minDuration });
+    res.json(out);
+  } catch (err) {
+    res.status(400).json({ error: String(err.message || err).slice(0, 500) });
+  }
 });
 
 // --- Jobs ---

@@ -35,6 +35,20 @@ function handleStockError(res, err) {
 }
 
 router.get('/search', auth.requireAuth, async (req, res) => {
+  // v2.5.0 addendum: type=video searches Pexels (key-gated); without a
+  // Pexels key it keeps the honest NO_VIDEO_SEARCH 400. Result shape
+  // matches image/audio: { results: [{id,title,url,thumbUrl,
+  // durationSeconds,source:'pexels'}], total }.
+  if (req.query.type === 'video') {
+    try {
+      const out = await openverse.searchPexelsVideos({ q: req.query.q || '', page: req.query.page || 1 });
+      return res.json(out);
+    } catch (err) {
+      if (err && err.code === 'NO_VIDEO_SEARCH') return res.status(400).json({ error: err.message, code: 'NO_VIDEO_SEARCH' });
+      if (err && err.code === 'PEXELS_KEY_INVALID') return res.status(401).json({ error: err.message, code: 'PEXELS_KEY_INVALID' });
+      return handleStockError(res, err);
+    }
+  }
   const type = req.query.type === 'audio' ? 'audio' : req.query.type === 'image' ? 'image' : null;
   if (!type) {
     return res.status(400).json({
@@ -57,6 +71,15 @@ router.get('/search', auth.requireAuth, async (req, res) => {
 });
 
 router.get('/item/:type/:id', auth.requireAuth, async (req, res) => {
+  if (req.params.type === 'video') {
+    try {
+      const item = await openverse.getPexelsVideo(req.params.id);
+      return res.json({ item });
+    } catch (err) {
+      if (err && err.code === 'NO_VIDEO_SEARCH') return res.status(400).json({ error: err.message, code: 'NO_VIDEO_SEARCH' });
+      return handleStockError(res, err);
+    }
+  }
   try {
     const item = await openverse.getOpenverseItem(req.params.type, req.params.id);
     res.json({ item });
@@ -68,6 +91,23 @@ router.get('/item/:type/:id', auth.requireAuth, async (req, res) => {
 router.post('/save', auth.requireAuth, async (req, res) => {
   const { type, id } = req.body || {};
   if (!type || !id) return res.status(400).json({ error: 'Stock type and asset id are required.' });
+  if (type === 'video') {
+    try {
+      const out = await openverse.savePexelsVideoToLibrary(req.user.id, id);
+      return res.status(out.duplicate ? 200 : 201).json({
+        media: publicMedia(out.media),
+        duplicate: out.duplicate,
+        attribution: out.attribution,
+        note: out.duplicate
+          ? 'Already in your Media Library — the existing file was returned, no second copy was made.'
+          : 'Saved to your Media Library. The attribution is stored on the media row (license_note) — keep it when you publish.',
+      });
+    } catch (err) {
+      if (err && err.code === 'NO_VIDEO_SEARCH') return res.status(400).json({ error: err.message, code: 'NO_VIDEO_SEARCH' });
+      if (err && err.code === 'PEXELS_KEY_INVALID') return res.status(401).json({ error: err.message, code: 'PEXELS_KEY_INVALID' });
+      return handleStockError(res, err);
+    }
+  }
   try {
     const out = await openverse.saveToLibrary(req.user.id, type, id);
     res.status(out.duplicate ? 200 : 201).json({
