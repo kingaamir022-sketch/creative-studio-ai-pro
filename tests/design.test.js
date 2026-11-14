@@ -127,7 +127,7 @@ test('health reports Phase 9', async () => {
   const r = await req('/api/health');
   assert.equal(r.status, 200);
   assert.equal(r.json.phase, 9);
-  assert.equal(r.json.version, '2.2.4');
+  assert.equal(r.json.version, '2.3.0');
 });
 
 test('design endpoints require login', async () => {
@@ -315,4 +315,114 @@ test('editor frontend assets are served and contain the export code', async () =
   assert.equal(index.status, 200);
   assert.ok(index.text.includes('/editor.js'), 'index.html must load the editor');
   assert.ok(index.text.includes('fonts.googleapis.com'), 'Google Fonts must be loaded for typography');
+});
+
+/* ---------- v2.3.0 CapCut design pass ---------- */
+
+test('v2.3.0 sidebar: CapCut grouping — every feature under its proper heading, nothing mixed', async () => {
+  const js = await req('/app.js');
+  assert.equal(js.status, 200);
+  const m = js.text.match(/const NAV = (\[[\s\S]*?\n\];)/);
+  assert.ok(m, 'app.js must define the NAV array');
+  const NAV = new Function(`return (${m[1].slice(0, -1)})`)();
+  const sections = NAV.filter((n) => n.section).map((n) => n.section);
+  assert.deepEqual(sections, ['Create', 'AI Studio', 'Edit', 'Bulk & Automation', 'Library', 'Publish & Grow', 'Account'],
+    'sidebar groups must be CapCut-ordered: Create, AI Studio, Edit, Bulk & Automation, Library, Publish & Grow, Account');
+  // Walk the NAV in order and record which section each item sits under.
+  const groupOf = {};
+  let current = null;
+  for (const n of NAV) {
+    if (n.section) { current = n.section; continue; }
+    assert.ok(!groupOf[n.id], `nav item ${n.id} must appear exactly once`);
+    groupOf[n.id] = current;
+  }
+  const expected = {
+    dashboard: 'Create', 'ai-design': 'Create', 'graphic-editor': 'Create', presentations: 'Create', documents: 'Create', charts: 'Create',
+    'ai-studio': 'AI Studio', 'ai-video': 'AI Studio', 'ai-image': 'AI Studio', assistant: 'AI Studio',
+    'video-editor': 'Edit', effects: 'Edit', animation: 'Edit', 'bg-remover': 'Edit', captions: 'Edit',
+    'bulk-design': 'Bulk & Automation', 'bulk-video': 'Bulk & Automation', 'template-builder': 'Bulk & Automation',
+    shorts: 'Bulk & Automation', music: 'Bulk & Automation', voices: 'Bulk & Automation',
+    media: 'Library', stock: 'Library', marketplace: 'Library', projects: 'Library', 'brand-kit': 'Library',
+    social: 'Publish & Grow', calendar: 'Publish & Grow', website: 'Publish & Grow', print: 'Publish & Grow',
+    export: 'Publish & Grow', analytics: 'Publish & Grow',
+    admin: 'Account', settings: 'Account', subscription: 'Account',
+  };
+  assert.equal(Object.keys(groupOf).length, 35, 'sidebar must list all 35 features');
+  for (const [id, section] of Object.entries(expected)) {
+    assert.equal(groupOf[id], section, `${id} must sit under "${section}", not "${groupOf[id]}"`);
+  }
+});
+
+test('v2.3.0 video editor: CapCut left tabs, magnetic timeline, Export top-right', async () => {
+  const js = await req('/video-editor.js');
+  assert.equal(js.status, 200);
+  for (const tab of ['media', 'audio', 'text', 'stickers', 'effects', 'transitions', 'captions', 'filters']) {
+    assert.ok(js.text.includes(`data-ltab="${tab}"`), `video editor left rail must have a ${tab} tab`);
+  }
+  assert.ok(js.text.includes('ve-magnet'), 'timeline must have a Magnet toggle');
+  assert.ok(js.text.includes('ed.magnet !== false'), 'clip-edge snapping must be gated on the Magnet toggle');
+  assert.ok(js.text.includes('magnet: true'), 'magnet must default to on');
+  assert.ok(js.text.includes('⬆ Export'), 'top-right action must be Export (was Render)');
+  assert.ok(js.text.includes('id="ve-goto-export"'), 'Export button must keep its id');
+  assert.ok(js.text.includes("data-seek-clip"), 'Captions tab must let the user jump to a text clip');
+  assert.ok(js.text.includes("tab === 'audio'"), 'Audio tab must list audio files separately from video');
+  assert.ok(js.text.includes("Stickers are not in this editor yet"), 'Stickers tab must be honest that stickers are not built');
+  const css = await req('/video-editor.css');
+  assert.equal(css.status, 200);
+  assert.ok(css.text.includes('.ve-left-rail'), 'left panel must be a rail + panel layout');
+  assert.ok(css.text.includes('flex-direction: column'), 'tab rail must be vertical on desktop');
+  assert.ok(css.text.includes('.ve-playhead::before'), 'playhead must have a visible handle');
+  assert.ok(css.text.includes('--editor-rail-w'), 'rail width must come from the CapCut token');
+  assert.ok(css.text.includes('calc(100vh'), 'editor must fill the viewport like CapCut');
+  assert.ok(css.text.includes('@media (max-width: 860px)'), 'editor must stack on mobile');
+});
+
+test('v2.3.0 graphic editor: vertical icon rail, Elements tab, Export top-right kept', async () => {
+  const js = await req('/editor.js');
+  assert.equal(js.status, 200);
+  assert.ok(js.text.includes('data-tab="add"'), 'Elements tab must keep the data-tab="add" id');
+  assert.ok(js.text.includes('>Elements<'), 'Add tab must be labelled Elements (CapCut)');
+  for (const label of ['Canvas', 'Elements', 'Layers', 'Templates', 'Media', 'Brand']) {
+    assert.ok(js.text.includes(`>${label}<`), `graphic editor rail must have a ${label} tab`);
+  }
+  assert.ok(js.text.includes('id="ed-export-png"'), 'Export PNG must stay top-right');
+  assert.ok(js.text.includes('id="ed-export-jpg"'), 'Export JPG must stay top-right');
+  const css = await req('/editor.css');
+  assert.equal(css.status, 200);
+  assert.ok(css.text.includes('.ed-tabs'), 'graphic editor must style the tab rail');
+  assert.ok(css.text.includes('flex-direction: column'), 'graphic editor rail must be vertical on desktop');
+});
+
+test('v2.3.0 tokens: CapCut tokens defined in dark AND light — no token left dark-only', async () => {
+  const css = await req('/tokens.css');
+  assert.equal(css.status, 200);
+  const [dark, light] = css.text.split('[data-theme="light"] {');
+  assert.ok(light, 'tokens.css must have a light-theme block');
+  // Width token: same in both themes, defined once.
+  assert.ok(dark.includes('--editor-rail-w:'), 'rail width token must be defined');
+  // Colour tokens: must exist in BOTH themes (light parity, not dark-only).
+  for (const tok of ['--editor-rail-bg', '--editor-rail-active', '--timeline-bg', '--timeline-track-bg',
+    '--timeline-ruler', '--playhead', '--snap-guide', '--stage-bg',
+    '--clip-video', '--clip-audio', '--clip-text', '--export-btn', '--export-btn-hover']) {
+    assert.ok(dark.includes(tok + ':'), `${tok} must be defined in the dark theme`);
+    assert.ok(light.includes(tok + ':'), `${tok} must be defined in the light theme too`);
+  }
+});
+
+test('v2.3.0 light theme: no hardcoded dark chrome left in docs-slides, no duplicate modal rules', async () => {
+  const css = await req('/docs-slides.css');
+  assert.equal(css.status, 200);
+  assert.ok(!css.text.includes('.modal-back {'), 'docs-slides must not duplicate the shared .modal-back rule (it killed the light backdrop)');
+  assert.ok(!css.text.includes('.modal {'), 'docs-slides must not duplicate the shared .modal rule');
+  assert.ok(!css.text.includes('#24304f'), 'chart placeholder must not hardcode a dark background');
+  assert.ok(css.text.includes('--surface-raised'), 'chart placeholder must use a token');
+  assert.ok(css.text.includes('var(--success)'), 'alert colours must use tokens');
+  const styles = await req('/styles.css');
+  assert.equal(styles.status, 200);
+  assert.ok(styles.text.includes('.nav-section'), 'sidebar groups must be styled');
+  assert.ok(styles.text.includes('border-top: 1px solid var(--border)'), 'sidebar groups must be separated');
+  assert.ok(styles.text.includes('.nav-item .txt'), 'nav labels must have overflow rules (never-overflow)');
+  const bulk = await req('/bulk.css');
+  assert.equal(bulk.status, 200);
+  assert.ok(!bulk.text.includes('color: var(--text-2); font-size: 10px'), 'quiz caption bar must not use muted text on a dark phone frame');
 });

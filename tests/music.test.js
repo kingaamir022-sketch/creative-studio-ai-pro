@@ -229,13 +229,13 @@ test('music analysis model: silent audio throws, never guesses a BPM', () => {
 });
 
 /* ---------------- API: auth, health ---------------- */
-test('music API: anonymous gets 401; health reports Phase 9 / 2.2.4', async () => {
+test('music API: anonymous gets 401; health reports Phase 9 / 2.3.0', async () => {
   const anon = await req('/api/music/tracks');
   assert.equal(anon.status, 401);
   const anon2 = await req(`/api/music/tracks/${audio120.id}/analyze`, { method: 'POST' });
   assert.equal(anon2.status, 401);
   const health = await req('/api/health');
-  assert.equal(health.json.version, '2.2.4');
+  assert.equal(health.json.version, '2.3.0');
   assert.equal(health.json.phase, 9);
 });
 
