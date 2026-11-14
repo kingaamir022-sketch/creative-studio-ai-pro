@@ -17,7 +17,7 @@ real-provider or real-platform call has ever run**.
 |---|---------|--------|-------|
 | 1 | Dashboard | Implemented | Real DB counts, recent projects/media, system status (FFmpeg, storage vs plan), notifications, quick actions, global search (projects & media). |
 | 2 | AI Design Studio | Needs credentials | Prompt → editable design (never a flattened image) works through the Phase 7 LLM layer; without an LLM key it refuses with `key_needed`. A clearly-labelled local rule-based layout helper works with no key. |
-| 3 | Graphic Editor | Implemented | Real canvas editor (drag/resize/rotate, layers, undo/redo, snap guides, 12 sizes, 15 fonts, shapes/images/filters/crop, gradient + transparent PNG/JPG export), 8 editable templates, Brand Kit. **Pending:** text curvature (no fake control shown). |
+| 3 | Graphic Editor | Implemented | Real canvas editor (drag/resize/rotate, layers, undo/redo, snap guides, 12 sizes, 15 fonts, shapes/images/filters/crop, gradient + transparent PNG/JPG export), 26 built-in templates (20 design + 3 video + 3 deck, v2.2.4), Brand Kit. **Pending:** text curvature (no fake control shown). |
 | 4 | Video Editor | Implemented | Multi-track timeline (drag/trim/split/ripple/group, markers, snapping, undo/redo), speed/volume/fade/filters, text clips, Fade/Dissolve/Slide/Wipe via FFmpeg xfade, position/scale/opacity keyframes, real FFmpeg render queue. **Pending:** chroma key, stabilisation, proxy editing, speed-ramping curves, motion paths/easing (keyframes interpolate linearly), 4K, a 3rd video track (max 2: main + one overlay/PiP). |
 | 5 | AI Video Generator | Needs credentials | Text-to-video / image-to-video via the Phase 7 provider registry (Runway). Without a video provider key it refuses with `key_needed`. |
 | 6 | AI Image Generator | Needs credentials | Text-to-image / image-to-image (OpenAI Images / Stability). Without an image provider key it refuses with `key_needed`. |
@@ -32,13 +32,13 @@ real-provider or real-platform call has ever run**.
 | 15 | Animation Studio | Implemented | Keyframes (position/scale/opacity, linear interpolation) + text fade/slide/pop animations, auto + manual per-element timing. **v2.2.2 — Magic Animate presets:** 10 one-click presets (fade, slide-up, slide-left, pop, zoom, bounce, float, pulse, spin, typewriter); design presets apply to a layer in the Graphic Editor and preview live with CSS; clip presets expand into real video keyframes held to the clip end. **Still pending:** motion paths, easing curves; typewriter and spin are design-only (drawtext cannot render them — never offered for clips). |
 | 16 | Brand Kit | Implemented | Brand profiles (logos, colours, fonts), one-click apply to designs. |
 | 17 | Media Library | Implemented | Real uploads (image/video/audio, 200 MB default), search/tags/folders/favourites/preview, delete removes the disk file. |
-| 18 | Stock Assets | Pending | Not built. No stock library, no downloads from any stock source. The sidebar shows an honest "not yet built" state. (Music is user-provided/licensed only by design.) |
+| 18 | Stock Assets | Implemented (v2.2.4) | Free stock images + audio via Openverse (key-free anonymous API, verified live) — search by keyword/license/category, preview, save straight into the Media Library with attribution + license recorded; re-saving the same asset returns the existing row (duplicate skipped, never a second copy). **Honest limit:** Openverse has no video search (images + audio only) — the UI says so plainly; stock video stays an upload-your-own-file flow. |
 | 19 | Social Media Creator | Implemented | Compose + attach from library, real per-platform char limits, AI caption/hashtags via Phase 7 LLM (**needs an LLM key**; local template captions are clearly labelled, never "AI"), drafts/scheduling, scheduler. Publishing **only via official platform APIs when connected** — no platform is connected on a fresh install, so Publish refuses with `NOT_CONNECTED`; never a fake publish. **Pending:** TikTok video upload (initialises, chunk upload unimplemented — fails honestly). |
 | 20 | Content Calendar | Implemented | Month view of scheduled posts, schedule/reschedule from the composer, scheduler runs due posts (every 15 s + manual run). |
 | 21 | Export Center | Implemented | Render-job list, download, save-to-library, ZIP. Formats actually offered: PNG/JPG designs, MP4 video at 720p/1080p. **Pending:** WebP/SVG, MOV/WebM, 4K, custom naming. |
 | 22 | Projects | Implemented | CRUD, duplicate, trash/restore/permanent delete, autosave, version history (latest 20) + restore, per-user ownership. |
-| 23 | Templates Marketplace | Implemented | In-app only (no external store): publish design/video templates, browse/search, install = a real editable project, rate, report. **Pending:** bulk-job templates are not publishable. |
-| 24 | AI Assistant | Pending | Not built. No project-aware assistant ("make this more professional", "create five versions"). The sidebar shows an honest "not yet built" state. |
+| 23 | Templates Marketplace | Implemented | In-app only (no external store): publish design/video/deck templates, browse/search, install = a real editable project, rate, report. **v2.2.4:** built-in library grown 8 → 26 (20 design + 3 video + 3 deck), all validated and installable from the Marketplace view; decks publishable too. **Pending:** bulk-job templates are not publishable. |
+| 24 | AI Assistant | Implemented (v2.2.4) | Project-aware assistant: summarise a project, suggest improvements, "make this more professional" (design + deck), "create five versions" (design). Every action creates a NEW project — the original is never edited in place. Needs an LLM key (free Gemini works); without one it refuses 402 `PROVIDER_KEY_NEEDED` and creates nothing. |
 | 25 | Analytics | Implemented | DB-only numbers: renders over time, AI generations by mode, posts by status/platform, storage, top templates, credit burn. No invented benchmarks. |
 | 26 | Settings | Implemented | Provider keys (AES-256-GCM encrypted, never returned in full), Google Sheets OAuth config, platform connections, profile, preferences. |
 | 27 | Subscription & Credits | Implemented | Plans Free/Starter/Pro/Business/Enterprise, transparent credit ledger (charge on success, pre-flight 402 block at 0 balance), usage history. **No payment gateway by design** — plan changes are OWNER-approved requests; no payment is taken in this build. |
@@ -79,9 +79,102 @@ were already taken by the other 14 suites).
   never render. Fixed in `src/design-render.js` (link joins the first
   filter with no comma); the deck/chart/print flows exposed it. The video
   renderer (`src/render.js`) was checked and does not have the pattern.
-- **Still pending after v2.2.3:** Stock Assets, AI Assistant, Magic Switch
-  (incl. translate), template-library depth, live co-editing (v2.2.4);
-  the CapCut design pass (v2.3.0); CMYK conversion for print PDFs.
+- **Still pending after v2.2.3:** the CapCut design pass (v2.3.0); CMYK
+  conversion for print PDFs. Stock Assets, AI Assistant, Magic Switch
+  (incl. translate), template-library depth and the updater overlay were
+  all built in v2.2.4 — see §1c below. Live co-editing is out of scope by
+  design (share + comments only, §1c).
+
+## 1c. v2.2.4 addendum — Library & Assistant (Release D)
+
+**Version:** 2.2.4 · **Date:** 2026-11-14 · **Suite:** `npm test` — **217/217 pass**
+(new `tests/library-assistant.test.js`, 22 tests, port 4846 — ports 4831–4845
+were already taken by the other 15 suites).
+
+- **Stock Assets:** `src/openverse.js` + `src/routes/stock.js` + `public/stock.js`.
+  Search Openverse (images + audio, key-free anonymous access — verified
+  live from the build machine: anonymous tier, 20 req/min burst, 200/day,
+  page_size max 20). Save downloads the file, ffprobe-probes it, stores it
+  in the Media Library with attribution + license in `license_note`, tags
+  `stock,openverse`; re-saving the same Openverse id returns the existing
+  row (`duplicate: true`) — never a second copy. **Openverse has no video
+  endpoint** (verified: `/v1/media/?media_type=video` 404s; images + audio
+  only) — the UI and API say so plainly (`NO_VIDEO_SEARCH`, 400) instead
+  of pretending video search exists. Bug fixed along the way: Openverse's
+  audio path is singular (`/v1/audio/`, not `/v1/audios/`) — the first
+  version built `${type}s/` and every audio search/save 404'd.
+- **Template library 8 → 26:** `src/design-templates.js` — 20 design, 3 video
+  (text-clip timelines, no media needed), 3 deck (fit-checked, uniform quiz
+  fonts). Every built-in is validated at build time (design / timeline /
+  deck-fit + per-layer fit). The Marketplace gained `GET /api/marketplace/builtin`
+  (search/category/kind) and `POST /api/marketplace/builtin/:id/install`
+  (installs a real editable project of the matching type); decks can now
+  be published too.
+- **Magic Switch:** `src/magic-switch.js` + `POST /api/magic/switch` —
+  convert a design between the 12 size presets (local reflow, `reflowDesign`,
+  never-overflow report with `needsAttention`) and translate its text via
+  the LLM (14 languages incl. Urdu + Roman Urdu; `{{PLACEHOLDER}}` bindings
+  preserved). Always creates a NEW project; the original is untouched.
+  No LLM key → 402 `PROVIDER_KEY_NEEDED`, nothing created.
+- **AI Assistant:** `src/assistant.js` + `src/routes/assistant.js` +
+  `public/assistant.js` — `summarise`, `suggest`, `make-professional`
+  (design + deck; deck quiz/chart slides are kept unchanged),
+  `five-versions` (design only, exactly 5). All via the LLM abstraction;
+  all changes create NEW projects, never edit in place. Costs: 1 credit
+  (`ai_write`) for summarise/suggest, 2 (`ai_design`) per created project.
+- **Collaboration:** `src/routes/collab.js` + `public/collab.js` — read-only
+  share link (per-project token, revocable) + per-user share by email +
+  comments with one level of replies (open/resolved, owner-or-author
+  resolve/delete) + "Shared with me" list + public read-only view
+  (`GET /api/collab/shared/:token`, no login, name/type/content only, no
+  owner details). **No live co-editing** — stated in the UI and here;
+  shares are view-only by design.
+- **LLM active-provider UI fix (real bug found live):** the Settings →
+  AI Providers "Active provider per kind" dropdown only rendered for
+  kinds `['image', 'tts']` — there was no way to change the active LLM
+  provider, so a configured Gemini key sat unused while every LLM job
+  failed against OpenAI (no key). Fixed in `public/app.js`: the kinds
+  list is now derived from the providers actually present, so every kind
+  with 2+ providers (including `llm`) gets a dropdown. Verified end to
+  end: switch to Gemini, run a quiz job, the mock Gemini (not OpenAI)
+  is called.
+- **Gemini default model gemini-2.0-flash → gemini-3.8-flash:** Google
+  retired 2.0-flash (404: "no longer available… use gemini-3.8-flash").
+  Default + model list changed in `src/providers.js`; a stored override
+  naming a retired model is upgraded at resolve time (`RETIRED_MODELS`
+  map); a 404 model-not-found names the working alternative in the
+  error instead of a raw dump (`friendlyModelError`).
+- **Retry + fallback + friendly errors (user hit live: Gemini 503 on a
+  quiz job, failed at 5% with a raw JSON dump):** `src/providers.js`
+  `fetchWithRetry` retries transient statuses (429/502/503/504) up to 4
+  attempts with backoff 2s/5s/10s (env `AI_RETRY_DELAYS_MS` overrides,
+  used by tests); `chatJson` in `src/ai.js` tries each candidate model
+  with the full retry budget, then falls back to the next known-good
+  model (e.g. gemini-3.8-flash → gemini-2.5-flash) before failing, and
+  records the model that finally succeeded in the job result
+  (`result.model`, `meta.modelsTried`). `friendlyProviderError` turns
+  every provider failure into one plain line (what happened + what to
+  do); raw detail goes to the server log only. The same retry + friendly
+  treatment was applied to every other provider call site (image, video,
+  STT, TTS, music, voice cloning — `src/ai.js`, `src/magic-image.js`,
+  `src/voice.js`). 500 is deliberately NOT retried.
+- **Bug fixed along the way (real, found by the new tests):**
+  `upsertProviderConfig` used `COALESCE(excluded.model, provider_config.model)`,
+  so clearing the model field (empty string → NULL) was indistinguishable
+  from "don't change" — an emptied field silently kept the old, possibly
+  retired, model. The function now computes the next values in JS and
+  assigns them outright: empty string clears the override, `undefined`
+  keeps the current value. This mattered live: the retired-model error
+  message tells users to clear the model field.
+- **Updater upgrade (node_modules overlay):** update packages may now
+  carry a verified `node_modules` overlay, so a release that adds a
+  production dependency installs in-app — `fullReinstall` is no longer
+  needed for that. Full design in `docs/UPDATER.md`. This release
+  (2.2.4) adds no new production dependency, so its package ships with
+  `fullReinstall: false` and no overlay.
+- **Still pending after v2.2.4:** the CapCut design pass (v2.3.0); CMYK
+  conversion for print PDFs; live co-editing (out of scope by design);
+  text curvature; TikTok upload; A vs B quiz format; 4K / 3rd video track.
 
 **Global UI:** global search (projects & media) — Implemented; notification
 centre — Implemented (real DB notifications); user profile — Implemented;
@@ -97,18 +190,23 @@ simplified mobile layout — Implemented as designed.
 | Graphic Design Studio | Implemented (text curvature Pending; Magic Resize + Magic Animate presets live in v2.2.2) |
 | Video Editor | Implemented (chroma key, stabilisation, speed ramping, proxy editing, 4K, 3rd track Pending) |
 | Magic Tools (v2.2.2) | Implemented: Magic Resize (local reflow), Magic Animate presets (10), Magic Eraser (needs image key), Magic Expand (AI needs key; solid/blur local), Background Remover + Magic Grab (free local ONNX, no key), Magic Write (LLM, needs key; free Gemini works) |
+| Magic Switch (v2.2.4) | Implemented: reflow between the 12 size presets + LLM translate (14 languages incl. Urdu + Roman Urdu); always creates a new project; no key → 402 `PROVIDER_KEY_NEEDED` |
+| Stock Assets (v2.2.4) | Implemented: Openverse images + audio (key-free), save to Media Library with attribution; no video search (Openverse has none) |
+| AI Assistant (v2.2.4) | Implemented: summarise, suggest, make-professional (design + deck), five-versions (design); new projects only, never edits in place; needs an LLM key |
+| Collaboration (v2.2.4) | Implemented: read-only share link + per-user share + comments (replies, resolve). No live co-editing (out of scope by design) |
+| Updater overlay (v2.2.4) | Implemented: verified `node_modules` overlay in update packages (SHA-256 per file, backup + rollback cover it, native modules refused) — new production dependencies no longer need fullReinstall. Design: `docs/UPDATER.md` |
 | Docs & Slides (v2.2.3) | Implemented (AI deck generation needs an LLM key; CMYK print Pending) |
 | Bulk Video Studio + Dynamic Background Engine | Implemented (AI/prompt backgrounds need an image key; A vs B quiz Pending) |
 | AI Music Sync Director | Implemented (AI generation/mood need keys; multi-track mixing Pending) |
 | Long Video to Shorts | Implemented (face tracking Pending; 60-min end-to-end render not run) |
 | AI Captions (Urdu/Roman Urdu/Arabic RTL/Hindi) | Implemented (auto-transcription needs an STT key) |
 | AI Image/Video generation | Needs credentials (image / video provider key) |
-| Effects & asset library | Implemented (Effects list is honest about what is not built; Stock Assets Pending) |
+| Effects & asset library | Implemented (Effects list is honest about what is not built; Stock Assets live in v2.2.4) |
 | Brand Kit | Implemented |
 | Social Media Studio | Implemented (publishing needs a connected platform; TikTok upload Pending) |
 | Export Center | Implemented (WebP/SVG/MOV/WebM/4K Pending) |
 | Media Library | Implemented |
-| AI Assistant | Pending |
+| AI Assistant | Implemented (v2.2.4 — see §1c) |
 | Project management | Implemented |
 | Accounts & subscriptions | Implemented (no payment gateway — OWNER-approved requests) |
 | Admin panel | Implemented (OWNER/ADMIN only) |
@@ -129,7 +227,7 @@ simplified mobile layout — Implemented as designed.
 | `.env.example` | Implemented (no real secrets in it) |
 | Install + deployment guides | Implemented (`docs/INSTALL.md`, `docs/DEPLOYMENT.md`) |
 | API docs | Implemented (`docs/API.md`) |
-| Automated tests | Implemented (`npm test`, 195 tests, all passing — v2.2.3) |
+| Automated tests | Implemented (`npm test`, 217 tests, all passing — v2.2.4) |
 | Error handling / honest errors | Implemented (`key_needed`, `NOT_CONNECTED`, 402 credit block, clear messages; never a fake success) |
 | Production build | Pending (no build step by design; see `docs/DEPLOYMENT.md` for the production notes) |
 
@@ -170,8 +268,9 @@ simplified mobile layout — Implemented as designed.
 - A vs B quiz format not built; 5-question quiz video at 3s countdown =
   38s, not 45–60s (60s+ needs 8 questions or a 5–6s countdown).
 - Max 2 video tracks, no 4K, no chroma key/stabilisation/proxy editing,
-  no motion paths/easing, no face/subject tracking, no AI Assistant, no stock assets,
-  no Magic Switch (incl. translate), no CMYK print conversion, no live co-editing.
+  no motion paths/easing, no face/subject tracking, no CMYK print
+  conversion, no live co-editing (share + comments only, by design).
+  Stock Assets, AI Assistant and Magic Switch ARE built (v2.2.4).
   Background remover and Magic Grab ARE built (v2.2.2, free local ONNX model) —
   the "no vision model, no background remover" line is retired. Presentations,
   Documents, Charts, Website and Print ARE built (v2.2.3).
@@ -262,11 +361,14 @@ simplified mobile layout — Implemented as designed.
 No production code was changed for a feature in Phase 9 — only the three
 blurb corrections above. All fixes were re-verified by the full suite.
 
-## 8. What remains after Phase 9
+## 8. What remains after v2.2.4
 
-1. **Final redesign** (user rule): redesign the whole project to the
-   world's best professional designs — every feature, nothing left out.
+1. **Final redesign — v2.3.0 CapCut design pass** (user rule): redesign the
+   whole project to the world's best professional designs — every feature,
+   every option, one consistent CapCut-style design, strict grouping
+   (Effects under Effects, Transitions under Transitions, nothing mixed).
 2. Provider keys (Settings → AI Providers, secure entry — never in chat)
    to make AI modes, AI backgrounds, TTS/cloning, and STT run for real.
+   (Gemini free key is already configured on the user's PC and tested OK.)
 3. Platform connections (Settings → Connections) to publish for real.
 4. Google OAuth credentials for Sheets import (Settings → Google Sheets).

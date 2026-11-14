@@ -78,6 +78,28 @@ under `/api`. JSON unless a route says otherwise (multipart for uploads).
 | `POST /api/projects/:id/versions/:versionId/restore` | Restore a version. |
 | `GET/POST/DELETE /api/projects/folders…` | Project folders. |
 
+## Collaboration (v2.2.4) — share + comments, read-only
+
+| Route | Notes |
+|-------|-------|
+| `POST /api/collab/projects/:id/link` | Create (201) or return (200, `alreadyExists: true`) the read-only share link `{ link: { token, url, createdAt } }`. Owner only. |
+| `POST /api/collab/projects/:id/link/reveal` | Return the full token to the owner (the shares list masks it). |
+| `DELETE /api/collab/projects/:id/link` | Revoke the link. |
+| `POST /api/collab/projects/:id/share` | Share with a user by email `{ email }` → 201 (or 200, `alreadyShared: true`). 404 if the email is not a user of this install. |
+| `GET /api/collab/projects/:id/shares` | Link + per-user shares. |
+| `DELETE /api/collab/projects/:id/share/:userId` | Remove a per-user share. |
+| `GET /api/collab/shared-with-me` | Projects shared with you (read-only). |
+| `GET /api/collab/projects/:id/view` | Read-only view of a shared project. |
+| `POST /api/collab/projects/:id/leave` | Stop accessing a shared project. |
+| `GET /api/collab/shared/:token` | Public read-only view (no login) — project name/type/content only, no owner details. |
+| `GET /api/collab/projects/:id/comments` | Comment threads with replies. |
+| `POST /api/collab/projects/:id/comments` | Add a comment (or a reply with `parentId`). |
+| `POST /api/collab/projects/:id/comments/:commentId/resolve` | Resolve / reopen (owner or author). |
+| `DELETE /api/collab/projects/:id/comments/:commentId` | Delete (owner or author). |
+
+All shares are read-only; there is **no live co-editing** by design.
+Non-owner `PATCH /api/projects/:id` returns 404.
+
 ## Media Library
 
 | Route | Notes |
@@ -96,12 +118,30 @@ under `/api`. JSON unless a route says otherwise (multipart for uploads).
 |-------|-------|
 | `GET /api/design/sizes`, `GET /api/design/fonts` | Ready-made sizes (12) and fonts (15). |
 | `POST /api/design/validate` | Validate a design JSON. |
-| `GET /api/design/templates`, `GET /api/design/templates/:id` | 8 editable starter templates. |
+| `GET /api/design/templates`, `GET /api/design/templates/:id` | 26 built-in templates (20 design + 3 video + 3 deck), all real editable projects. |
 | `POST /api/design/templates`, `DELETE /api/design/templates/:id` | Save/delete a template. |
 | `GET/POST/PATCH/DELETE /api/design/brands…` | Brand Kit CRUD. |
 
 Designs are stored as project `content` (see Projects); the editor
 exports PNG/JPG (transparent PNG supported) via the Export Center.
+
+## Magic Tools
+
+| Route | Notes |
+|-------|-------|
+| `GET /api/magic/switch/targets` | The 12 size presets + 14 translate languages. |
+| `POST /api/magic/switch` | `{ projectId, targetSizeId, translateTo?, name? }` → `201 { project, sourceProjectId, target, language, translated, report }`. Reflows the design to the target size (never-overflow report, `needsAttention` list) and, when `translateTo` is given, translates its text via the LLM (`{{PLACEHOLDER}}` bindings preserved). Always creates a NEW project; the original is untouched. No LLM key → 402 `PROVIDER_KEY_NEEDED`, nothing created. |
+
+## Stock Assets (v2.2.4)
+
+| Route | Notes |
+|-------|-------|
+| `GET /api/stock/search?type=image\|audio&q=…&licenseType=…&category=…` | Free stock search via Openverse (key-free). Returns `{ results, note }` — each result has `url`, `thumbnail`, `creator`, `license`, `license_url`, `attribution`, width/height (images) or `duration` (audio). |
+| `GET /api/stock/item/:type/:id` | One Openverse item. |
+| `POST /api/stock/save` | `{ type, id }` → `201 { media }` (new) or `200 { media, duplicate: true }` (already saved — never a second copy). Downloads the file, ffprobe-probes it, stores it in the Media Library with attribution + license recorded. |
+
+**Honest limit:** Openverse has no video search (images + audio only).
+`type=video` is refused with 400 `NO_VIDEO_SEARCH`.
 
 ## Video Editor & rendering
 
@@ -197,12 +237,28 @@ position. Never a virality claim.
 |-------|-------|
 | `GET /api/ai/status` | Mode availability + key status. |
 | `GET /api/ai/jobs`, `GET /api/ai/jobs/:id` | AI jobs. |
-| `POST /api/ai/jobs` | `{ mode, input }` — modes: text-to-image, image-to-image, text-to-video, image-to-video, ai-voice, ai-quiz-questions, ai-design-assist, ai-transcribe, music-mood-tags, ai-music. Costs credits. |
+| `POST /api/ai/jobs` | `{ mode, ...params }` — params at the TOP level (e.g. `{ mode: 'quiz', topic, count, difficulty, language }`), not nested under `input`. Modes: text-to-image, image-to-image, text-to-video, image-to-video, ai-voice, ai-quiz-questions, ai-design-assist, ai-transcribe, music-mood-tags, ai-music, deck. Costs credits. The quiz result records the model that finally succeeded (`result.model`) — see Retry & fallback below. |
 | `POST /api/ai/jobs/:id/cancel` / `retry` | Cancel / retry. |
 | `DELETE /api/ai/jobs/:id` | Delete. |
 
 Results are saved to the Media Library. Without the right provider key
 the job is refused with `PROVIDER_KEY_NEEDED` and creates no output.
+
+**Retry & fallback (v2.2.4):** transient provider errors (429/502/503/504)
+are retried automatically — up to 4 attempts with backoff 2s/5s/10s
+(`AI_RETRY_DELAYS_MS` env overrides the delays) — and a model that
+returns 404 (retired) or stays overloaded falls back to the next
+known-good model before the job fails. Failures are reported as one plain
+line (what happened + what to do); raw provider detail goes to the server
+log only, never to the user. The same retry + friendly treatment applies
+to image, video, STT, TTS and music provider calls.
+
+## AI Assistant (v2.2.4)
+
+| Route | Notes |
+|-------|-------|
+| `GET /api/assistant/actions` | Actions + LLM provider status (is a key configured?). |
+| `POST /api/assistant/:action` | `action` = `summarise` \| `suggest` \| `make-professional` \| `five-versions`; body `{ projectId }`. `summarise`/`suggest` work on any project type; `make-professional` on design + deck; `five-versions` on design only. Every action that changes anything creates a NEW project — the original is never edited in place. Needs an LLM key (402 `PROVIDER_KEY_NEEDED` without one). Costs: 1 credit (`ai_write`) for summarise/suggest, 2 (`ai_design`) per created project. Unknown action → 400. |
 
 ## Social Media Studio
 
@@ -275,8 +331,10 @@ balance blocks with 402. **No payment is taken anywhere.**
 | Route | Notes |
 |-------|-------|
 | `GET /api/marketplace` | Browse/search published templates. |
+| `GET /api/marketplace/builtin` | The 26 built-in templates (search/category/kind filter; `{ templates, categories, counts: { design, video, deck }, note }`). |
+| `POST /api/marketplace/builtin/:id/install` | Install a built-in → a real editable project of the matching type. |
 | `GET /api/marketplace/:id` | One template. |
-| `POST /api/marketplace` | Publish one of your design/video projects. |
+| `POST /api/marketplace` | Publish one of your design/video/deck projects (requires `name`). |
 | `GET /api/marketplace/mine/all` | Your published templates. |
 | `POST /api/marketplace/:id/install` | Install → a real editable project copy. |
 | `POST /api/marketplace/:id/rate` | Rate 1–5. |

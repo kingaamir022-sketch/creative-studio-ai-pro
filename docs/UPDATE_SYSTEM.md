@@ -26,8 +26,9 @@ No delete/reinstall, no file download by the user.
    **every file's SHA-256 is verified**. If anything does not match, the
    package is rejected and nothing changes. Only app-code files are allowed
    (`server.js`, `package.json`, `Start.bat`, `src/`, `public/`, `docs/`,
-   `scripts/`, `.github/`) — never `.env`, never `data/`, never
-   `uploads/`/`renders/`, never `node_modules/`, never `node.exe`/FFmpeg.
+   `scripts/`, `.github/`) plus, since v2.2.4, a verified `node_modules/`
+   overlay of new dependency files (see `docs/UPDATER.md`) — never `.env`,
+   never `data/`, never `uploads/`/`renders/`, never `node.exe`/FFmpeg.
    The current files are backed up first (last 2 backups kept); on any
    failure the backup is restored and the real error is reported.
 
@@ -65,27 +66,43 @@ when the check never ran.
 
 ## Full-reinstall updates
 
-If a release changes dependencies, the manifest sets `fullReinstall: true`
-and the app **never applies it in place** — it says plainly that the update
-needs a fresh download (new portable/source package from Drive). The
-publish script takes `--full-reinstall` for this.
+If a release changes dependencies in a way the overlay cannot carry
+(native modules — `.node` binaries / `binding.gyp` — or anything over the
+overlay caps), the manifest sets `fullReinstall: true` and the app **never
+applies it in place** — it says plainly that the update needs a fresh
+download (new portable/source package from Drive). The publish script
+takes `--full-reinstall` for this.
+
+Since v2.2.4, a release that only adds **pure-JS** production dependencies
+does NOT need fullReinstall: the package carries a verified
+`node_modules` overlay (every file SHA-256 checked, backup + rollback
+cover it, native files refused). Full design: `docs/UPDATER.md`.
 
 ## What an update package does NOT contain
 
-`node_modules`, `node.exe`, `bin/` (FFmpeg), `data/`, `uploads/`,
-`renders/`, `tests/`, `.env` — those stay from the install. That is why a
-dependency change needs a full reinstall instead of an in-place update.
+`node.exe`, `bin/` (FFmpeg), `data/`, `uploads/`, `renders/`, `tests/`,
+`.env` — those stay from the install. `node_modules` is the one exception
+since v2.2.4: a package **may** carry a verified overlay of new
+dependency files only (never the whole folder, never native binaries).
+That is why a native-dependency change still needs a full reinstall
+instead of an in-place update.
 
 ## Files
 
 - `src/updater.js` — core (check / stage / apply / rollback / backup /
-  Windows batch / auto-check loop)
+  Windows batch / auto-check loop); the node_modules overlay design is
+  documented in `docs/UPDATER.md`
 - `src/routes/updates.js` — API + auto-apply handler
 - `scripts/publish-update.js` — builds the package + manifest
+  (`--with-deps` / `--deps` for the overlay, `--full-reinstall` for
+  native-dependency releases)
 - `src/db.js` — `app_settings` table (feed settings)
 - `data/updates/state.json` — runtime state (last check, available,
   staged, history, dismissals); `data/updates/backup-*` — backups
 - API: `GET /api/updates/status`, `POST /api/updates/check`,
   `POST /api/updates/apply`, `POST /api/updates/rollback`,
   `POST /api/updates/dismiss`, `GET/POST /api/updates/settings`
-- Tests: `tests/update.test.js` (12 tests, mock feed, temp app copy)
+- Tests: `tests/update.test.js` (12 tests, mock feed, temp app copy) and
+  the overlay tests in `tests/library-assistant.test.js` (apply + rollback
+  end to end, tampered-hash / traversal / native refusal, publish-time
+  dep diff)
