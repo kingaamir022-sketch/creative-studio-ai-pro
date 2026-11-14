@@ -267,11 +267,11 @@ test('captions: normaliseCues clamps, sorts and trims overlaps', () => {
 
 /* ---------- API: jobs, transcripts, review ---------- */
 
-test('shorts API: anonymous gets 401; health reports Phase 9 / 2.2.3', async () => {
+test('shorts API: anonymous gets 401; health reports Phase 9 / 2.2.4', async () => {
   const anon = await req('/api/shorts/jobs');
   assert.equal(anon.status, 401);
   const h = await req('/api/health');
-  assert.equal(h.json.version, '2.2.3');
+  assert.equal(h.json.version, '2.2.4');
   assert.equal(h.json.phase, 9);
 });
 

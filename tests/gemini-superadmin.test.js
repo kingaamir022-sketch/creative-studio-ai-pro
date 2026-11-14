@@ -6,7 +6,7 @@
 // call to Google ever happens: every LLM call in this file goes to the mock.
 // Covers:
 //  - Gemini is registered (kind llm, free-tier label, OpenAI-compatible
-//    base URL, gemini-2.0-flash / gemini-2.5-flash) and OpenAI stays the
+//    base URL, gemini-3.8-flash / gemini-2.5-flash) and OpenAI stays the
 //    default active LLM provider
 //  - the LLM key-needed error names Gemini as the free alternative
 //  - quiz generation routes through Gemini when it is the active provider
@@ -59,7 +59,7 @@ function mockHandler(req, res) {
     let json = null;
     try { json = JSON.parse(body.toString('utf8')); } catch { json = null; }
     if (req.method === 'GET' && url.pathname === '/models') {
-      return sendJson(200, { data: [{ id: 'gemini-2.0-flash' }, { id: 'gemini-2.5-flash' }] });
+      return sendJson(200, { data: [{ id: 'gemini-3.8-flash' }, { id: 'gemini-2.5-flash' }] });
     }
     if (req.method === 'POST' && url.pathname === '/chat/completions') {
       mockState.chatCount += 1;
@@ -174,7 +174,8 @@ test('Gemini: provider is registered as a free-tier LLM with the OpenAI-compatib
   assert.match(gemini.label, /Gemini/i);
   assert.match(gemini.label, /free tier/i);
   assert.equal(gemini.defaultBaseUrl, 'https://generativelanguage.googleapis.com/v1beta/openai');
-  assert.ok(gemini.models.includes('gemini-2.0-flash'), 'gemini-2.0-flash listed');
+  assert.ok(gemini.models.includes('gemini-3.8-flash'), 'gemini-3.8-flash listed');
+  assert.ok(!gemini.models.includes('gemini-2.0-flash'), 'retired gemini-2.0-flash must not be listed');
   assert.ok(gemini.models.includes('gemini-2.5-flash'), 'gemini-2.5-flash listed');
   assert.equal(gemini.configured, false, 'no key configured yet');
   assert.match(gemini.about || '', /free/i, 'about text says the key is free');
@@ -211,7 +212,7 @@ test('Gemini: quiz generation routes through Gemini when it is the active LLM pr
   assert.ok(job.result && Array.isArray(job.result.questions), 'quiz result has questions');
   assert.equal(job.result.questions.length, 3, 'exactly 3 questions generated');
   assert.equal(mockState.chatCount, 1, 'exactly one chat/completions call hit the mock');
-  assert.equal(mockState.lastChat.model, 'gemini-2.0-flash', 'the mock was called with the Gemini default model');
+  assert.equal(mockState.lastChat.model, 'gemini-3.8-flash', 'the mock was called with the Gemini default model');
   assert.equal(mockState.lastChat.auth, 'Bearer mock-gemini-key-12345', 'Bearer key auth used');
   assert.equal(mockState.lastChat.responseFormat && mockState.lastChat.responseFormat.type, 'json_object', 'JSON mode requested');
 });

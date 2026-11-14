@@ -108,8 +108,10 @@ test('design model: validateDesign accepts a full design and rejects bad ones', 
 });
 
 test('design model: built-in templates are real editable designs', () => {
-  const list = listBuiltinTemplates();
-  assert.ok(list.length >= 8, `expected >= 8 templates, got ${list.length}`);
+  // Design-only list: the full library also holds video + deck templates
+  // (listBuiltinTemplates() with no kind), which have no .design.
+  const list = listBuiltinTemplates('design');
+  assert.ok(list.length >= 20, `expected >= 20 design templates, got ${list.length}`);
   for (const t of list) {
     assert.ok(t.design.layers.length >= 3, `${t.id} has too few layers`);
     assert.equal(validateDesign(t.design).ok, true, `${t.id}: ${JSON.stringify(validateDesign(t.design).errors)}`);
@@ -125,7 +127,7 @@ test('health reports Phase 9', async () => {
   const r = await req('/api/health');
   assert.equal(r.status, 200);
   assert.equal(r.json.phase, 9);
-  assert.equal(r.json.version, '2.2.3');
+  assert.equal(r.json.version, '2.2.4');
 });
 
 test('design endpoints require login', async () => {
