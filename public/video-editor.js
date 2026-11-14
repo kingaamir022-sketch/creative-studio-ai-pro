@@ -102,6 +102,15 @@ window.VideoEditor = (function () {
     const m = Math.floor(t / 60), s = t - m * 60;
     return `${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}`;
   };
+  // v2.7.0 — CapCut-style timecode HH:MM:SS:FF for the preview transport
+  // (frames from the timeline fps; the ruler and clip labels keep fmtT).
+  const fmtTC = (t) => {
+    const fps = (ed && ed.timeline && ed.timeline.fps) || 30;
+    const totalFrames = Math.max(0, Math.floor(t * fps + 1e-6));
+    const ff = totalFrames % fps;
+    const s = Math.floor(totalFrames / fps);
+    return `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}:${String(ff).padStart(2, '0')}`;
+  };
 
   function blankTimeline(aspectId, fps) {
     const aspects = { '16:9': [1280, 720], '9:16': [720, 1280], '1:1': [720, 720], '4:5': [720, 900] };
@@ -379,7 +388,7 @@ window.VideoEditor = (function () {
       }).join('');
     }
     const timeEl = document.getElementById('ve-time');
-    if (timeEl) timeEl.textContent = `${fmtT(t)} / ${fmtT(totalDuration(tl))}`;
+    if (timeEl) timeEl.textContent = `${fmtTC(t)} / ${fmtTC(totalDuration(tl))}`;
     const ph = document.getElementById('ve-playhead');
     if (ph) ph.style.left = `calc(92px + ${t * ed.pxPerSec}px)`;
   }
@@ -466,6 +475,10 @@ window.VideoEditor = (function () {
       }).join('');
       beatRuler = `<div class="ve-beat-ruler" title="Beat grid — ${ms.bpm} BPM, ${esc(ms.trackName || '')}" style="width:${width}px">${ticks}</div>`;
     }
+    // v2.7.0 — CapCut empty state: shown only when the timeline has no
+    // clips at all; it is also a drop target (files upload + land as clips).
+    const isEmpty = allClips(tl).length === 0;
+    const emptyState = isEmpty ? `<div class="ve-empty" id="ve-empty" title="Drop videos, photos or audio here, or click to open the Media panel"><span class="ve-empty-ico">🎞️</span><span>Drag material here and start to create</span></div>` : '';
     host.innerHTML = `
       <div class="ve-ruler" id="ve-ruler" style="width:${width + 92}px">${ticks.join('')}</div>
       ${beatRuler}
@@ -473,6 +486,7 @@ window.VideoEditor = (function () {
         <div style="position:relative;min-width:${width + 92}px">
           ${markers}
           ${tracksHtml}
+          ${emptyState}
           <div class="ve-playhead" id="ve-playhead" style="left:calc(92px + ${ed.playhead * ed.pxPerSec}px)"></div>
         </div>
       </div>`;
@@ -481,6 +495,26 @@ window.VideoEditor = (function () {
       ed.playhead = clamp((e.clientX - rect.left) / ed.pxPerSec, 0, total);
       updatePreview();
     });
+    const emptyEl = host.querySelector('#ve-empty');
+    if (emptyEl) {
+      emptyEl.addEventListener('click', () => switchLeftTab('media'));
+      emptyEl.addEventListener('dragover', (e) => { e.preventDefault(); emptyEl.classList.add('ve-drop'); });
+      emptyEl.addEventListener('dragleave', () => emptyEl.classList.remove('ve-drop'));
+      emptyEl.addEventListener('drop', async (e) => {
+        e.preventDefault(); emptyEl.classList.remove('ve-drop');
+        const files = [...(e.dataTransfer.files || [])].filter((f) => /^(video|audio|image)\//.test(f.type));
+        if (!files.length) { toast('Drop videos, photos or audio files here.', true); return; }
+        for (const f of files) {
+          const fd = new FormData(); fd.append('file', f);
+          try {
+            const up = await apiForm('/api/media/upload', fd);
+            const m = up.media || up;
+            addMediaClip({ id: m.id, kind: m.kind || (f.type.startsWith('audio') ? 'audio' : 'video'), originalName: m.originalName || f.name, durationSeconds: m.durationSeconds });
+          } catch (err) { toast(err.message, true); return; }
+        }
+        toast('Uploaded and added to the timeline.');
+      });
+    }
     host.querySelectorAll('[data-lock]').forEach((b) => b.addEventListener('click', () => {
       const tr = ed.timeline.tracks.find((x) => x.id === b.dataset.lock);
       if (tr) { ed.pushHistory(); tr.locked = !tr.locked; ed.saveSoon(); renderAll(); }
@@ -511,6 +545,7 @@ window.VideoEditor = (function () {
     host.querySelectorAll('.ve-clip').forEach((el) => {
       el.addEventListener('pointerdown', (e) => onClipPointerDown(e, el));
       el.addEventListener('click', (e) => {
+        if (ed.toolMode === 'split') return; // the Split tool already split on pointerdown
         if (e.detail === 1) {
           // v2.5.0 — multi-select: Ctrl/Cmd toggles one clip, Shift selects
           // the range on the same track, plain click selects one clip.
@@ -740,6 +775,8 @@ window.VideoEditor = (function () {
     renderAll();
     const bar = document.getElementById('ve-compound-bar');
     if (bar) bar.style.display = 'flex';
+    const sq = document.getElementById('ve-seq-name');
+    if (sq) sq.textContent = `Compound — ${clip.name}`;
     toast('Editing inside the compound clip — use ← Back to return.');
   }
   function exitCompound() {
@@ -754,6 +791,8 @@ window.VideoEditor = (function () {
     saveSoon(); renderAll();
     const bar = document.getElementById('ve-compound-bar');
     if (bar) bar.style.display = ed.compoundStack.length ? 'flex' : 'none';
+    const sq = document.getElementById('ve-seq-name');
+    if (sq && !ed.compoundStack.length) sq.textContent = 'Player-Timeline 01';
   }
 
   // v2.5.0 — right-click context menus (clip / empty area / track head).
@@ -1010,6 +1049,15 @@ window.VideoEditor = (function () {
     const { clip, track } = found;
     if (track.locked) { toast('This track is locked. Unlock it to edit clips.', true); return; }
     e.preventDefault();
+    // v2.7.0 — Split tool: clicking a clip splits it at the clicked time
+    // instead of starting a drag.
+    if (ed.toolMode === 'split') {
+      const lane = el.closest('.ve-lane');
+      const rect = lane ? lane.getBoundingClientRect() : null;
+      const t = rect ? (e.clientX - rect.left) / ed.pxPerSec : ed.playhead;
+      if (splitClipAtTime(clip, track, t)) toast('Clip split.');
+      return;
+    }
     ed.selectedClipId = clip.id;
     if (!ed.selectedClipIds || !ed.selectedClipIds.has(clip.id)) ed.selectedClipIds = new Set([clip.id]);
     renderAll();
@@ -1149,8 +1197,40 @@ window.VideoEditor = (function () {
     const found = ed.selectedClipId ? findClip(ed.timeline, ed.selectedClipId) : null;
     if (tab === 'keyframes') return renderKeyframesTab(host, found);
     if (!found) {
-      host.innerHTML = `<h3>Clip properties</h3><p class="sub">Select a clip on the timeline to edit its properties, filters, transition and keyframes.</p>
-        <p class="sub" style="margin-top:10px">Timeline: ${ed.timeline.width}×${ed.timeline.height} @ ${ed.timeline.fps}fps · ${fmtT(totalDuration(ed.timeline))} total · ${(ed.timeline.markers || []).length} marker(s)</p>`;
+      // v2.7.0 — CapCut "Details" panel: real project facts, shown when no
+      // clip is selected. Proxy is honestly off (not built); Arrange layers
+      // is a real per-project toggle; Modify opens Project settings.
+      const settings = ed.projectSettings || {};
+      const proxy = settings.proxy || {};
+      const aspectId = ASPECTS.find((x) => x.width === ed.timeline.width && x.height === ed.timeline.height);
+      const arrangeOn = ed.timeline.arrangeLayers !== false;
+      const proxyOn = proxy.enabled === true;
+      host.innerHTML = `<h3 class="ve-details-h">Details</h3>
+      <div class="ve-details">
+        <div class="ve-drow"><span>Name:</span><b>${esc(ed.project.name)}</b></div>
+        <div class="ve-drow"><span>Path:</span><span>Project #${ed.project.id}${ed.project.updatedAt ? `<br><small style="color:var(--muted)">updated ${esc(fmtDate(ed.project.updatedAt))}</small>` : ''}</span></div>
+        <div class="ve-drow"><span>Imported media:</span><span>Stay in original location<br><small style="color:var(--muted)">Clips reference your Media Library files in place — nothing is copied into the project.</small></span></div>
+        <div class="ve-drow"><span>Arrange layers ⓘ</span><span><button class="btn btn-sm" id="ve-arrange-toggle" title="When on, new clips auto-place in the first free slot at the playhead; when off, they append after the last clip on the track.">${arrangeOn ? 'Turned on' : 'Turned off'}</button></span></div>
+        <div class="ve-drow"><span>Proxy: ⓘ</span><span><button class="btn btn-sm" id="ve-proxy-note" title="Proxy media is not built in this app.">${proxyOn ? 'Turned on (stored)' : 'Turned off'}</button><br><small style="color:var(--muted)">Proxy media is not built — the preview renders your original files at full quality.</small></span></div>
+        <div class="ve-drow"><span>Aspect ratio:</span><span>Original (${aspectId ? aspectId.id : `${ed.timeline.width}×${ed.timeline.height}`})</span></div>
+        <div class="ve-drow"><span>Resolution:</span><span>Adapted (${ed.timeline.width}×${ed.timeline.height})</span></div>
+      </div>
+      <p class="sub" style="margin-top:10px">Timeline: ${ed.timeline.width}×${ed.timeline.height} @ ${ed.timeline.fps}fps · ${fmtT(totalDuration(ed.timeline))} total · ${(ed.timeline.markers || []).length} marker(s) · ${ed.timeline.tracks.length} track(s)</p>
+      <p class="sub">Select a clip on the timeline to edit its properties, filters, transition and keyframes.</p>
+      <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn btn-sm" id="ve-details-modify">Modify</button></div>`;
+      document.getElementById('ve-arrange-toggle').addEventListener('click', () => {
+        pushHistory();
+        ed.timeline.arrangeLayers = !arrangeOn;
+        saveSoon(); renderAll();
+        toast(ed.timeline.arrangeLayers === false ? 'Arrange layers off — new clips append after the last clip on the track.' : 'Arrange layers on — new clips auto-place in the first free slot at the playhead.');
+      });
+      document.getElementById('ve-proxy-note').addEventListener('click', () => {
+        toast('Proxy media is not built in this app — editing uses your original files at full quality. The proxy setting is stored in Project settings.');
+      });
+      document.getElementById('ve-details-modify').addEventListener('click', () => {
+        if (typeof openProjectSettingsDialog === 'function') { openProjectSettingsDialog(ed.project.id); refreshAfterSettingsDialog(); }
+        else toast('Project settings are available from the Projects view (Ctrl+P).', true);
+      });
       return;
     }
     const { clip } = found;
@@ -1674,6 +1754,7 @@ window.VideoEditor = (function () {
       <div style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-primary" id="ex-render" style="flex:1;justify-content:center">▶ Render video</button>
         <button class="btn btn-sm" id="ex-est">Estimate size</button>
+        <button class="btn btn-sm" id="ex-open-center">📤 Open Export Center</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <button class="btn btn-sm" id="ex-audio-mp3">🎵 Audio only (MP3)</button>
@@ -1728,6 +1809,7 @@ window.VideoEditor = (function () {
       }
     };
     document.getElementById('ex-render').addEventListener('click', () => startRender());
+    document.getElementById('ex-open-center').addEventListener('click', () => go('export'));
     document.getElementById('ex-est').addEventListener('click', async () => {
       const box = document.getElementById('ex-estimate');
       box.textContent = 'Estimating…';
@@ -1837,35 +1919,129 @@ window.VideoEditor = (function () {
     if (tab === 'media') {
       let media = { media: [] };
       try { media = await api('/api/media?kind=video'); } catch { /* ignore */ }
+      let allMedia = { media: [] };
+      try { allMedia = await api('/api/media?limit=200'); } catch { /* ignore */ }
       const items = media.media;
-      body = `<p class="sub">Click a video to add it at the playhead on the video track. Audio lives in the Audio tab.</p>
-        <button class="btn btn-sm" id="ve-upload-media" style="margin-bottom:10px">⬆ Upload media</button>
-        <input type="file" id="ve-media-file" accept="video/*" style="display:none">
-        ${items.length ? items.map((m) => `
+      const byId = {};
+      for (const m of [...(items || []), ...(allMedia.media || [])]) byId[m.id] = m;
+      const aiMedia = (allMedia.media || []).filter((m) => (m.tags || '').includes('ai-generated') || (m.tags || '').includes('ai-processed'));
+      const mediaItem = (m, meta) => `
           <div class="ve-media-item" data-add-media="${m.id}">
-            ${m.thumbnailUrl ? `<img src="${m.thumbnailUrl}" alt="">` : `<span style="font-size:22px">🎬</span>`}
+            ${m.thumbnailUrl ? `<img src="${m.thumbnailUrl}" alt="">` : `<span style="font-size:22px">${m.kind === 'audio' ? '🎵' : m.kind === 'image' ? '🖼️' : '🎬'}</span>`}
             <div><div class="nm">${esc(m.originalName)}</div>
-            <div class="mt">${m.kind}${m.durationSeconds ? ` · ${m.durationSeconds.toFixed(1)}s` : ''}${m.width ? ` · ${m.width}×${m.height}` : ''}${m.fps ? ` · ${m.fps}fps` : ''}</div></div>
-          </div>`).join('') : '<p class="sub">No video in your library yet. Upload some first.</p>'}
+            <div class="mt">${meta}</div></div>
+          </div>`;
+      const videoItemsHtml = items.length ? items.map((m) => mediaItem(m, `${m.kind}${m.durationSeconds ? ` · ${m.durationSeconds.toFixed(1)}s` : ''}${m.width ? ` · ${m.width}×${m.height}` : ''}${m.fps ? ` · ${m.fps}fps` : ''}`)).join('') : '<p class="sub">No video in your library yet. Upload some first.</p>';
+      const allItemsHtml = (allMedia.media || []).length ? (allMedia.media || []).map((m) => mediaItem(m, `${m.kind}${m.durationSeconds ? ` · ${m.durationSeconds.toFixed(1)}s` : ''}${m.width ? ` · ${m.width}×${m.height}` : ''}`)).join('') : '<p class="sub">Your Media Library is empty — upload something first.</p>';
+      const aiItemsHtml = aiMedia.length ? aiMedia.map((m) => mediaItem(m, `${m.kind}${m.durationSeconds ? ` · ${m.durationSeconds.toFixed(1)}s` : ''} · AI-generated`)).join('') : '<p class="sub">No AI-generated media yet — create some in AI Studio and it lands here.</p>';
+      const timelineClips = allClips(ed.timeline).slice().sort((a, b) => a.clip.start - b.clip.start);
+      const timelineClipsHtml = timelineClips.length ? timelineClips.map(({ clip, track }) => `
+          <div class="ve-media-item" data-seek-clip="${clip.id}">
+            <span style="font-size:22px">🎬</span>
+            <div><div class="nm">${esc(clip.name)}</div>
+            <div class="mt">${esc(track.name)} · ${fmtT(clip.start)} – ${fmtT(clip.start + clip.duration)}</div></div>
+          </div>`).join('') : '<p class="sub">No clips on the timeline yet — add media from the Media tab.</p>';
+      const avatarNoteHtml = `<p class="sub" style="margin-top:8px"><b>AI avatars:</b> no visual avatar video exists in this app — avatars are not built. Voices (spoken narration) live in the Voices view.</p><button class="btn btn-sm" id="ve-avatar-open-voices">Open Voices →</button>`;
+      const uploadPickedFiles = async (files) => {
+        const ok = [...(files || [])].filter((f) => /^(video|audio|image)\//.test(f.type));
+        if (!ok.length) { toast('Choose videos, photos or audio files.', true); return; }
+        for (const f of ok) {
+          const fd = new FormData(); fd.append('file', f);
+          try { await apiForm('/api/media/upload', fd); }
+          catch (e) { toast(e.message, true); return; }
+        }
+        toast(`Uploaded ${ok.length} file(s). Probing duration/size…`);
+        renderLeftPanel();
+      };
+      // v2.7.0 — CapCut Media panel: Import menu, Media / Timeline /
+      // Subprojects tabs, Import drop zone, "create with these tools",
+      // collapsible Yours / Generate / Spaces / Library sections.
+      const sub = ed.mediaTab || 'media';
+      const mediaHead = `<div class="ve-import-row"><button class="btn btn-sm btn-primary" id="ve-import-btn">Import ▾</button><input type="file" id="ve-import-file" accept="video/*,audio/*,image/*" multiple style="display:none"></div>
+        <div class="ve-subtabs" style="margin-top:8px">${[['media', 'Media'], ['timeline', 'Timeline'], ['subprojects', 'Subprojects']].map(([id, label]) => `<button class="btn btn-sm ${sub === id ? 'btn-primary' : ''}" data-mtab="${id}">${label}</button>`).join('')}</div>`;
+      const wireMediaHead = () => {
+        host.querySelectorAll('[data-mtab]').forEach((b) => b.addEventListener('click', () => { ed.mediaTab = b.dataset.mtab; renderLeftPanel(); }));
+        const fi = document.getElementById('ve-import-file');
+        if (fi) fi.addEventListener('change', async () => { if (!fi.files.length) return; const files = [...fi.files]; fi.value = ''; await uploadPickedFiles(files); });
+        const impBtn = document.getElementById('ve-import-btn');
+        if (impBtn) impBtn.addEventListener('click', (e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          showMenu(r.left, r.bottom + 6, [
+            { label: 'Import files…', fn: () => document.getElementById('ve-import-file').click() },
+            { label: 'Import from Media Library', fn: () => { ed.openSection = 'library'; renderLeftPanel().then(() => { const d = document.getElementById('ve-sec-library'); if (d) { d.open = true; d.scrollIntoView({ block: 'nearest' }); } }); } },
+          ]);
+        });
+      };
+      if (sub === 'timeline') {
+        body = `${mediaHead}<p class="sub">Clips on this timeline, in order. Click one to jump the playhead to it and select it.</p>${timelineClipsHtml}`;
+        host.innerHTML = body;
+        wireMediaHead();
+        host.querySelectorAll('[data-seek-clip]').forEach((el) => el.addEventListener('click', () => {
+          const found = findClip(ed.timeline, el.dataset.seekClip);
+          if (!found) return;
+          ed.selectedClipId = found.clip.id;
+          ed.selectedClipIds = new Set([found.clip.id]);
+          ed.playhead = found.clip.start;
+          setPlaying(false);
+          renderAll();
+        }));
+        return;
+      }
+      if (sub === 'subprojects') {
+        body = `${mediaHead}<p class="sub">Sub-projects don't exist in this app — projects are flat, with no nested sub-project media.</p><p class="sub">To start something new, create a project from Home → New Project.</p><button class="btn btn-sm btn-primary" id="ve-sub-new">＋ New Project</button>`;
+        host.innerHTML = body;
+        wireMediaHead();
+        document.getElementById('ve-sub-new').addEventListener('click', () => { if (typeof openNewProjectFlow === 'function') openNewProjectFlow(); else go('video-editor'); });
+        return;
+      }
+      body = `${mediaHead}
+        <div class="ve-dropzone" id="ve-dropzone" role="button" tabindex="0" title="Click to choose files, or drag files here"><span class="ve-dz-plus">＋</span><b>Import</b><span class="ve-dz-sub">Drag and drop videos, photos, and audio files here</span></div>
+        <div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;margin:4px 0 2px"><span style="flex:1;border-top:1px solid var(--border)"></span>No media? Create with these tools<span style="flex:1;border-top:1px solid var(--border)"></span></div>
+        <div class="ve-create-tools">
+          <button class="btn" id="ve-create-generate">✨ Generate</button>
+          <button class="btn" id="ve-create-avatars">🪪 AI avatars</button>
+          <button class="btn" id="ve-create-record">🎙️ Record</button>
+        </div>
+        <div id="ve-avatar-note">${ed.avatarNoteShown ? avatarNoteHtml : ''}</div>
+        <details class="ve-section" id="ve-sec-yours" ${ed.openSection !== 'library' && ed.openSection !== 'generate' && ed.openSection !== 'spaces' ? 'open' : ''}><summary>Yours</summary><div class="ve-sec-body"><p class="sub">Your videos — click one to add it at the playhead on the video track. Audio lives in the Audio tab.</p>${videoItemsHtml}</div></details>
+        <details class="ve-section" id="ve-sec-generate" ${ed.openSection === 'generate' ? 'open' : ''}><summary>Generate <span class="ve-ai-badge">AI</span></summary><div class="ve-sec-body"><p class="sub">Media generated by this app's AI — click one to add it at the playhead.</p>${aiItemsHtml}<button class="btn btn-sm" id="ve-gen-open-ai" style="margin-top:6px">Open AI Studio →</button></div></details>
+        <details class="ve-section" id="ve-sec-spaces" ${ed.openSection === 'spaces' ? 'open' : ''}><summary>Spaces</summary><div class="ve-sec-body"><p class="sub">Spaces (cloud projects shared across devices) don't exist in this app — projects live on this machine. The Spaces shortcut on Home opens your local Projects list instead.</p><button class="btn btn-sm" id="ve-spaces-open">Open Projects →</button></div></details>
+        <details class="ve-section" id="ve-sec-library" ${ed.openSection === 'library' ? 'open' : ''}><summary>Library</summary><div class="ve-sec-body"><p class="sub">Everything in your Media Library — click to add at the playhead.</p>${allItemsHtml}</div></details>
         <h3 style="margin-top:14px">Stock video (Pexels)</h3>
         <p class="sub">Free stock video — needs a Pexels API key (free at pexels.com/api; add it in Settings → AI Providers → Stock Video). Without a key this search honestly says so.</p>
         <div class="ve-row"><input type="text" id="ve-stock-video-q" placeholder="Search stock video…" value="${esc(ed.stockVideoQ || '')}"><button class="btn btn-sm" id="ve-stock-video-go">Search</button></div>
         <div id="ve-stock-video-results"><p class="sub">Type a search and press Search.</p></div>`;
       host.innerHTML = body;
-      const fi = document.getElementById('ve-media-file');
-      document.getElementById('ve-upload-media').addEventListener('click', () => fi.click());
-      fi.addEventListener('change', async () => {
-        if (!fi.files.length) return;
-        const fd = new FormData();
-        fd.append('file', fi.files[0]);
-        try {
-          await apiForm('/api/media/upload', fd);
-          toast('Uploaded. Probing duration/size…');
-          renderLeftPanel();
-        } catch (e) { toast(e.message, true); }
+      wireMediaHead();
+      const dz = document.getElementById('ve-dropzone');
+      if (dz) {
+        const fi = document.getElementById('ve-import-file');
+        dz.addEventListener('click', () => fi.click());
+        dz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fi.click(); } });
+        dz.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.add('ve-drop'); });
+        dz.addEventListener('dragleave', () => dz.classList.remove('ve-drop'));
+        dz.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.remove('ve-drop'); uploadPickedFiles(e.dataTransfer.files); });
+      }
+      const wireAvatarNote = () => {
+        const av = document.getElementById('ve-avatar-open-voices');
+        if (av) av.addEventListener('click', () => go('voices'));
+      };
+      wireAvatarNote();
+      document.getElementById('ve-create-generate').addEventListener('click', () => go('ai-studio'));
+      document.getElementById('ve-create-avatars').addEventListener('click', () => {
+        ed.avatarNoteShown = true;
+        const box = document.getElementById('ve-avatar-note');
+        if (box) { box.innerHTML = avatarNoteHtml; wireAvatarNote(); }
+        toast('AI avatars are not built in this app — no visual avatar video exists. Voices live in the Voices view.');
       });
+      document.getElementById('ve-create-record').addEventListener('click', () => {
+        switchLeftTab('audio', 'voiceover');
+        toast('Voiceover — record with your microphone at the playhead.');
+      });
+      document.getElementById('ve-gen-open-ai').addEventListener('click', () => go('ai-studio'));
+      document.getElementById('ve-spaces-open').addEventListener('click', () => go('projects'));
       host.querySelectorAll('[data-add-media]').forEach((el) => el.addEventListener('click', async () => {
-        const m = media.media.find((x) => String(x.id) === el.dataset.addMedia);
+        const m = byId[el.dataset.addMedia];
         if (!m) return;
         addMediaClip(m);
       }));
@@ -2443,8 +2619,14 @@ window.VideoEditor = (function () {
       if (vt.locked) continue;
       const sorted = [...vt.clips].sort((a, b) => a.start - b.start);
       let s = ed.playhead, free = true;
-      for (const c of sorted) {
-        if (s < c.start + c.duration && s + 3 > c.start) { s = c.start + c.duration; }
+      // v2.7.0 — Arrange layers off: the sticker appends after the last
+      // clip on the overlay track instead of filling the first free slot.
+      if (ed.timeline.arrangeLayers === false) {
+        s = sorted.length ? sorted[sorted.length - 1].start + sorted[sorted.length - 1].duration : 0;
+      } else {
+        for (const c of sorted) {
+          if (s < c.start + c.duration && s + 3 > c.start) { s = c.start + c.duration; }
+        }
       }
       overlay = vt; start = s; free = true;
       break;
@@ -2503,11 +2685,17 @@ window.VideoEditor = (function () {
     if (!tr) { toast(`No ${kind} track in this timeline.`, true); return; }
     if (tr.locked) { toast('This track is locked.', true); return; }
     const dur = m.durationSeconds ? Math.min(m.durationSeconds, 600) : 5;
-    // Find the first free slot at/after the playhead on this track.
+    // v2.7.0 — Arrange layers (Details panel): ON = a new clip auto-places
+    // in the first free slot at/after the playhead; OFF = it appends after
+    // the last clip on the track (never overlapping).
     let start = ed.playhead;
     const sorted = [...tr.clips].sort((a, b) => a.start - b.start);
-    for (const c of sorted) {
-      if (start < c.start + c.duration && start + dur > c.start) start = c.start + c.duration;
+    if (ed.timeline.arrangeLayers === false) {
+      start = sorted.length ? sorted[sorted.length - 1].start + sorted[sorted.length - 1].duration : 0;
+    } else {
+      for (const c of sorted) {
+        if (start < c.start + c.duration && start + dur > c.start) start = c.start + c.duration;
+      }
     }
     pushHistory();
     const clip = defaultClip(kind, m.id, start, dur);
@@ -2520,29 +2708,77 @@ window.VideoEditor = (function () {
     saveSoon(); renderAll();
   }
 
+  // v2.7.0 — split one clip at an absolute timeline time (the playhead,
+  // or a click in Split tool mode). Shared by the toolbar, the Split tool
+  // and the Ctrl+B shortcut path (via toolbarActions.split).
+  function splitClipAtTime(clip, track, t) {
+    if (track.locked) { toast('This track is locked.', true); return false; }
+    const rel = t - clip.start;
+    if (rel <= 0.05 || rel >= clip.duration - 0.05) { toast('Split point must be inside the clip.', true); return false; }
+    pushHistory();
+    const right = deep(clip);
+    right.id = uid('clip');
+    right.start = t;
+    right.duration = clip.duration - rel;
+    right.srcStart = clip.srcStart + rel * clip.speed;
+    right.transition = { type: 'none', duration: 0.5 };
+    right.keyframes = (clip.keyframes || []).filter((k) => k.t >= rel).map((k) => ({ ...k, t: k.t - rel }));
+    clip.duration = rel;
+    clip.keyframes = (clip.keyframes || []).filter((k) => k.t < rel);
+    track.clips.push(right);
+    ed.selectedClipId = right.id;
+    ed.selectedClipIds = new Set([right.id]);
+    saveSoon(); renderAll();
+    return true;
+  }
+
+  // v2.7.0 — after the Project settings dialog (Modify / Ctrl+P) closes,
+  // pull the saved name / aspect / fps / settings into the editor shell
+  // without touching the in-memory clips (the dialog only edits those).
+  function refreshAfterSettingsDialog() {
+    const check = setInterval(async () => {
+      if (!ed) { clearInterval(check); return; }
+      if (document.querySelector('.modal-back')) return; // still open
+      clearInterval(check);
+      if (!ed) return;
+      try {
+        const { project } = await api(`/api/projects/${ed.project.id}`);
+        const content = JSON.parse(project.content || '{}');
+        ed.project = project;
+        ed.projectSettings = content.settings || {};
+        const nameInput = document.getElementById('ve-proj-name');
+        if (nameInput) nameInput.value = project.name;
+        const tl = content.timeline;
+        if (tl && tl.width && tl.height) {
+          ed.timeline.width = tl.width; ed.timeline.height = tl.height; ed.timeline.fps = tl.fps || ed.timeline.fps;
+          const dims = document.getElementById('ve-dims');
+          if (dims) dims.textContent = `${tl.width}×${tl.height} @ ${ed.timeline.fps}fps`;
+          const ratio = document.getElementById('ve-ratio');
+          if (ratio) ratio.value = (ASPECTS.find((x) => x.width === tl.width && x.height === tl.height) || ASPECTS[0]).id;
+          const stage = document.getElementById('ve-stage');
+          if (stage) stage.style.aspectRatio = `${tl.width}/${tl.height}`;
+        }
+        renderAll();
+      } catch { /* keep the editor as-is if the refresh fails */ }
+    }, 800);
+  }
+
+  // v2.7.0 — switch the left rail tab from anywhere (rail buttons, the
+  // voiceover mic in the timeline toolbar, the Media panel's Record).
+  function switchLeftTab(tab, audioSub) {
+    if (!ed) return;
+    ed.leftTab = tab;
+    if (audioSub) ed.audioSub = audioSub;
+    document.querySelectorAll('[data-ltab]').forEach((x) => x.classList.toggle('active', x.dataset.ltab === tab));
+    renderLeftPanel();
+  }
+
   /* ---------------- Editor shell ---------------- */
   function toolbarActions() {
     const split = async () => {
       const found = ed.selectedClipId ? findClip(ed.timeline, ed.selectedClipId) : null;
       if (!found) { toast('Select a clip first, then split at the playhead.', true); return; }
-      const { clip, track } = found;
-      if (track.locked) { toast('This track is locked.', true); return; }
-      const rel = ed.playhead - clip.start;
-      if (rel <= 0.05 || rel >= clip.duration - 0.05) { toast('Move the playhead inside the clip to split it.', true); return; }
-      pushHistory();
-      const right = deep(clip);
-      right.id = uid('clip');
-      right.start = ed.playhead;
-      right.duration = clip.duration - rel;
-      right.srcStart = clip.srcStart + rel * clip.speed;
-      right.transition = { type: 'none', duration: 0.5 };
-      right.keyframes = (clip.keyframes || []).filter((k) => k.t >= rel).map((k) => ({ ...k, t: k.t - rel }));
-      clip.duration = rel;
-      clip.keyframes = (clip.keyframes || []).filter((k) => k.t < rel);
-      track.clips.push(right);
-      ed.selectedClipId = right.id;
-      saveSoon(); renderAll();
-      toast('Clip split at the playhead.');
+      if (splitClipAtTime(found.clip, found.track, ed.playhead)) toast('Clip split at the playhead.');
     };
     const duplicate = () => duplicateSelection();
     const remove = (ripple) => deleteSelection(ripple);
@@ -2609,6 +2845,10 @@ window.VideoEditor = (function () {
       pxPerSec: 14, leftTab: 'media', propsTab: 'props',
       undoStack: [], redoStack: [], saveTimer: null, pollTimer: null,
       currentJob: null, beatSnap: true, magnet: true,
+      // v2.7.0 — CapCut shell state: Select/Split tool, project settings
+      // (for the Details panel), Media sub-tab + open section.
+      toolMode: 'select', projectSettings: content.settings || {},
+      mediaTab: 'media', openSection: 'yours', avatarNoteShown: false,
       // v2.5.0
       waveformsOn: false, waveforms: {}, safeZones: false, loop: false,
       previewQuality: 'full', compoundStack: [], fxCache: null,
@@ -2620,18 +2860,18 @@ window.VideoEditor = (function () {
     container.style.padding = '16px';
     container.innerHTML = `
     <div class="ve-wrap">
-      <div class="ve-toolbar card" style="padding:10px 14px">
-        <button class="btn" id="ve-back">← Projects</button>
-        <b>${esc(project.name)}</b>
-        <span class="badge info" id="ve-dims">${ed.timeline.width}×${ed.timeline.height} @ ${ed.timeline.fps}fps</span>
-        <label class="ve-ratio" title="Change the timeline aspect ratio (clip timing is unchanged; text positions are percentages)">Ratio <select id="ve-ratio">${['16:9', '9:16', '1:1', '4:5'].map((a) => `<option value="${a}" ${(ASPECTS.find((x) => x.width === ed.timeline.width && x.height === ed.timeline.height) || ASPECTS[0]).id === a ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
-        <span class="badge" id="ve-save-state">Saved</span>
+      <div class="ve-topbar">
+        <button class="ve-logo" id="ve-home" title="CreativeStudio AI Pro — back to Home">✂ <b>CreativeStudio</b></button>
+        <button class="btn btn-sm" id="ve-menu-btn" title="Project menu">Menu ▾</button>
+        <span class="ve-tb-spacer"></span>
+        <input id="ve-proj-name" value="${esc(project.name)}" title="Project name — click to rename" spellcheck="false">
+        <span class="badge" id="ve-save-state" title="Autosave status">Saved</span>
         ${timeline.musicSync ? `<span class="badge info" title="Synced to ${esc(timeline.musicSync.trackName || '')}">♪ ${timeline.musicSync.bpm} BPM · ${timeline.musicSync.beats.length} beats</span>` : ''}
-        <span class="spacer"></span>
-        <button class="btn btn-sm" id="ve-undo" title="Ctrl+Z">↩ Undo</button>
-        <button class="btn btn-sm" id="ve-redo" title="Ctrl+Shift+Z">↪ Redo</button>
-        <button class="btn btn-sm" id="ve-save-ver">💾 Save version</button>
-        <button class="btn btn-sm" id="ve-shortcuts" title="Keyboard shortcuts (?)">⌨ Shortcuts</button>
+        <span class="ve-tb-spacer"></span>
+        <button class="btn btn-sm ve-layout-toggle" id="ve-toggle-left" title="Show / hide the left panel" aria-pressed="true"><span class="ve-lico"><i class="on"></i><i></i></span><span class="ve-lico-lbl">Left</span></button>
+        <button class="btn btn-sm ve-layout-toggle" id="ve-toggle-right" title="Show / hide the right panel" aria-pressed="true"><span class="ve-lico"><i></i><i class="on"></i></span><span class="ve-lico-lbl">Right</span></button>
+        <button class="btn btn-sm ve-pro-badge" id="ve-pro-badge" title="Your plan — opens Subscription & Credits. No payment is taken in this app.">◆ Plan</button>
+        <button class="btn btn-sm" id="ve-share-btn" title="Share this project">↗ Share</button>
         <button class="btn btn-sm btn-primary ve-export" id="ve-goto-export">⬆ Export</button>
       </div>
       <div class="ve-compound-bar card" id="ve-compound-bar" style="display:none;padding:8px 14px;align-items:center;gap:10px">
@@ -2653,6 +2893,12 @@ window.VideoEditor = (function () {
           <div id="ve-left">Loading…</div>
         </div>
         <div class="ve-preview">
+          <div class="ve-player-head">
+            <b id="ve-seq-name">Player-Timeline 01</b>
+            <span class="sub" id="ve-dims">${ed.timeline.width}×${ed.timeline.height} @ ${ed.timeline.fps}fps</span>
+            <span class="spacer"></span>
+            <button class="btn btn-sm" id="ve-player-menu" title="Preview options">☰</button>
+          </div>
           <div class="ve-stage" id="ve-stage" style="aspect-ratio:${ed.timeline.width}/${ed.timeline.height};width:100%;max-width:760px;max-height:430px">
             <video id="ve-va" playsinline preload="auto" style="display:none"></video>
             <video id="ve-vb" playsinline preload="auto" style="display:none"></video>
@@ -2667,18 +2913,21 @@ window.VideoEditor = (function () {
             <audio id="ve-audio" preload="auto" style="display:none"></audio>
           </div>
           <div class="ve-transport">
+            <span class="time" id="ve-time">00:00:00:00 / 00:00:00:00</span>
             <button class="btn btn-sm" id="ve-prev-frame" title="Previous frame">⏮ −1f</button>
             <button class="btn btn-primary btn-sm" id="ve-play">▶ Play</button>
             <button class="btn btn-sm" id="ve-next-frame" title="Next frame">＋1f ⏭</button>
-            <span class="time" id="ve-time">00:00.00 / 00:00.00</span>
-            <span class="sub">Preview is approximate — transitions are crossfaded in the browser; the FFmpeg render is exact.</span>
+            <span class="spacer"></span>
+            <button class="btn btn-sm" id="ve-quality-toggle" title="Preview quality — Full or Performance (the export is always full quality)">Full</button>
+            <label class="ve-ratio" title="Change the timeline aspect ratio (clip timing is unchanged; text positions are percentages)">Ratio <select id="ve-ratio">${['16:9', '9:16', '1:1', '4:5'].map((a) => `<option value="${a}" ${(ASPECTS.find((x) => x.width === ed.timeline.width && x.height === ed.timeline.height) || ASPECTS[0]).id === a ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
+            <button class="btn btn-sm" id="ve-fullscreen" title="Fullscreen preview (Ctrl+Shift+P)">⛶ Fullscreen</button>
           </div>
           <div class="ve-preview-ctl">
             <label title="Preview quality">Quality <select id="ve-pq"><option value="full">Full quality</option><option value="perf">Performance</option></select></label>
             <label title="Show action-safe (5%) and title-safe (10%) guides"><input type="checkbox" id="ve-safe"> Safe zones</label>
             <label title="Play again from the start when the timeline ends"><input type="checkbox" id="ve-loop"> Loop</label>
-            <button class="btn btn-sm" id="ve-fullscreen" title="Fullscreen preview (Ctrl+Shift+P)">⛶ Fullscreen</button>
             <button class="btn btn-sm" id="ve-bg-btn" title="Project background: solid colour, image or blur-fill">🎨 Background</button>
+            <span class="sub">Preview is approximate — transitions are crossfaded in the browser; the FFmpeg render is exact.</span>
           </div>
         </div>
         <div class="ve-panel" id="ve-right-panel">
@@ -2691,10 +2940,25 @@ window.VideoEditor = (function () {
         </div>
       </div>
       <div class="ve-timeline">
-        <div class="ve-tl-tools">
-          <button class="btn btn-sm" id="ve-split">✂ Split at playhead</button>
+        <div class="ve-tl-tools ve-tl-primary">
+          <button class="btn btn-sm" id="ve-add-track-btn" title="Add a track">＋</button>
+          <select id="ve-tool" title="Tool: Select (move/trim clips) or Split (click a clip to split it there)">
+            <option value="select">➤ Select</option>
+            <option value="split">✂ Split</option>
+          </select>
+          <button class="btn btn-sm" id="ve-undo" title="Undo (Ctrl+Z)">↩</button>
+          <button class="btn btn-sm" id="ve-redo" title="Redo (Ctrl+Shift+Z)">↪</button>
+          <button class="btn btn-sm" id="ve-split" title="Split at playhead (Ctrl+B)">✂</button>
+          <button class="btn btn-sm btn-danger" id="ve-del" title="Delete selected clip (Del)">🗑</button>
+          <button class="btn btn-sm" id="ve-vo-btn" title="Voiceover — record with your microphone">🎙️</button>
+          <button class="btn btn-sm on" id="ve-magnet" title="Magnetic timeline: clip edges snap to the playhead and to other clips. Click to turn snapping off for free placement.">🧲 Snap</button>
+          <label class="ve-zoom-lbl" title="Timeline zoom">🔍 <input type="range" id="ve-zoom" min="4" max="40" step="1" value="14"></label>
+          <button class="btn btn-sm" id="ve-zoom-out" title="Zoom timeline out">−</button>
+          <button class="btn btn-sm" id="ve-zoom-in" title="Zoom timeline in">＋</button>
+          <button class="btn btn-sm" id="ve-more-toggle" title="More timeline tools" aria-expanded="false">⋯</button>
+        </div>
+        <div class="ve-tl-tools ve-tl-more" id="ve-more-tools" style="display:none">
           <button class="btn btn-sm" id="ve-dup">Duplicate</button>
-          <button class="btn btn-sm btn-danger" id="ve-del">Delete</button>
           <button class="btn btn-sm" id="ve-ripple">Ripple delete</button>
           <button class="btn btn-sm" id="ve-group">Group overlapping</button>
           <button class="btn btn-sm" id="ve-ungroup">Ungroup</button>
@@ -2706,8 +2970,6 @@ window.VideoEditor = (function () {
           <button class="btn btn-sm" id="ve-splitscreen">▦ Split screen</button>
           <button class="btn btn-sm" id="ve-sync">🔗 Sync linked</button>
           ${timeline.musicSync ? `<label style="font-size:12px" title="Snap clip edges to the nearest beat (within 0.12 s)"><input type="checkbox" id="ve-beatsnap" checked> ♪ Beat snap</label>` : ''}
-          <button class="btn btn-sm on" id="ve-magnet" title="Magnetic timeline: clip edges snap to the playhead and to other clips. Click to turn snapping off for free placement.">🧲 Magnet</button>
-          <label style="font-size:12px">Zoom <input type="range" id="ve-zoom" min="4" max="40" step="1" value="14"></label>
           <button class="btn btn-sm" id="ve-waveforms" title="Show audio waveforms on audio clips (Ctrl+Shift+H)">〰 Waveforms</button>
           <button class="btn btn-sm" id="ve-add-audio-track">＋ Audio track</button>
           <button class="btn btn-sm" id="ve-add-text-track">＋ Text track</button>
@@ -2717,10 +2979,61 @@ window.VideoEditor = (function () {
       </div>
     </div>`;
     const actions = toolbarActions();
-    document.getElementById('ve-back').addEventListener('click', () => go('projects'));
+    // v2.7.0 — CapCut top bar: Menu, editable project name, layout
+    // toggles, real plan badge, Share, Export.
+    document.getElementById('ve-home').addEventListener('click', () => go('home'));
+    document.getElementById('ve-menu-btn').addEventListener('click', (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      showMenu(r.left, r.bottom + 6, [
+        { label: '＋ New project', fn: () => { if (typeof openNewProjectFlow === 'function') openNewProjectFlow(); else go('video-editor'); } },
+        { label: '📂 Open project', fn: () => go('video-editor') },
+        { label: '💾 Save', fn: async () => { await saveTimeline(false); toast('Saved.'); } },
+        { label: '💾 Save version', fn: async () => { await saveTimeline(true); toast('Version saved.'); } },
+        { label: '⚙️ Project settings', fn: () => { if (typeof openProjectSettingsDialog === 'function') { openProjectSettingsDialog(ed.project.id); refreshAfterSettingsDialog(); } else toast('Project settings are available from the Projects view (Ctrl+P).', true); } },
+        { label: '⌨ Keyboard shortcuts', fn: showShortcutsPanel },
+        { sep: true },
+        { label: '⚙️ Settings', fn: () => go('settings') },
+      ]);
+    });
+    const nameInput = document.getElementById('ve-proj-name');
+    nameInput.addEventListener('change', async () => {
+      const name = nameInput.value.trim();
+      if (!name) { nameInput.value = ed.project.name; toast('Project name cannot be empty.', true); return; }
+      if (name === ed.project.name) return;
+      try {
+        await api(`/api/projects/${ed.project.id}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+        ed.project.name = name;
+        renderProps();
+        toast('Project renamed.');
+      } catch (e) { nameInput.value = ed.project.name; toast(e.message, true); }
+    });
+    nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); } });
+    // Layout toggles: real show/hide of the left and right panels.
+    const togglePanel = (side) => {
+      const main = document.querySelector('.ve-main');
+      if (!main) return;
+      const btn = document.getElementById(side === 'left' ? 've-toggle-left' : 've-toggle-right');
+      const hidden = main.classList.toggle(side === 'left' ? 've-hide-left' : 've-hide-right');
+      btn.setAttribute('aria-pressed', String(!hidden));
+      btn.classList.toggle('off', hidden);
+    };
+    document.getElementById('ve-toggle-left').addEventListener('click', () => togglePanel('left'));
+    document.getElementById('ve-toggle-right').addEventListener('click', () => togglePanel('right'));
+    // Plan badge: the real plan from the subscription API (never a fake
+    // payment state — OWNER is Lifetime Free, no gateway exists).
+    api('/api/subscription').then((s) => {
+      const badge = document.getElementById('ve-pro-badge');
+      if (badge && s && s.currentPlan) badge.textContent = `◆ ${s.currentPlan}`;
+    }).catch(() => { /* badge keeps its neutral "◆ Plan" label */ });
+    document.getElementById('ve-pro-badge').addEventListener('click', () => go('subscription'));
+    document.getElementById('ve-share-btn').addEventListener('click', () => {
+      if (typeof openModal !== 'function' || typeof collabPanelHTML !== 'function' || typeof initCollabPanel !== 'function') { go('collaboration'); return; }
+      const back = openModal(`<h2>↗ Share — ${esc(ed.project.name)}</h2>${collabPanelHTML()}`);
+      back.querySelector('.modal').style.maxWidth = '640px';
+      initCollabPanel(ed.project.id);
+    });
     document.getElementById('ve-undo').addEventListener('click', doUndo);
     document.getElementById('ve-redo').addEventListener('click', doRedo);
-    document.getElementById('ve-save-ver').addEventListener('click', async () => { await saveTimeline(true); toast('Version saved.'); });
     document.getElementById('ve-goto-export').addEventListener('click', () => { ed.propsTab = 'export'; document.querySelectorAll('[data-ptab]').forEach((b) => b.classList.toggle('active', b.dataset.ptab === 'export')); renderProps(); });
     document.getElementById('ve-ratio').addEventListener('change', (e) => {
       const a = ASPECTS.find((x) => x.id === e.target.value) || ASPECTS[0];
@@ -2732,6 +3045,67 @@ window.VideoEditor = (function () {
       saveSoon(); renderAll();
       toast(`Aspect ratio changed to ${a.id} (${a.width}×${a.height}). Clip timing is unchanged; text positions are percentages.`);
     });
+    // v2.7.0 — preview header menu: the same real preview controls that
+    // live at the preview bottom (quality, ratio, fullscreen, safe zones,
+    // loop, background) — nothing here is a dead entry.
+    document.getElementById('ve-player-menu').addEventListener('click', (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const setSelect = (id, value) => { const el = document.getElementById(id); if (!el) return; el.value = value; el.dispatchEvent(new Event('change')); };
+      const toggleCheck = (id) => { const el = document.getElementById(id); if (!el) return; el.checked = !el.checked; el.dispatchEvent(new Event('change')); };
+      showMenu(Math.min(r.left, window.innerWidth - 240), r.bottom + 6, [
+        { label: 'Full quality preview', fn: () => setSelect('ve-pq', 'full') },
+        { label: 'Performance preview', fn: () => setSelect('ve-pq', 'perf') },
+        { label: 'Aspect ratio 16:9', fn: () => setSelect('ve-ratio', '16:9') },
+        { label: 'Aspect ratio 9:16', fn: () => setSelect('ve-ratio', '9:16') },
+        { label: 'Aspect ratio 1:1', fn: () => setSelect('ve-ratio', '1:1') },
+        { label: 'Aspect ratio 4:5', fn: () => setSelect('ve-ratio', '4:5') },
+        { label: '⛶ Fullscreen preview', fn: () => document.getElementById('ve-fullscreen').click() },
+        { label: 'Toggle safe zones', fn: () => toggleCheck('ve-safe') },
+        { label: 'Toggle loop playback', fn: () => toggleCheck('ve-loop') },
+        { label: '🎨 Project background…', fn: () => showBackgroundDialog() },
+      ]);
+    });
+    // v2.7.0 — "Full" toggle mirrors the Quality select below the stage.
+    document.getElementById('ve-quality-toggle').addEventListener('click', () => {
+      const pq = document.getElementById('ve-pq');
+      pq.value = ed.previewQuality === 'perf' ? 'full' : 'perf';
+      pq.dispatchEvent(new Event('change'));
+    });
+    // v2.7.0 — Select / Split tool dropdown (real tool mode).
+    document.getElementById('ve-tool').addEventListener('change', (e) => {
+      ed.toolMode = e.target.value;
+      const host = document.getElementById('ve-timeline');
+      if (host) host.classList.toggle('ve-tool-split', ed.toolMode === 'split');
+      toast(ed.toolMode === 'split' ? 'Split tool — click a clip to split it where you click.' : 'Select tool — click clips to select, drag to move or trim.');
+    });
+    // v2.7.0 — "＋" add-track menu (each entry runs the real add-track action).
+    document.getElementById('ve-add-track-btn').addEventListener('click', (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      showMenu(r.left, r.bottom + 6, [
+        { label: '＋ Video track', fn: () => addVideoTrack() },
+        { label: '＋ Overlay video track', fn: () => document.getElementById('ve-add-overlay').click() },
+        { label: '＋ Audio track', fn: () => document.getElementById('ve-add-audio-track').click() },
+        { label: '＋ Text track', fn: () => document.getElementById('ve-add-text-track').click() },
+      ]);
+    });
+    document.getElementById('ve-vo-btn').addEventListener('click', () => {
+      switchLeftTab('audio', 'voiceover');
+      toast('Voiceover — record with your microphone at the playhead.');
+    });
+    document.getElementById('ve-more-toggle').addEventListener('click', (e) => {
+      const row = document.getElementById('ve-more-tools');
+      const open = row.style.display === 'none';
+      row.style.display = open ? 'flex' : 'none';
+      e.currentTarget.setAttribute('aria-expanded', String(open));
+    });
+    const setZoom = (v) => {
+      ed.pxPerSec = clamp(v, 4, 40);
+      const z = document.getElementById('ve-zoom');
+      if (z) z.value = String(ed.pxPerSec);
+      renderTimeline(); updatePreview();
+    };
+    document.getElementById('ve-zoom-in').addEventListener('click', () => setZoom(ed.pxPerSec + 4));
+    document.getElementById('ve-zoom-out').addEventListener('click', () => setZoom(ed.pxPerSec - 4));
     document.getElementById('ve-play').addEventListener('click', () => setPlaying(!ed.playing));
     document.getElementById('ve-prev-frame').addEventListener('click', () => { setPlaying(false); ed.playhead = Math.max(0, ed.playhead - 1 / ed.timeline.fps); updatePreview(); });
     document.getElementById('ve-next-frame').addEventListener('click', () => { setPlaying(false); ed.playhead = Math.min(totalDuration(ed.timeline), ed.playhead + 1 / ed.timeline.fps); updatePreview(); });
@@ -2798,13 +3172,15 @@ window.VideoEditor = (function () {
       toast(ed.waveformsOn ? 'Waveforms on — audio clips show their waveform.' : 'Waveforms off.');
     });
     document.getElementById('ve-compound-back').addEventListener('click', exitCompound);
-    document.getElementById('ve-shortcuts').addEventListener('click', showShortcutsPanel);
+    // (Shortcuts now live in the top-bar Menu — see the Menu wiring above.)
     // v2.5.0 — preview controls: quality, safe zones, loop, fullscreen, background.
     document.getElementById('ve-pq').addEventListener('change', (e) => {
       ed.previewQuality = e.target.value;
       const vA = document.getElementById('ve-va'), vB = document.getElementById('ve-vb');
       const low = ed.previewQuality === 'perf';
       [vA, vB].forEach((v) => { if (v) v.style.imageRendering = low ? 'pixelated' : 'auto'; });
+      const qt = document.getElementById('ve-quality-toggle');
+      if (qt) qt.textContent = low ? 'Performance' : 'Full';
       toast(low ? 'Performance preview — the stage renders at lower fidelity; the export is unaffected.' : 'Full-quality preview.');
     });
     document.getElementById('ve-safe').addEventListener('change', (e) => {
@@ -2827,11 +3203,7 @@ window.VideoEditor = (function () {
       ed.mediaKinds = {};
       for (const m of (r.media || [])) ed.mediaKinds[m.id] = m.kind;
     }).catch(() => {});
-    container.querySelectorAll('[data-ltab]').forEach((b) => b.addEventListener('click', () => {
-      ed.leftTab = b.dataset.ltab;
-      container.querySelectorAll('[data-ltab]').forEach((x) => x.classList.toggle('active', x === b));
-      renderLeftPanel();
-    }));
+    container.querySelectorAll('[data-ltab]').forEach((b) => b.addEventListener('click', () => switchLeftTab(b.dataset.ltab)));
     // v2.4.0 — drag-drop import: drop video/audio files on the left panel.
     const leftHost = document.getElementById('ve-left');
     leftHost.addEventListener('dragover', (e) => {

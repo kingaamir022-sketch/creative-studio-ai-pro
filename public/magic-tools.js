@@ -1,6 +1,6 @@
 'use strict';
 /* Global entry point used by app.js routing (same pattern as viewVoices). */
-async function viewMagicTools(c) { return MagicTools.view(c); }
+async function viewMagicTools(c, presetTool) { return MagicTools.view(c, presetTool); }
 const MagicTools = (() => {
   let images = [];
   let designs = [];
@@ -294,7 +294,10 @@ const MagicTools = (() => {
     });
   }
 
-  async function view(c) {
+  async function view(c, presetTool) {
+    // v2.7.0 — deep link: the home "AI remove" tile lands here with the
+    // Eraser already selected (same view, same tools, no second list).
+    if (presetTool && TOOLS.some((t) => t.id === presetTool)) tool = presetTool;
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     await loadAll();
     const img = selectedImage();

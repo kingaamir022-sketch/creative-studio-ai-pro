@@ -152,9 +152,117 @@ async function boot() {
 }
 
 /* ---------- Shell ---------- */
+// v2.7.0 — CapCut home shell: on the home view the app renders its own
+// CapCut-style shell (own sidebar + top bar, see render() below) instead
+// of the global sidebar/topbar, so the home screen matches the CapCut
+// desktop reference element by element. Every other view keeps the
+// existing shell and nav untouched. The home sidebar's "More tools"
+// expansion is open by default, like the reference screenshot.
+let ccMoreToolsOpen = true;
+
+// The 7 CapCut sidebar groups, built from the single NAV list (no second
+// list to drift) — used by the home sidebar's "More tools" expansion.
+function homeGroups() {
+  const groups = [];
+  let current = null;
+  for (const item of NAV) {
+    if (item.section) { current = { name: item.section, items: [] }; groups.push(current); continue; }
+    if (item.id === 'home' || !current) continue;
+    current.items.push(item);
+  }
+  return groups;
+}
+
 function render() {
   if (!state.user) return renderAuth();
+  const isHome = state.view === 'home';
+  if (!isHome) document.body.classList.remove('cc-nav-open');
   const nav = NAV.find((n) => n.id === state.view) || NAV[1];
+  if (isHome) {
+    const u = state.user;
+    const unlimited = isUnlimitedUser(u);
+    const groups = homeGroups();
+    root.innerHTML = `
+  <div class="app">
+    <aside class="cc-sidebar" id="cc-sidebar" aria-label="Home navigation">
+      <div class="cc-signin-card">
+        <button class="cc-user-row" id="cc-user-row" title="Account — open Settings">
+          <span class="avatar">${esc((u.name || '?')[0].toUpperCase())}</span>
+          <span class="cc-user-meta"><span class="cc-user-name">${esc(u.name)}</span><span class="cc-user-sub">${esc(u.role)} · ${esc(u.plan)} · ${esc(creditsLabel(u))}</span></span>
+        </button>
+        <button class="cc-join-pro" id="cc-join-pro" title="${unlimited ? 'Lifetime Free — you never pay. Open Subscription & Credits.' : 'See your plan — plans are managed by the OWNER, there is no payment gateway in the app.'}">${unlimited ? '✓ Lifetime Free' : 'Join Pro'}</button>
+      </div>
+      <nav class="cc-nav">
+        <button class="cc-nav-item active" data-cc-go="home"><span class="ico">🏠</span><span class="txt">Home</span></button>
+        <button class="cc-nav-item" data-cc-go="marketplace"><span class="ico">🛍️</span><span class="txt">Templates</span></button>
+        <div class="cc-nav-divider"></div>
+        <div class="cc-nav-section">Create with AI</div>
+        <button class="cc-nav-item" data-cc-go="ai-video"><span class="ico">🎥</span><span class="txt">Video Studio</span></button>
+        <button class="cc-nav-item" data-cc-go="ai-design"><span class="ico">✨</span><span class="txt">Design Studio</span></button>
+        <button class="cc-nav-item" id="cc-more-tools" aria-expanded="${ccMoreToolsOpen ? 'true' : 'false'}"><span class="ico">▦</span><span class="txt">More tools</span><span class="cc-chevron ${ccMoreToolsOpen ? 'open' : ''}">▴</span></button>
+        <div class="cc-more-panel" id="cc-more-panel" style="display:${ccMoreToolsOpen ? '' : 'none'}">
+          <button class="cc-nav-item cc-sub" data-cc-go="ai-studio"><span class="ico">✨</span><span class="txt">Create with AI</span></button>
+          <button class="cc-nav-item cc-sub" data-cc-go="social"><span class="ico">🏷️</span><span class="txt">Marketing tools</span></button>
+          <div class="home-groups cc-more-groups">
+            ${groups.map((g) => `
+            <div class="home-group"><h3><span class="home-group-icon">${HOME_GROUP_ICON[g.name] || '📁'}</span>${esc(g.name)}</h3>
+            <div class="home-group-links">${g.items.map((it) => `<button class="home-group-link" data-goto="${esc(it.id)}" title="${esc(it.blurb || it.label)}">${esc(it.icon)} ${esc(it.label)}</button>`).join('')}</div></div>`).join('')}
+          </div>
+        </div>
+        <button class="cc-nav-item cc-invite" id="home-open-collab" title="Share projects and invite people to collaborate"><span class="ico">✈️</span><span class="txt">Invite friends</span><span class="cc-new-badge">New</span></button>
+        <div class="cc-invite-sub" id="cc-invite-sub"></div>
+        <button class="cc-promo" id="cc-seedance-promo" title="Seedance 2.5 — AI video generation (needs a Seedance provider key)">
+          <span class="cc-promo-art" aria-hidden="true">🦋</span>
+          <span class="cc-promo-title">Try Seedance 2.5</span>
+          <span class="cc-promo-sub">Generate 4K videos</span>
+        </button>
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="cc-topbar">
+        <button class="icon-btn hamburger" id="hamburger" aria-label="Open menu">☰</button>
+        <div class="logo"><div class="logo-mark">C</div><div class="logo-name">Creative<span>Studio</span> AI Pro</div></div>
+        <div class="top-actions">
+          <button class="icon-btn" id="cc-upload" title="Upload media">⬆</button>
+          <button class="icon-btn" id="theme-btn" title="Switch theme" aria-label="Switch theme">☀️</button>
+          <button class="icon-btn" id="notif-btn" title="Notifications">🔔<span class="dot" id="notif-dot" style="display:none"></span></button>
+          <button class="icon-btn" id="cc-settings" title="Settings">⚙️</button>
+        </div>
+        <div class="notif-panel" id="notif-panel"><h3>Notifications</h3><div id="notif-list"><div class="notif-item">Loading…</div></div></div>
+      </header>
+      <main class="content cc-content" id="content"></main>
+    </div>
+  </div>`;
+    // Home-shell wiring (the standard shell's wiring below is skipped —
+    // its elements do not exist here).
+    document.getElementById('hamburger').addEventListener('click', () => document.body.classList.toggle('cc-nav-open'));
+    const closeHomeNav = () => document.body.classList.remove('cc-nav-open');
+    root.querySelectorAll('[data-cc-go]').forEach((b) => b.addEventListener('click', () => { closeHomeNav(); go(b.dataset.ccGo); }));
+    root.querySelectorAll('.cc-sidebar [data-goto]').forEach((b) => b.addEventListener('click', () => { closeHomeNav(); go(b.dataset.goto); }));
+    document.getElementById('cc-user-row').addEventListener('click', () => go('settings'));
+    document.getElementById('cc-join-pro').addEventListener('click', () => go('subscription'));
+    document.getElementById('home-open-collab').addEventListener('click', () => go('collaboration'));
+    document.getElementById('cc-seedance-promo').addEventListener('click', () => go('ai-seedance'));
+    document.getElementById('cc-upload').addEventListener('click', () => go('media'));
+    document.getElementById('cc-settings').addEventListener('click', () => go('settings'));
+    const moreBtn = document.getElementById('cc-more-tools');
+    const morePanel = document.getElementById('cc-more-panel');
+    moreBtn.addEventListener('click', () => {
+      ccMoreToolsOpen = !ccMoreToolsOpen;
+      morePanel.style.display = ccMoreToolsOpen ? '' : 'none';
+      moreBtn.setAttribute('aria-expanded', ccMoreToolsOpen ? 'true' : 'false');
+      const ch = moreBtn.querySelector('.cc-chevron');
+      if (ch) ch.classList.toggle('open', ccMoreToolsOpen);
+    });
+    applyTheme(currentTheme());
+    document.getElementById('theme-btn').addEventListener('click', () => applyTheme(currentTheme() === 'light' ? 'dark' : 'light'));
+    document.getElementById('notif-btn').addEventListener('click', toggleNotif);
+    refreshNotifDot();
+    renderView();
+    // v2.7.0 — mobile shell: bottom nav + FAB (+ editor sheet buttons).
+    if (window.MobileShell) window.MobileShell.mount();
+    return;
+  }
   root.innerHTML = `
   <div class="app">
     <aside class="sidebar">
@@ -248,6 +356,8 @@ function render() {
   });
   searchInput.addEventListener('blur', () => setTimeout(() => { const r = document.getElementById('search-results'); if (r) r.style.display = 'none'; }, 200));
   renderView();
+  // v2.7.0 — mobile shell: bottom nav + FAB (+ editor sheet buttons).
+  if (window.MobileShell) window.MobileShell.mount();
 }
 
 async function runGlobalSearch(q) {
@@ -316,6 +426,19 @@ async function renderView() {
   const v = state.view;
   try {
     if (v === 'home') return await viewHome(c);
+    // v2.7.0 — mobile shell views (only reachable from the mobile nav).
+    if (v === 'm-templates') return await window.MobileShell.viewTemplates(c);
+    if (v === 'm-ailab') return await window.MobileShell.viewAILab(c);
+    if (v === 'm-inbox') return await window.MobileShell.viewInbox(c);
+    if (v === 'm-me') return await window.MobileShell.viewMe(c);
+    // v2.7.0 — mobile deep links: AI Studio / Magic Tools presets.
+    if (v === 'ai-autocut') return await viewAIStudio(c, 'autocut');
+    if (v === 'ai-ailab') return await viewAIStudio(c, 'ai-lab');
+    if (v === 'ai-avatar') return await viewAIStudio(c, 'avatar');
+    if (v === 'ai-retouch') return await viewAIStudio(c, 'retouch');
+    if (v === 'ai-director') return await viewAIStudio(c, 'director');
+    if (v === 'mg-remove-bg') return await viewMagicTools(c, 'remove-background');
+    if (v === 'mg-expand') return await viewMagicTools(c, 'expand');
     if (v === 'dashboard') return await viewDashboard(c);
     if (v === 'graphic-editor') return await viewGraphicEditor(c);
     if (v === 'design-editor') return await viewDesignEditor(c);
@@ -337,6 +460,17 @@ async function renderView() {
     if (v === 'ai-studio') return await viewAIStudio(c);
     if (v === 'ai-video') return await viewAIStudio(c, 'video');
     if (v === 'ai-image') return await viewAIStudio(c, 'image');
+    // v2.7.0 — CapCut home deep links: Seedance (generate / extend),
+    // video enhance, and Magic Eraser. Seedance's mode select is static
+    // HTML read at submit time, so presetting its value is enough.
+    if (v === 'ai-seedance') {
+      await viewAIStudio(c, 'seedance');
+      const s = document.getElementById('ai-f-seedance-mode');
+      if (s && (state.params.seedanceMode === 'extend' || state.params.seedanceMode === 'edit')) s.value = state.params.seedanceMode;
+      return;
+    }
+    if (v === 'ai-enhance') return await viewAIStudio(c, 'video-enhance');
+    if (v === 'magic-erase') return await viewMagicTools(c, 'erase');
     if (v === 'brand-kit') return await viewBrandKit(c);
     if (v === 'projects') return await viewProjects(c);
     if (v === 'project') return await viewProjectDetail(c);
@@ -369,10 +503,11 @@ async function renderView() {
 
 /* ---------- Auth screen ---------- */
 function renderAuth() {
+  document.body.classList.remove('cc-nav-open');
   root.innerHTML = `
   <div class="auth-wrap"><div class="auth-card">
     <div class="logo"><div class="logo-mark">C</div><div class="logo-name">Creative<span>Studio</span> AI Pro</div></div>
-    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.6.1 — Desktop App</p>
+    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.7.0 — Desktop App</p>
     <div class="auth-toggle">
       <button id="tab-login" class="active">Log in</button>
       <button id="tab-signup">Sign up</button>
@@ -517,6 +652,9 @@ function openProjectInEditor(p) {
 }
 
 async function viewHome(c) {
+  // v2.7.0 — mobile shell: at <=860px the CapCut mobile Edit home
+  // (MobileShell.viewHome) replaces the desktop home rendering.
+  if (window.MobileShell && window.MobileShell.isMobile()) return window.MobileShell.viewHome(c);
   const [d, upd, tpl, shared, trend] = await Promise.all([
     api('/api/dashboard'),
     api('/api/updates/status').catch(() => null),
@@ -524,7 +662,6 @@ async function viewHome(c) {
     api('/api/collab/shared-with-me').catch(() => ({ projects: [] })),
     api('/api/marketplace/trending').catch(() => null),
   ]);
-  const firstName = (state.user.name || 'there').split(' ')[0];
   const allTemplates = tpl.templates || [];
   const rows = (trend && trend.rows) ? trend.rows : null;
   const forYou = rows ? rows.forYou : allTemplates.slice(0, 8);
@@ -533,15 +670,10 @@ async function viewHome(c) {
   const socialRow = rows ? rows.social : allTemplates.filter((t) => t.category === 'Social');
   const recent = d.recentProjects || [];
   const sharedCount = (shared.projects || []).length;
-  // Quick-access groups: the 7 CapCut sidebar groups, every feature one
-  // click away (Home itself excluded).
-  const groups = [];
-  let current = null;
-  for (const item of NAV) {
-    if (item.section) { current = { name: item.section, items: [] }; groups.push(current); continue; }
-    if (item.id === 'home' || !current) continue;
-    current.items.push(item);
-  }
+  // v2.7.0 — the home sidebar (rendered by render()) shows the shared
+  // count under "Invite friends" once it is known here.
+  const inviteSub = document.getElementById('cc-invite-sub');
+  if (inviteSub) inviteSub.textContent = sharedCount ? `${sharedCount} project${sharedCount === 1 ? '' : 's'} shared with you` : '';
   const fmtDur = (s) => {
     if (s === null || s === undefined) return '';
     const m = Math.floor(s / 60), sec = Math.round(s % 60);
@@ -576,12 +708,7 @@ async function viewHome(c) {
   ${upd && upd.pendingRestart ? `<div class="card" style="border-color:var(--warning)"><h3>✓ Update applied${upd.lastApplied ? ` — v${esc(upd.lastApplied.version)}` : ''}</h3>
     <p class="sub">The new files are in place. Restart the server (close Start.bat / run npm start again) to finish the update.</p></div>` : ''}
   <div class="home-hero">
-    <div><h1>Welcome back, ${esc(firstName)}</h1>
-    <p>${d.counts.projects} projects · ${d.counts.media} media files · ${esc(d.plan)} plan — ${esc(creditsLabel(state.user))}</p></div>
-    <div class="home-hero-actions">
-      <button class="home-new-btn" id="home-new-project">＋ New Project</button>
-      <button class="home-hero-secondary" id="home-browse-templates">Browse templates</button>
-    </div>
+    <button class="home-new-btn" id="home-new-project"><span class="cc-create-plus">＋</span> New Project</button>
   </div>
   <div class="home-quicknav">
     <button class="home-qn active">🏠 Home</button>
@@ -589,6 +716,62 @@ async function viewHome(c) {
     <button class="home-qn" id="home-qn-spaces">📁 Spaces</button>
     <button class="home-qn" id="home-qn-ai">✨ AI Studio</button>
     <button class="home-qn" id="home-qn-collab">🤝 Collaboration${sharedCount ? ` (${sharedCount})` : ''}</button>
+  </div>
+  <div class="cc-tools">
+    <button class="cc-tool" id="home-tool-image">
+      <span class="cc-tool-badge">GPT Image</span>
+      <span class="cc-tool-ico">🖼️</span>
+      <span class="cc-tool-title">AI image</span>
+      <span class="cc-tool-desc">Turn ideas into imagery</span>
+    </button>
+    <button class="cc-tool" id="home-tool-extend">
+      <span class="cc-tool-ico">⤢</span>
+      <span class="cc-tool-title">Extend video</span>
+      <span class="cc-tool-desc">Seamlessly extend any clip</span>
+    </button>
+    <button class="cc-tool" id="home-tool-edit">
+      <span class="cc-tool-ico">🪄</span>
+      <span class="cc-tool-title">AI edit</span>
+      <span class="cc-tool-desc">Edit clips by describing it</span>
+    </button>
+    <button class="cc-tool" id="home-tool-enhance">
+      <span class="cc-tool-ico cc-tool-hd">HD</span>
+      <span class="cc-tool-title">Enhance quality</span>
+      <span class="cc-tool-desc">Get sharper results instantly</span>
+    </button>
+    <button class="cc-tool" id="home-tool-remove">
+      <span class="cc-tool-ico">🧽</span>
+      <span class="cc-tool-title">AI remove</span>
+      <span class="cc-tool-desc">Remove anything unwanted</span>
+    </button>
+  </div>
+  <div>
+    <div class="home-section-head"><h2>AI-powered creative suite</h2></div>
+    <div class="cc-suite-wrap">
+      <div class="cc-suite-track" id="cc-suite-track">
+        <button class="cc-suite-card" id="home-suite-video">
+          <span class="cc-suite-thumb cc-thumb-video"><span class="cc-suite-art" aria-hidden="true">🎬</span><span class="cc-suite-pill">Generate a 30-second clip</span></span>
+          <span class="cc-suite-title">Video Studio</span>
+          <span class="cc-suite-desc">Make 30-second videos with Seedance 2.5</span>
+        </button>
+        <button class="cc-suite-card" id="home-suite-design">
+          <span class="cc-suite-thumb cc-thumb-design"><span class="cc-suite-art cc-suite-poster" aria-hidden="true">MOVE 23</span></span>
+          <span class="cc-suite-title">Design Studio</span>
+          <span class="cc-suite-desc">Bring your imagination to life in the easiest way.</span>
+        </button>
+        <button class="cc-suite-card" id="home-suite-ad">
+          <span class="cc-suite-thumb cc-thumb-ad"><span class="cc-suite-art" aria-hidden="true">🕶️</span></span>
+          <span class="cc-suite-title">AI ad maker</span>
+          <span class="cc-suite-desc">Create winning ads, scale fast with variants.</span>
+        </button>
+        <button class="cc-suite-card" id="home-suite-shorts">
+          <span class="cc-suite-thumb cc-thumb-shorts"><span class="cc-suite-art" aria-hidden="true">✂️</span><span class="cc-suite-frame" aria-hidden="true">9:16</span></span>
+          <span class="cc-suite-title">Long video to Shorts</span>
+          <span class="cc-suite-desc">Turn long videos into scroll-stopping Shorts.</span>
+        </button>
+      </div>
+      <button class="cc-suite-next" id="cc-suite-next" aria-label="Show more">›</button>
+    </div>
   </div>
   <div class="home-search"><input id="home-search" type="search" placeholder="Search your projects & templates…" autocomplete="off"></div>
   <div>
@@ -614,17 +797,6 @@ async function viewHome(c) {
   <div>
     <div class="home-section-head"><h2>📣 Social</h2></div>
     <div class="home-templates" id="home-row-social" style="margin-top:12px"></div>
-  </div>
-  <div class="home-collab card"><div><h3>🤝 Collaboration</h3>
-    <p class="sub">${sharedCount ? `${sharedCount} project${sharedCount === 1 ? '' : 's'} shared with you — open, view and comment (read-only, no live co-editing).` : 'No projects shared with you yet. Share one of your own from any project → Share & comments.'}</p></div>
-    <button class="btn btn-primary" id="home-open-collab">Open Collaboration →</button></div>
-  <div>
-    <div class="home-section-head"><h2>🧭 More tools</h2></div>
-    <div class="home-groups" style="margin-top:12px">
-      ${groups.map((g) => `
-        <div class="home-group"><h3><span class="home-group-icon">${HOME_GROUP_ICON[g.name] || '📁'}</span>${esc(g.name)}</h3>
-        <div class="home-group-links">${g.items.map((it) => `<button class="home-group-link" data-goto="${esc(it.id)}" title="${esc(it.blurb || it.label)}">${esc(it.icon)} ${esc(it.label)}</button>`).join('')}</div></div>`).join('')}
-    </div>
   </div>
   </div>`;
   const renderRecent = (list) => {
@@ -694,14 +866,28 @@ async function viewHome(c) {
     renderTemplates(allTemplates.filter((t) => `${t.name} ${t.category} ${t.kind}`.toLowerCase().includes(q)));
   });
   document.getElementById('home-new-project').addEventListener('click', () => openNewProjectFlow());
-  document.getElementById('home-browse-templates').addEventListener('click', () => go('marketplace'));
   document.getElementById('home-all-projects').addEventListener('click', () => go('projects'));
   document.getElementById('home-all-templates').addEventListener('click', () => go('marketplace'));
   document.getElementById('home-qn-templates').addEventListener('click', () => go('marketplace'));
   document.getElementById('home-qn-spaces').addEventListener('click', () => go('projects'));
   document.getElementById('home-qn-ai').addEventListener('click', () => go('ai-studio'));
   document.getElementById('home-qn-collab').addEventListener('click', () => go('collaboration'));
-  document.getElementById('home-open-collab').addEventListener('click', () => go('collaboration'));
+  // v2.7.0 — CapCut home tiles: every card opens its real tool.
+  document.getElementById('home-tool-image').addEventListener('click', () => go('ai-image'));
+  document.getElementById('home-tool-extend').addEventListener('click', () => go('ai-seedance', { seedanceMode: 'extend' }));
+  document.getElementById('home-tool-edit').addEventListener('click', () => go('assistant'));
+  document.getElementById('home-tool-enhance').addEventListener('click', () => go('ai-enhance'));
+  document.getElementById('home-tool-remove').addEventListener('click', () => go('magic-erase'));
+  document.getElementById('home-suite-video').addEventListener('click', () => go('ai-seedance', { seedanceMode: 'generate' }));
+  document.getElementById('home-suite-design').addEventListener('click', () => go('ai-design'));
+  document.getElementById('home-suite-ad').addEventListener('click', () => go('social'));
+  document.getElementById('home-suite-shorts').addEventListener('click', () => go('shorts'));
+  const suiteTrack = document.getElementById('cc-suite-track');
+  document.getElementById('cc-suite-next').addEventListener('click', () => {
+    if (!suiteTrack) return;
+    if (suiteTrack.scrollLeft + suiteTrack.clientWidth >= suiteTrack.scrollWidth - 8) suiteTrack.scrollTo({ left: 0, behavior: 'smooth' });
+    else suiteTrack.scrollBy({ left: 340, behavior: 'smooth' });
+  });
   const homeUpdateNow = document.getElementById('home-update-now');
   if (homeUpdateNow) homeUpdateNow.addEventListener('click', async () => {
     if (!confirm('Apply the available update now? The current version is backed up first.')) return;

@@ -119,3 +119,91 @@
   .ve-preview-ctl { gap: 8px; }
   .ve-preview-ctl .btn { min-height: 44px; }
 }
+
+/* v2.7.0 — CapCut desktop shell: top bar, player header, Details panel,
+   Media panel (Import drop zone, collapsible sections), CapCut timeline
+   toolbar + empty state. */
+.ve-topbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 8px 12px; }
+.ve-logo { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: none; color: var(--text); font-size: 15px; cursor: pointer; padding: 6px 4px; border-radius: 8px; min-height: 36px; }
+.ve-logo:hover { background: var(--surface-raised); }
+.ve-tb-spacer { flex: 1; }
+#ve-proj-name { flex: 0 1 280px; min-width: 140px; text-align: center; font-weight: 700; font-size: 14px; background: transparent; border: 1px solid transparent; border-radius: 8px; color: var(--text); padding: 6px 8px; }
+#ve-proj-name:hover { border-color: var(--border); }
+#ve-proj-name:focus { outline: none; border-color: var(--accent); background: var(--surface-raised); }
+.ve-pro-badge { background: linear-gradient(135deg, #7c3aed, #a855f7); border-color: #7c3aed; color: #fff; font-weight: 700; }
+.ve-pro-badge:hover { filter: brightness(1.1); }
+.ve-layout-toggle.off { opacity: .55; }
+.ve-lico { display: inline-flex; gap: 2px; align-items: stretch; height: 14px; }
+.ve-lico i { display: block; width: 7px; background: var(--border); border-radius: 2px; }
+.ve-lico i.on { background: var(--editor-rail-active); }
+.ve-lico-lbl { font-size: 11px; }
+.ve-main.ve-hide-left { grid-template-columns: 1fr 320px; }
+.ve-main.ve-hide-right { grid-template-columns: 300px 1fr; }
+.ve-main.ve-hide-left.ve-hide-right { grid-template-columns: 1fr; }
+.ve-main.ve-hide-left #ve-left-panel, .ve-main.ve-hide-right #ve-right-panel { display: none; }
+.ve-player-head { display: flex; gap: 8px; align-items: center; padding: 2px 4px 8px; }
+.ve-player-head .spacer { flex: 1; }
+.ve-dropzone { border: 2px dashed var(--border); border-radius: 12px; padding: 26px 12px; text-align: center; cursor: pointer; color: var(--text-2); display: flex; flex-direction: column; gap: 4px; align-items: center; margin: 10px 0; }
+.ve-dropzone:hover, .ve-dropzone.ve-drop { border-color: var(--accent); color: var(--text); }
+.ve-dz-plus { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 18px; font-weight: 700; }
+.ve-dz-sub { font-size: 12px; }
+.ve-import-row { display: flex; gap: 8px; align-items: center; }
+.ve-create-tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+.ve-create-tools .btn { flex-direction: column; gap: 4px; padding: 12px 4px; min-height: 64px; font-size: 12px; }
+.ve-section { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+.ve-section summary { cursor: pointer; padding: 9px 10px; font-size: 13px; font-weight: 700; list-style: none; display: flex; gap: 6px; align-items: center; }
+.ve-section summary::-webkit-details-marker { display: none; }
+.ve-section summary::before { content: '▸'; color: var(--muted); }
+.ve-section[open] summary::before { content: '▾'; }
+.ve-section .ve-sec-body { padding: 0 10px 10px; }
+.ve-ai-badge { font-size: 10px; background: #7c3aed; color: #fff; border-radius: 4px; padding: 1px 5px; font-weight: 700; }
+.ve-details-h { color: var(--editor-rail-active); margin: 0 0 10px; font-size: 14px; }
+.ve-details .ve-drow { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; align-items: start; }
+.ve-details .ve-drow span:first-child { color: var(--muted); }
+.ve-empty { border: 2px dashed var(--border); border-radius: 12px; min-height: 120px; margin: 16px 8px; display: flex; gap: 10px; align-items: center; justify-content: center; color: var(--text-2); font-size: 14px; cursor: pointer; }
+.ve-empty:hover, .ve-empty.ve-drop { border-color: var(--accent); color: var(--text); }
+.ve-empty-ico { font-size: 22px; }
+.ve-tool-split .ve-clip { cursor: crosshair; }
+.ve-tl-primary { align-items: center; }
+.ve-tl-primary select { padding: 6px; font-size: 12px; min-height: 36px; }
+.ve-tl-primary .ve-zoom-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.ve-tl-more { border-top: 1px dashed var(--border); padding-top: 8px; }
+
+@media (max-width: 860px) {
+  /* v2.7.0 — the CapCut shell on a phone: the top bar wraps (name on its
+     own row), the primary timeline toolbar scrolls horizontally instead of
+     overflowing, and hidden panels stay hidden without breaking the 1fr
+     stacked layout. Panels stack below the preview; nothing vanishes. */
+  .ve-topbar { gap: 6px; }
+  #ve-proj-name { flex: 1 1 100%; order: 5; text-align: left; }
+  .ve-topbar .btn { min-height: 44px; }
+  .ve-tl-primary { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .ve-tl-primary .btn, .ve-tl-primary select { flex: none; min-height: 44px; }
+  .ve-transport { flex-wrap: wrap; }
+  .ve-create-tools .btn { min-height: 56px; }
+  .ve-main.ve-hide-left, .ve-main.ve-hide-right, .ve-main.ve-hide-left.ve-hide-right { grid-template-columns: 1fr; }
+}
+
+/* v2.7.0 — Mobile (Worker 3): touch targets on the phone editor.
+   CapCut mobile's bottom toolbar is a tap strip; our panels open as a
+   bottom sheet instead (see mobile.css body.m-editor rules + the
+   Tools/Details buttons MobileShell.mount() injects). Everything the
+   finger must hit here is >=44px tall, and the timeline lanes are tall
+   enough to grab a clip without also grabbing its neighbour. */
+@media (max-width: 860px) {
+  .ve-transport .btn { min-height: 44px; padding: 10px 14px; }
+  .ve-tl-tools .btn { min-height: 44px; padding: 10px 12px; }
+  .ve-tl-tools input[type=range] { min-height: 44px; }
+  .ve-track { min-height: 48px; }
+  .ve-clip { font-size: 12px; padding: 6px 8px; }
+  .ve-clip .handle { width: 16px; }
+  .ve-clip .handle::after {
+    content: ''; position: absolute; top: 0; bottom: 0; width: 22px;
+  }
+  .ve-clip .handle.l::after { left: -3px; }
+  .ve-clip .handle.r::after { right: -3px; }
+  .ve-ruler { min-height: 44px; height: 32px; }
+  .ve-props input, .ve-props select, .ve-props textarea { min-height: 44px; font-size: 15px; }
+  .ve-props .btn { min-height: 44px; }
+  .ve-stage { max-height: 52vh; }
+}

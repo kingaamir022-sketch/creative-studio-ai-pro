@@ -1,27 +1,118 @@
-/* Home screen (v2.4.0) — CapCut-desktop style landing: hero + New Project,
-   recent projects, templates row, quick-access group cards.
+/* Home screen (v2.4.0, CapCut Desktop Exact v2.7.0) — CapCut-desktop
+   landing: own sidebar + top bar (rendered by render() on the home view),
+   cyan "Create project" banner, AI tool cards, creative-suite carousel,
+   recent projects, templates rows, working search.
    Token-based only, so dark (default) and light themes both work. */
 
-.home { display: flex; flex-direction: column; gap: 28px; padding-bottom: 24px; }
+/* --- CapCut home shell: full-width content, no 1200px cap --- */
+.cc-content { max-width: none; padding: 0; margin: 0; }
 
-/* --- Hero: greeting + big New Project button (CapCut home hero) --- */
+.home { display: flex; flex-direction: column; gap: 28px; padding: 24px 28px 32px; }
+
+/* --- CapCut top bar (home view only) --- */
+.cc-topbar {
+  display: flex; align-items: center; gap: 12px; padding: 10px 20px;
+  border-bottom: 1px solid var(--border); background: var(--bg);
+  position: sticky; top: 0; z-index: 30;
+}
+.cc-topbar .logo { margin-bottom: 0; min-width: 0; }
+.cc-topbar .logo-name { white-space: nowrap; }
+
+/* --- CapCut home sidebar (home view only) --- */
+.cc-sidebar {
+  width: 264px; flex-shrink: 0; background: var(--cc-home-surface);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100vh; z-index: 50;
+}
+.cc-signin-card {
+  background: var(--cc-home-surface-2); border-radius: var(--radius-lg);
+  padding: 14px; margin: 14px 14px 4px; flex-shrink: 0;
+}
+.cc-user-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: transparent; border: none; color: var(--text); cursor: pointer;
+  padding: 0; text-align: left; font: inherit; min-width: 0;
+}
+.cc-user-row .avatar { width: 38px; height: 38px; font-size: 16px; }
+.cc-user-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cc-user-name {
+  font-weight: 700; font-size: 14px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.cc-user-sub {
+  font-size: 11px; color: var(--text-2); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.cc-join-pro {
+  width: 100%; margin-top: 12px; background: var(--cc-pro); color: #111;
+  border: none; border-radius: 10px; font-size: 14px; font-weight: 800;
+  padding: 10px 12px; cursor: pointer; font-family: inherit;
+}
+.cc-join-pro:hover { filter: brightness(1.08); }
+.cc-nav { flex: 1; overflow-y: auto; padding: 8px 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+.cc-nav-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px;
+  border-radius: 10px; border: none; background: transparent; color: var(--text-2);
+  font-size: 14px; font-family: inherit; text-align: left; cursor: pointer; min-height: 40px;
+}
+.cc-nav-item:hover { background: var(--surface-raised); color: var(--text); }
+.cc-nav-item.active { background: var(--surface-raised); color: var(--text); font-weight: 600; }
+.cc-nav-item .ico { width: 22px; text-align: center; font-size: 16px; flex-shrink: 0; }
+.cc-nav-item .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-nav-divider { height: 1px; background: var(--border); margin: 10px 4px; }
+.cc-nav-section { font-size: 12px; color: var(--text-3); padding: 8px 10px 4px; font-weight: 600; }
+.cc-nav-item .cc-chevron { margin-left: auto; font-size: 11px; color: var(--text-3); transition: transform .15s ease; }
+.cc-nav-item .cc-chevron:not(.open) { transform: rotate(180deg); }
+.cc-more-panel { display: flex; flex-direction: column; gap: 2px; }
+.cc-nav-item.cc-sub { padding-left: 42px; font-size: 13.5px; }
+/* "More tools" groups: the same 7 CapCut groups as the old home grid,
+   flattened for the narrow sidebar (one column, no card chrome). */
+.cc-more-groups { grid-template-columns: 1fr; gap: 4px; margin-top: 6px; }
+.cc-more-groups .home-group { background: transparent; border: none; padding: 6px 4px 2px; }
+.cc-more-groups .home-group h3 { font-size: 12px; margin-bottom: 6px; color: var(--text-3); }
+.cc-more-groups .home-group-link { max-width: 100%; }
+.cc-new-badge {
+  margin-left: auto; background: var(--warning-strong); color: #111;
+  font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 20px; flex-shrink: 0;
+}
+.cc-nav-item.cc-invite {
+  border: 1px solid var(--border); border-radius: 10px; margin-top: 10px;
+}
+.cc-invite-sub { font-size: 11px; color: var(--text-3); padding: 5px 12px 0; }
+.cc-promo {
+  position: relative; overflow: hidden; margin-top: auto; border: none;
+  border-radius: var(--radius-lg); min-height: 96px; padding: 12px;
+  display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: 2px;
+  background: linear-gradient(135deg, #0d2b1e 0%, #14532d 48%, #0e7490 100%);
+  color: #fff; cursor: pointer; font: inherit; text-align: left;
+}
+.cc-promo-art { position: absolute; right: 8px; top: 6px; font-size: 34px; opacity: .9; }
+.cc-promo-title { color: var(--capcut-cyan); font-weight: 800; font-size: 15px; position: relative; }
+.cc-promo-sub { font-size: 12px; color: rgba(255, 255, 255, .85); position: relative; }
+
+/* --- Hero: huge cyan "Create project" banner (CapCut home) --- */
 .home-hero {
-  background: linear-gradient(120deg, var(--accent) 0%, var(--accent-2) 55%, var(--cyan-500) 100%);
+  background: var(--cc-banner);
   border-radius: var(--radius-xl);
+  min-height: 200px;
   padding: 28px 32px;
-  color: #fff;
   box-shadow: var(--shadow-md);
-  display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap;
+  display: flex; align-items: center; justify-content: center;
 }
 .home-hero h1 { font-size: 28px; font-weight: 800; line-height: 1.2; margin: 0 0 6px; color: #fff; }
 .home-hero p { margin: 0; color: rgba(255, 255, 255, 0.85); font-size: 14px; }
 .home-hero-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .home-new-btn {
-  background: #fff; color: #1a2347; border: none; border-radius: var(--radius-pill);
-  font-size: 17px; font-weight: 800; padding: 14px 26px; cursor: pointer;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); white-space: nowrap;
+  background: transparent; color: #0b1020; border: none; border-radius: var(--radius-lg);
+  font-size: 30px; font-weight: 800; padding: 12px 20px; cursor: pointer;
+  display: flex; align-items: center; gap: 14px; font-family: inherit; white-space: nowrap;
 }
-.home-new-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3); }
+.home-new-btn:hover { transform: translateY(-1px); }
+.cc-create-plus {
+  background: #0b1020; color: var(--cyan-300); width: 46px; height: 46px;
+  border-radius: 12px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 28px; font-weight: 800; line-height: 1; flex-shrink: 0;
+}
 .home-hero-secondary {
   background: rgba(255, 255, 255, 0.16); color: #fff; border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: var(--radius-pill); font-size: 14px; font-weight: 600; padding: 12px 18px; cursor: pointer;
@@ -37,6 +128,69 @@
 }
 .home-qn:hover { border-color: var(--accent); }
 .home-qn.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* --- AI tool cards (CapCut home: 5 cards under the banner) --- */
+.cc-tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.cc-tool {
+  position: relative; background: var(--cc-home-surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 18px 16px 16px; min-height: 158px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  cursor: pointer; text-align: left; color: var(--text); font: inherit;
+}
+.cc-tool:hover { border-color: var(--border-strong); background: var(--surface-raised); }
+.cc-tool-ico {
+  width: 48px; height: 48px; border-radius: 12px; background: var(--surface-sunken);
+  display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 8px;
+}
+.cc-tool-hd { font-size: 15px; font-weight: 800; letter-spacing: .05em; }
+.cc-tool-title { font-weight: 700; font-size: 15px; }
+.cc-tool-desc { color: var(--text-2); font-size: 13px; line-height: 1.4; }
+.cc-tool-badge {
+  position: absolute; top: 10px; right: 10px; border: 1px solid var(--warning-strong);
+  color: var(--warning-strong); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px;
+  max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* --- AI-powered creative suite carousel --- */
+.cc-suite-wrap { position: relative; margin-top: 12px; }
+.cc-suite-track { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x proximity; }
+.cc-suite-card {
+  flex: 0 0 300px; scroll-snap-align: start; background: var(--cc-home-surface);
+  border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+  cursor: pointer; text-align: left; color: var(--text); font: inherit; padding: 0 0 14px;
+}
+.cc-suite-card:hover { border-color: var(--border-strong); background: var(--surface-raised); }
+.cc-suite-thumb {
+  display: flex; align-items: center; justify-content: center;
+  height: 150px; position: relative; overflow: hidden;
+}
+.cc-thumb-video { background: linear-gradient(135deg, #38bdf8 0%, #2563eb 60%, #1e40af 100%); }
+.cc-thumb-design { background: linear-gradient(135deg, #bae6fd 0%, #7dd3fc 55%, #38bdf8 100%); }
+.cc-thumb-ad { background: linear-gradient(135deg, #818cf8 0%, #6366f1 55%, #4f46e5 100%); }
+.cc-thumb-shorts { background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%); }
+.cc-suite-art { font-size: 64px; }
+.cc-suite-poster {
+  font-family: Poppins, sans-serif; font-weight: 800; font-size: 34px; color: #1e3a8a;
+  letter-spacing: -0.02em; transform: rotate(-4deg);
+}
+.cc-suite-pill {
+  position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.94); color: #0b1020; font-size: 11px; font-weight: 700;
+  padding: 5px 10px; border-radius: 20px; white-space: nowrap;
+}
+.cc-suite-frame {
+  position: absolute; right: 10px; top: 10px; border: 2px solid rgba(255, 255, 255, 0.75);
+  border-radius: 6px; font-size: 10px; font-weight: 700; color: #fff; padding: 2px 5px;
+}
+.cc-suite-title { display: block; font-weight: 700; font-size: 15px; padding: 12px 14px 2px; }
+.cc-suite-desc { display: block; color: var(--text-2); font-size: 13px; padding: 0 14px; line-height: 1.4; }
+.cc-suite-next {
+  position: absolute; right: 8px; top: 60px; width: 44px; height: 44px; border-radius: 50%;
+  background: var(--surface-raised); color: var(--text); border: 1px solid var(--border-strong);
+  font-size: 24px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  z-index: 2; box-shadow: var(--shadow-sm);
+}
+.cc-suite-next:hover { background: var(--surface); }
 
 /* --- Home search (filters the real recent projects + templates below) --- */
 .home-search input {
@@ -106,7 +260,7 @@
   background: var(--surface-sunken); color: var(--text-2); margin-bottom: 6px; text-transform: capitalize;
 }
 
-/* --- Quick-access group cards --- */
+/* --- Quick-access group cards (kept for the sidebar "More tools" panel) --- */
 .home-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
 .home-group { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
 .home-group h3 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
@@ -154,14 +308,44 @@
 .np-media-item:hover { border-color: var(--accent); }
 .np-media-item.selected { border-color: var(--accent); outline: 2px solid var(--accent); background: var(--surface-raised); }
 
+@media (max-width: 1100px) {
+  .cc-tools { grid-template-columns: repeat(3, 1fr); }
+  .cc-suite-card { flex-basis: 280px; }
+}
+
+@media (max-width: 860px) {
+  .home { padding: 16px 16px 24px; }
+  .cc-topbar { padding: 10px 14px; flex-wrap: wrap; }
+  /* v2.7.0 — the CapCut home sidebar is an off-canvas drawer on phones,
+     exactly like the global sidebar: translate, never display:none. */
+  .cc-sidebar { position: fixed; left: 0; top: 0; transform: translateX(-100%); transition: transform .2s ease; box-shadow: var(--shadow-lg); width: 264px; }
+  body.cc-nav-open .cc-sidebar { transform: translateX(0); }
+  body.cc-nav-open::after { content: ''; position: fixed; inset: 0; background: rgba(4, 6, 16, .55); z-index: 40; }
+  .cc-tools { grid-template-columns: repeat(2, 1fr); }
+  .home-hero { min-height: 150px; }
+  .home-new-btn { font-size: 24px; }
+  .cc-suite-card { flex-basis: 260px; }
+}
+
 @media (max-width: 640px) {
-  .home-hero { padding: 20px; }
+  .home-hero { padding: 20px; min-height: 132px; }
   .home-hero h1 { font-size: 22px; }
-  .home-new-btn { font-size: 15px; padding: 12px 20px; }
+  .home-new-btn { font-size: 20px; padding: 12px 16px; gap: 10px; }
+  .cc-create-plus { width: 38px; height: 38px; font-size: 24px; border-radius: 10px; }
+  .cc-topbar .logo-name { font-size: 14px; }
+  .cc-suite-card { flex-basis: 240px; }
+  .cc-suite-thumb { height: 130px; }
   /* v2.4.0 — touch targets on phones: quick-nav pills, group links and
      media-picker rows are at least 44px tall. The grids already collapse
      to one column here (minmax 240px/260px in a ~358px content width). */
   .home-qn { min-height: 44px; padding: 10px 16px; }
   .home-group-link { min-height: 44px; padding: 10px 14px; }
   .np-media-item { padding: 12px; }
+  .cc-nav-item { min-height: 44px; }
+  .cc-tool { min-height: 44px; }
+}
+
+@media (max-width: 480px) {
+  .cc-tools { grid-template-columns: 1fr; }
+  .cc-tool { min-height: 0; }
 }

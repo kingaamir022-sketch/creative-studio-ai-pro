@@ -35,6 +35,9 @@
   --blue-600: #2563eb;
   --cyan-400: #22d3ee;
   --cyan-500: #0ea5e9;
+  --cyan-300: #7df3ff;               /* CapCut home banner highlight */
+  --capcut-cyan: #00d5ff;            /* CapCut home primary (v2.7.0) */
+  --capcut-cyan-deep: #00a9e8;
   --green-500: #22c55e;
   --green-600: #16a34a;
   --amber-500: #f59e0b;
@@ -129,7 +132,12 @@
   --content-max: 1200px;
   --topbar-h: 61px;
 
-  /* ---------- CapCut editor tokens (v2.3.0) ---------- */
+  /* ---------- CapCut home tokens (v2.7.0) ---------- */
+  --cc-banner: linear-gradient(115deg, #8ef1ff 0%, #4fe3ff 38%, #00c8f5 72%, #00a9e8 100%);
+  --cc-pro: linear-gradient(90deg, #ff5c8a 0%, #ff8ad4 45%, #22d3ee 100%);
+  --cc-home-bg: #0a0e0e;             /* CapCut desktop home backdrop */
+  --cc-home-surface: #141a1a;        /* CapCut home sidebar / cards */
+  --cc-home-surface-2: #1c2424;
   --editor-rail-w: 76px;             /* vertical icon-tab rail in editors */
   --editor-rail-bg: var(--bg-2);
   --editor-rail-active: var(--accent);
@@ -175,6 +183,15 @@
   --shadow-sm: 0 2px 8px rgba(19, 26, 46, 0.10);
   --shadow-md: 0 10px 28px rgba(19, 26, 46, 0.14);
   --shadow-lg: 0 20px 48px rgba(19, 26, 46, 0.18);
+
+  /* CapCut home tokens — brand gradients stay identical in light theme
+     (like the black video stage): the cyan banner and pink→cyan Join Pro
+     gradient are the CapCut identity, not theme surfaces. */
+  --cc-banner: linear-gradient(115deg, #8ef1ff 0%, #4fe3ff 38%, #00c8f5 72%, #00a9e8 100%);
+  --cc-pro: linear-gradient(90deg, #ff5c8a 0%, #ff8ad4 45%, #22d3ee 100%);
+  --cc-home-bg: #f4f6fd;
+  --cc-home-surface: #ffffff;
+  --cc-home-surface-2: #eef1fb;
 
   /* CapCut editor tokens — light parity (stage stays black: video content). */
   --editor-rail-bg: #ffffff;
