@@ -1,5 +1,5 @@
 'use strict';
-// CapCut Desktop Exact regression tests (v2.7.0) — the Home + Video Editor
+// CapCut Desktop Exact regression tests (v2.7.1) — the Home + Video Editor
 // shells and the mobile shell must match the user's reference screenshots
 // of real CapCut (desktop dark + mobile light) in arrangement, order,
 // labels and colours, with every visible item wired to a real feature.
@@ -93,13 +93,13 @@ async function served(p) {
 
 /* ---------- version ---------- */
 
-test('health reports 2.7.0 / phase 13', async () => {
+test('health reports 2.7.1 / phase 14', async () => {
   const h = await req('/api/health');
   assert.equal(h.status, 200);
-  assert.equal(h.json.version, '2.7.0');
-  assert.equal(h.json.phase, 13);
+  assert.equal(h.json.version, '2.7.1');
+  assert.equal(h.json.phase, 14);
   const d = await req('/api/dashboard', { cookie: ownerCookie });
-  assert.equal(d.json.system.version, '2.7.0 (CapCut Desktop Exact)');
+  assert.equal(d.json.system.version, '2.7.1 (Updater Fix)');
 });
 
 /* ---------- desktop Home (reference: image-222.png) ---------- */
@@ -229,7 +229,7 @@ test('index loads the mobile shell files', async () => {
   const index = await served('/');
   assert.ok(index.includes('/mobile.css'), 'index loads mobile.css');
   assert.ok(index.includes('/mobile.js'), 'index loads mobile.js');
-  assert.ok(index.includes('v2.7.0 Desktop App'), 'index title is 2.7.0');
+  assert.ok(index.includes('v2.7.1 Desktop App'), 'index title is 2.7.1');
 });
 
 test('mobile bottom nav has the 5 CapCut tabs in order, plus the FAB', async () => {

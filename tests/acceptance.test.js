@@ -202,10 +202,10 @@ after(() => {
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-test('health reports Phase 13 / 2.7.0', async () => {
+test('health reports Phase 14 / 2.7.1', async () => {
   const h = await req('/api/health');
-  assert.equal(h.json.version, '2.7.0');
-  assert.equal(h.json.phase, 13);
+  assert.equal(h.json.version, '2.7.1');
+  assert.equal(h.json.phase, 14);
 });
 
 /* ---------- A (suite scale): 10 unique rows, real MP4s ---------- */

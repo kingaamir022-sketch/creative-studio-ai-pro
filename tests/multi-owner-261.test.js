@@ -1,5 +1,5 @@
 'use strict';
-// Multi-Owner tests (v2.7.0) — run with: node --test tests/multi-owner-261.test.js
+// Multi-Owner tests (v2.7.1) — run with: node --test tests/multi-owner-261.test.js
 // Spawns the real server on a scratch port (4855) with a temp DB/uploads
 // dir. No real network call ever happens. Covers:
 //  - first signup -> OWNER + Lifetime; second (non-listed) signup -> USER
@@ -21,7 +21,7 @@
 //    OWNER cannot self-demote (400) or self-delete (400); an ADMIN
 //    cannot delete the sole OWNER (403); exactly one OWNER remains
 //  - wrong-password login -> 401 with the exact server message
-//  - health reports version 2.7.0, phase 13
+//  - health reports version 2.7.1, phase 14
 //  - public/app.js maps an unreachable server to the friendly
 //    SERVER_UNREACHABLE_MSG and contains no 'Failed to fetch'
 const { test, before, after } = require('node:test');
@@ -307,11 +307,11 @@ test('Multi-Owner: wrong-password login is 401 with the exact server message', a
   assert.equal(bad.json.error, 'Email or password is incorrect.');
 });
 
-test('Multi-Owner: health reports version 2.7.0, phase 13', async () => {
+test('Multi-Owner: health reports version 2.7.1, phase 14', async () => {
   const h = await req('/api/health');
   assert.equal(h.status, 200, JSON.stringify(h.json));
-  assert.equal(h.json.version, '2.7.0');
-  assert.equal(h.json.phase, 13);
+  assert.equal(h.json.version, '2.7.1');
+  assert.equal(h.json.phase, 14);
 });
 
 test('Multi-Owner: app.js maps an unreachable server to the friendly message', async () => {
