@@ -1,8 +1,8 @@
 {
  "app": "CreativeStudio AI Pro",
- "version": "2.4.0",
- "notes": "CapCut Home & Flow: home screen as landing (hero + New Project, real recent projects, templates row, quick-access cards for all 36 features), New Project chooser (9 types, import-first media step, per-type editor landing), Effects/Transitions split into separate views, real stickers on the overlay track, MOV export, drag-drop import, ratio selector, template category chips, dashboard video durations, Collaboration view, mobile bottom sheets + 44px touch targets + 390px phone layout, render watchdog (corrupt media fails honestly instead of bricking the queue). Rotation fix (same release): 90/270 clip rotation now renders at the project size alone, with transitions, and with keyframes; overlay rotation honoured; keyframe validation rejects rotation/volume. No new dependencies, fullReinstall false.",
- "package": "update-2.4.0.json",
- "packageSha256": "e30ae48ac915fb530af5456809bb7aa23d23eb2a056c9b5cb42cd5520944f2b3",
- "publishedAt": "2026-11-14T08:03:04.029Z"
+ "version": "2.5.0",
+ "notes": "CapCut parity round: 16-effect video effects library + adjustment layers, chroma key, speed curves (0.1-100x), keyframe rotation/volume/easing with 2.8x faster keyframed renders, 28 transitions (apply-to-all, up to 5s), filter presets + LUTs, stabilisation, video masking, N video tracks, 2K/4K + WebM/HEVC/HDR export, reverse/freeze, voice processing, auto reframe, optical flow, font fidelity (real Google Fonts), emoji colour rendering, extract audio, waveforms, SRT captions workflow, compound clips, full 27-binding shortcut map with rebind panel, Sheets spreadsheet type, CMYK + DOCX internals, TikTok chunk upload, Pexels stock video, Magic Grab per-object, Content Planner depth, edit-share collaboration, Settings pages, PWA, project settings dialog. No new dependencies, fullReinstall false.",
+ "package": "update-2.5.0.json",
+ "packageSha256": "94bfa8145f30aac95bdced884fc8ddf394263ff3eb61a84186fb1cf3cae97d5b",
+ "publishedAt": "2026-11-14T10:15:47.880Z"
 }
