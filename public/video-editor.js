@@ -302,18 +302,22 @@ window.VideoEditor = (function () {
   }
 
   function snapTime(t, track, excludeId) {
-    const candidates = [ed.playhead];
-    for (const tr of ed.timeline.tracks) {
-      if (tr.id !== track.id) continue;
-      for (const c of tr.clips) {
-        if (c.id === excludeId) continue;
-        candidates.push(c.start, c.start + c.duration);
-      }
-    }
     let best = t, bestD = 8 / ed.pxPerSec;
-    for (const cand of candidates) {
-      const d = Math.abs(cand - t);
-      if (d < bestD) { best = cand; bestD = d; }
+    // v2.3.0 — magnetic timeline: when the Magnet toggle is off, clip
+    // edges do NOT snap (free placement); beat snap keeps its own toggle.
+    if (ed.magnet !== false) {
+      const candidates = [ed.playhead];
+      for (const tr of ed.timeline.tracks) {
+        if (tr.id !== track.id) continue;
+        for (const c of tr.clips) {
+          if (c.id === excludeId) continue;
+          candidates.push(c.start, c.start + c.duration);
+        }
+      }
+      for (const cand of candidates) {
+        const d = Math.abs(cand - t);
+        if (d < bestD) { best = cand; bestD = d; }
+      }
     }
     // Phase 5: beat-snap — when a synced track is attached and the toggle
     // is on, clip edges also snap to the nearest beat (within 0.12 s).
@@ -754,18 +758,16 @@ window.VideoEditor = (function () {
     if (tab === 'media') {
       let media = { media: [] };
       try { media = await api('/api/media?kind=video'); } catch { /* ignore */ }
-      let audio = { media: [] };
-      try { audio = await api('/api/media?kind=audio'); } catch { /* ignore */ }
-      const items = [...media.media, ...audio.media];
-      body = `<p class="sub">Click a file to add it at the playhead. Videos go to the video track, audio to the audio track.</p>
+      const items = media.media;
+      body = `<p class="sub">Click a video to add it at the playhead on the video track. Audio lives in the Audio tab.</p>
         <button class="btn btn-sm" id="ve-upload-media" style="margin-bottom:10px">⬆ Upload media</button>
-        <input type="file" id="ve-media-file" accept="video/*,audio/*" style="display:none">
+        <input type="file" id="ve-media-file" accept="video/*" style="display:none">
         ${items.length ? items.map((m) => `
           <div class="ve-media-item" data-add-media="${m.id}">
-            ${m.thumbnailUrl ? `<img src="${m.thumbnailUrl}" alt="">` : `<span style="font-size:22px">${m.kind === 'video' ? '🎬' : '🎵'}</span>`}
+            ${m.thumbnailUrl ? `<img src="${m.thumbnailUrl}" alt="">` : `<span style="font-size:22px">🎬</span>`}
             <div><div class="nm">${esc(m.originalName)}</div>
             <div class="mt">${m.kind}${m.durationSeconds ? ` · ${m.durationSeconds.toFixed(1)}s` : ''}${m.width ? ` · ${m.width}×${m.height}` : ''}${m.fps ? ` · ${m.fps}fps` : ''}</div></div>
-          </div>`).join('') : '<p class="sub">No video or audio in your library yet. Upload some first.</p>'}`;
+          </div>`).join('') : '<p class="sub">No video in your library yet. Upload some first.</p>'}`;
       host.innerHTML = body;
       const fi = document.getElementById('ve-media-file');
       document.getElementById('ve-upload-media').addEventListener('click', () => fi.click());
@@ -780,11 +782,91 @@ window.VideoEditor = (function () {
         } catch (e) { toast(e.message, true); }
       });
       host.querySelectorAll('[data-add-media]').forEach((el) => el.addEventListener('click', async () => {
-        const all = [...media.media, ...audio.media];
-        const m = all.find((x) => String(x.id) === el.dataset.addMedia);
+        const m = media.media.find((x) => String(x.id) === el.dataset.addMedia);
         if (!m) return;
         addMediaClip(m);
       }));
+    } else if (tab === 'audio') {
+      let audio = { media: [] };
+      try { audio = await api('/api/media?kind=audio'); } catch { /* ignore */ }
+      const items = audio.media;
+      body = `<p class="sub">Click an audio file to add it at the playhead on the audio track. Volume and fades are set per clip in the right panel.</p>
+        <button class="btn btn-sm" id="ve-upload-audio" style="margin-bottom:10px">⬆ Upload audio</button>
+        <input type="file" id="ve-audio-file" accept="audio/*" style="display:none">
+        ${items.length ? items.map((m) => `
+          <div class="ve-media-item" data-add-media="${m.id}">
+            <span style="font-size:22px">🎵</span>
+            <div><div class="nm">${esc(m.originalName)}</div>
+            <div class="mt">audio${m.durationSeconds ? ` · ${m.durationSeconds.toFixed(1)}s` : ''}</div></div>
+          </div>`).join('') : '<p class="sub">No audio in your library yet. Upload some first — your own music or voice recordings.</p>'}`;
+      host.innerHTML = body;
+      const fi = document.getElementById('ve-audio-file');
+      document.getElementById('ve-upload-audio').addEventListener('click', () => fi.click());
+      fi.addEventListener('change', async () => {
+        if (!fi.files.length) return;
+        const fd = new FormData();
+        fd.append('file', fi.files[0]);
+        try {
+          await apiForm('/api/media/upload', fd);
+          toast('Uploaded. Probing duration…');
+          renderLeftPanel();
+        } catch (e) { toast(e.message, true); }
+      });
+      host.querySelectorAll('[data-add-media]').forEach((el) => el.addEventListener('click', async () => {
+        const m = audio.media.find((x) => String(x.id) === el.dataset.addMedia);
+        if (!m) return;
+        addMediaClip(m);
+      }));
+    } else if (tab === 'effects') {
+      let presets = { presets: [] };
+      try { presets = await api('/api/magic/animate/presets'); } catch { /* ignore */ }
+      const clipPresets = (presets.presets || []).filter((p) => (p.appliesTo || []).includes('clip'));
+      body = `<p class="sub">Motion effects for clips. Text clips also get fade/slide in &amp; out — set those per text clip in the right panel (Clip tab).</p>
+        ${clipPresets.length ? clipPresets.map((p) => `
+          <div class="ve-media-item"><div><div class="nm">${esc(p.name)}</div>
+          <div class="mt">${esc(p.description || '')} · ${p.durationMs}ms${p.loop ? ' · loops' : ''}</div></div></div>`).join('')
+        : '<p class="sub">No clip presets available.</p>'}
+        <p class="sub" style="margin-top:10px">Clip presets expand into real keyframes. Apply them from the Animation Studio, or add keyframes by hand in the right panel (Keyframes tab).</p>
+        <button class="btn btn-sm" id="ve-effects-open" style="margin-top:6px">Open Animation Studio →</button>`;
+      host.innerHTML = body;
+      document.getElementById('ve-effects-open').addEventListener('click', () => go('animation'));
+    } else if (tab === 'captions') {
+      const textClips = [];
+      for (const tr of ed.timeline.tracks.filter((t) => t.kind === 'text')) {
+        for (const c of tr.clips) textClips.push({ clip: c, track: tr });
+      }
+      textClips.sort((a, b) => a.clip.start - b.clip.start);
+      body = `<p class="sub">Text overlays on this timeline, in order. Click one to jump the playhead to it. Captions are text clips — style them in the right panel (Clip tab).</p>
+        ${textClips.length ? textClips.map(({ clip }) => `
+          <div class="ve-media-item" data-seek-clip="${clip.id}">
+            <span style="font-size:22px">💬</span>
+            <div><div class="nm">${esc((clip.text && clip.text.text) || clip.name || 'Text clip')}</div>
+            <div class="mt">${fmtT(clip.start)} – ${fmtT(clip.start + clip.duration)} · ${(clip.text && clip.text.animIn) || 'fade'} in</div></div>
+          </div>`).join('') : '<p class="sub">No text clips yet — add one from the Text tab.</p>'}
+        <button class="btn btn-sm" id="ve-captions-open" style="margin-top:6px">Open Auto Captions →</button>`;
+      host.innerHTML = body;
+      host.querySelectorAll('[data-seek-clip]').forEach((el) => el.addEventListener('click', () => {
+        const found = findClip(ed.timeline, el.dataset.seekClip);
+        if (!found) return;
+        ed.selectedClipId = found.clip.id;
+        ed.playhead = found.clip.start;
+        setPlaying(false);
+        renderAll();
+      }));
+      document.getElementById('ve-captions-open').addEventListener('click', () => go('captions'));
+    } else if (tab === 'filters') {
+      let fx = { filters: [] };
+      try { fx = await api('/api/video/effects'); } catch { /* ignore */ }
+      body = `<p class="sub">Colour filters, per clip. Select a clip on the timeline, then move the sliders in the right panel (Clip tab → Colour &amp; filters). Filters apply to the preview and to the FFmpeg render.</p>
+        ${(fx.filters || []).map((f) => `<div class="ve-media-item"><div><div class="nm">${esc(f.name)}</div><div class="mt">${f.min} to ${f.max}</div></div></div>`).join('') || '<p class="sub">No filters available.</p>'}`;
+      host.innerHTML = body;
+    } else if (tab === 'stickers') {
+      body = `<div class="empty" style="margin-top:8px"><div class="big">🖼️</div>
+        <p><b>Stickers are not in this editor yet.</b></p>
+        <p style="margin-top:6px">Image overlays on video (stickers) are not built — the timeline takes video, audio and text clips. Add images, shapes and stickers to designs in the Graphic Editor instead.</p>
+        <button class="btn btn-primary" id="ve-stickers-editor" style="margin-top:12px">Open Graphic Editor →</button></div>`;
+      host.innerHTML = body;
+      document.getElementById('ve-stickers-editor').addEventListener('click', () => go('graphic-editor'));
     } else if (tab === 'text') {
       body = `<p class="sub">Add a text overlay at the playhead, then style it in the right panel (font, colour, position, fade/slide animation).</p>
         <button class="btn btn-primary" id="ve-add-text" style="width:100%;justify-content:center">＋ Add text clip (3s)</button>
@@ -922,7 +1004,7 @@ window.VideoEditor = (function () {
       selectedClipId: null, playhead: 0, playing: false, lastTick: 0,
       pxPerSec: 14, leftTab: 'media', propsTab: 'props',
       undoStack: [], redoStack: [], saveTimer: null, pollTimer: null,
-      currentJob: null, beatSnap: true,
+      currentJob: null, beatSnap: true, magnet: true,
     };
     ed.pushHistory = pushHistory;
     ed.saveSoon = saveSoon;
@@ -940,14 +1022,19 @@ window.VideoEditor = (function () {
         <button class="btn btn-sm" id="ve-undo" title="Ctrl+Z">↩ Undo</button>
         <button class="btn btn-sm" id="ve-redo" title="Ctrl+Shift+Z">↪ Redo</button>
         <button class="btn btn-sm" id="ve-save-ver">💾 Save version</button>
-        <button class="btn btn-sm btn-primary" id="ve-goto-export">▶ Render</button>
+        <button class="btn btn-sm btn-primary ve-export" id="ve-goto-export">⬆ Export</button>
       </div>
       <div class="ve-main">
-        <div class="ve-panel" id="ve-left-panel">
-          <div class="ve-tabs">
-            <button data-ltab="media" class="active">Media</button>
-            <button data-ltab="text">Text</button>
-            <button data-ltab="transitions">Transitions</button>
+        <div class="ve-panel ve-left-rail" id="ve-left-panel">
+          <div class="ve-tabs" role="tablist" aria-label="Editor panels">
+            <button data-ltab="media" class="active" role="tab"><span class="ti">🎬</span><span class="tl">Media</span></button>
+            <button data-ltab="audio" role="tab"><span class="ti">🎵</span><span class="tl">Audio</span></button>
+            <button data-ltab="text" role="tab"><span class="ti">🔤</span><span class="tl">Text</span></button>
+            <button data-ltab="stickers" role="tab"><span class="ti">🖼️</span><span class="tl">Stickers</span></button>
+            <button data-ltab="effects" role="tab"><span class="ti">✨</span><span class="tl">Effects</span></button>
+            <button data-ltab="transitions" role="tab"><span class="ti">🔀</span><span class="tl">Transitions</span></button>
+            <button data-ltab="captions" role="tab"><span class="ti">💬</span><span class="tl">Captions</span></button>
+            <button data-ltab="filters" role="tab"><span class="ti">🎛️</span><span class="tl">Filters</span></button>
           </div>
           <div id="ve-left">Loading…</div>
         </div>
@@ -986,6 +1073,7 @@ window.VideoEditor = (function () {
           <button class="btn btn-sm" id="ve-ungroup">Ungroup</button>
           <button class="btn btn-sm" id="ve-marker">◆ Add marker</button>
           ${timeline.musicSync ? `<label style="font-size:12px" title="Snap clip edges to the nearest beat (within 0.12 s)"><input type="checkbox" id="ve-beatsnap" checked> ♪ Beat snap</label>` : ''}
+          <button class="btn btn-sm on" id="ve-magnet" title="Magnetic timeline: clip edges snap to the playhead and to other clips. Click to turn snapping off for free placement.">🧲 Magnet</button>
           <label style="font-size:12px">Zoom <input type="range" id="ve-zoom" min="4" max="40" step="1" value="14"></label>
           <button class="btn btn-sm" id="ve-add-audio-track">＋ Audio track</button>
           <button class="btn btn-sm" id="ve-add-text-track">＋ Text track</button>
@@ -1020,6 +1108,11 @@ window.VideoEditor = (function () {
     document.getElementById('ve-zoom').addEventListener('input', (e) => { ed.pxPerSec = parseInt(e.target.value, 10); renderTimeline(); updatePreview(); });
     const beatSnapEl = document.getElementById('ve-beatsnap');
     if (beatSnapEl) beatSnapEl.addEventListener('change', (e) => { ed.beatSnap = e.target.checked; toast(ed.beatSnap ? 'Beat snap on — clip edges snap to the nearest beat.' : 'Beat snap off.'); });
+    document.getElementById('ve-magnet').addEventListener('click', (e) => {
+      ed.magnet = !ed.magnet;
+      e.currentTarget.classList.toggle('on', ed.magnet);
+      toast(ed.magnet ? 'Magnet on — clip edges snap to the playhead and other clips.' : 'Magnet off — clips move freely without snapping.');
+    });
     document.getElementById('ve-add-audio-track').addEventListener('click', () => {
       pushHistory();
       ed.timeline.tracks.push({ id: uid('track'), kind: 'audio', name: `Audio ${ed.timeline.tracks.filter((t) => t.kind === 'audio').length + 1}`, locked: false, muted: false, clips: [] });

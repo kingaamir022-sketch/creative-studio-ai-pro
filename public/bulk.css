@@ -29,7 +29,7 @@ label.disabled { opacity: 0.55; }
 .qp-safebox { position: absolute; border: 1px dashed rgba(252, 163, 17, 0.65); border-radius: 6px; pointer-events: none; }
 .qp-chip { position: absolute; left: 12px; color: #fca311; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; }
 .qp-cta { position: absolute; left: 0; right: 0; text-align: center; color: #fff; font-weight: 800; font-size: 13px; }
-.qp-caption { position: absolute; bottom: 0; left: 0; right: 0; height: 34px; background: rgba(0, 0, 0, 0.45); color: var(--text-2); font-size: 10px; display: flex; align-items: center; justify-content: center; }
+.qp-caption { position: absolute; bottom: 0; left: 0; right: 0; height: 34px; background: rgba(0, 0, 0, 0.45); color: #e8ecf8; font-size: 10px; display: flex; align-items: center; justify-content: center; }
 .phone-side { max-width: 340px; }
 .badge.ok { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
 .badge.warn { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning); }

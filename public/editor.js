@@ -238,12 +238,12 @@ window.DesignEditor = (function () {
       <div class="ed-body">
         <div class="ed-left">
           <div class="ed-tabs" id="ed-tabs">
-            <button class="ed-tab" data-tab="canvas">Canvas</button>
-            <button class="ed-tab" data-tab="add">Add</button>
-            <button class="ed-tab" data-tab="layers">Layers</button>
-            <button class="ed-tab" data-tab="templates">Templates</button>
-            <button class="ed-tab" data-tab="media">Media</button>
-            <button class="ed-tab" data-tab="brand">Brand</button>
+            <button class="ed-tab" data-tab="canvas"><span class="ti">◻️</span><span class="tl">Canvas</span></button>
+            <button class="ed-tab" data-tab="add"><span class="ti">➕</span><span class="tl">Elements</span></button>
+            <button class="ed-tab" data-tab="layers"><span class="ti">🗂️</span><span class="tl">Layers</span></button>
+            <button class="ed-tab" data-tab="templates"><span class="ti">📐</span><span class="tl">Templates</span></button>
+            <button class="ed-tab" data-tab="media"><span class="ti">🖼️</span><span class="tl">Media</span></button>
+            <button class="ed-tab" data-tab="brand"><span class="ti">🏷️</span><span class="tl">Brand</span></button>
           </div>
           <div class="ed-panel" id="ed-left-panel"></div>
         </div>

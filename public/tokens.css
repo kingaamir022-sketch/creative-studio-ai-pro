@@ -1,5 +1,7 @@
 /* ==========================================================================
-   CreativeStudio AI Pro — Design tokens (v2.0.0 Final Redesign)
+   CreativeStudio AI Pro — Design tokens (v2.0.0 Final Redesign, extended
+   v2.3.0 CapCut design pass: editor rail / timeline / stage / export
+   tokens, with full light-theme parity for every token)
    Three-tier system (Figma / Linear / Notion-Stripe-Vercel research,
    see docs/REDESIGN.md):
      1. primitives  -- primitive palette, never used directly in components
@@ -121,11 +123,27 @@
   --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.5);
   --shadow-floating: var(--shadow-md);
 
-  /* ---------- Layout ---------- */
+  /* ---------- Tier 3: layout ---------- */
   --sidebar-w: 248px;
   --sidebar-w-collapsed: 64px;
   --content-max: 1200px;
   --topbar-h: 61px;
+
+  /* ---------- CapCut editor tokens (v2.3.0) ---------- */
+  --editor-rail-w: 76px;             /* vertical icon-tab rail in editors */
+  --editor-rail-bg: var(--bg-2);
+  --editor-rail-active: var(--accent);
+  --timeline-bg: var(--surface);
+  --timeline-track-bg: var(--bg-2);
+  --timeline-ruler: var(--border);
+  --playhead: var(--danger);
+  --snap-guide: var(--cyan);
+  --stage-bg: #000000;               /* video stage stays black in both themes (content) */
+  --clip-video: var(--accent);
+  --clip-audio: var(--accent-2);
+  --clip-text: var(--warning);
+  --export-btn: var(--accent);
+  --export-btn-hover: var(--accent-hover);
 }
 
 /* ---------- Light theme: same token names, swapped values ---------- */
@@ -157,4 +175,19 @@
   --shadow-sm: 0 2px 8px rgba(19, 26, 46, 0.10);
   --shadow-md: 0 10px 28px rgba(19, 26, 46, 0.14);
   --shadow-lg: 0 20px 48px rgba(19, 26, 46, 0.18);
+
+  /* CapCut editor tokens — light parity (stage stays black: video content). */
+  --editor-rail-bg: #ffffff;
+  --editor-rail-active: #6a4ef0;
+  --timeline-bg: #ffffff;
+  --timeline-track-bg: #eef1fb;
+  --timeline-ruler: #d8deee;
+  --playhead: #dc2626;
+  --snap-guide: #0891b2;
+  --stage-bg: #000000;
+  --clip-video: #6a4ef0;
+  --clip-audio: #2563eb;
+  --clip-text: #b45309;
+  --export-btn: #6a4ef0;
+  --export-btn-hover: #5b3fe0;
 }
