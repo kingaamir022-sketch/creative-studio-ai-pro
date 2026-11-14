@@ -197,6 +197,7 @@ function render() {
     state.user = null; render();
   });
   document.getElementById('notif-btn').addEventListener('click', toggleNotif);
+  refreshNotifDot();
   const searchInput = document.getElementById('global-search');
   searchInput.addEventListener('input', () => {
     clearTimeout(state.searchTimer);
@@ -235,13 +236,26 @@ async function toggleNotif() {
   try {
     const { notifications } = await api('/api/notifications');
     const dot = document.getElementById('notif-dot');
-    if (dot) dot.style.display = notifications.length ? 'flex' : 'none';
+    if (dot) dot.style.display = 'none';
+    // Opening the bell marks everything seen (read state is per-user,
+    // stored server-side) — the dot stays cleared until new activity.
+    try { await api('/api/notifications/seen', { method: 'POST' }); } catch { /* dot already cleared locally */ }
     document.getElementById('notif-list').innerHTML = notifications.length
       ? notifications.map((n) => `<div class="notif-item">${esc(n.detail || n.action)}<small>${fmtDate(n.createdAt)}</small></div>`).join('')
       : '<div class="notif-item">No activity yet. Create a project or upload media and it will show up here.</div>';
   } catch (e) {
     document.getElementById('notif-list').innerHTML = `<div class="notif-item">Could not load notifications: ${esc(e.message)}</div>`;
   }
+}
+// C-21: the bell dot is evaluated on page load (not only when the bell is
+// opened) from the server's per-user unread count.
+async function refreshNotifDot() {
+  const dot = document.getElementById('notif-dot');
+  if (!dot) return;
+  try {
+    const { unreadCount } = await api('/api/notifications');
+    dot.style.display = unreadCount > 0 ? 'flex' : 'none';
+  } catch { dot.style.display = 'none'; }
 }
 function closeNotif() { const p = document.getElementById('notif-panel'); if (p) p.style.display = 'none'; }
 
@@ -382,7 +396,7 @@ async function viewDashboard(c) {
   <div class="grid grid-4">
     <div class="stat"><div class="lbl">Projects</div><div class="num">${d.counts.projects}</div><div class="foot">${d.counts.trashedProjects} in trash</div></div>
     <div class="stat"><div class="lbl">Media files</div><div class="num">${d.counts.media}</div><div class="foot">${esc(d.storage.usedLabel)} used</div></div>
-    <div class="stat"><div class="lbl">Render jobs</div><div class="num">${d.counts.jobs}</div><div class="foot">${d.counts.jobsActive} active · FFmpeg render engine live</div></div>
+    <div class="stat"><div class="lbl">Render jobs</div><div class="num">${d.counts.jobs}</div><div class="foot">${d.counts.jobsActive} active · ${d.system && d.system.ffmpeg && d.system.ffmpeg.available ? `FFmpeg ${esc(d.system.ffmpeg.version || '')} live` : 'FFmpeg unavailable — renders will fail'}</div></div>
     <div class="stat"><div class="lbl">AI credits</div><div class="num">${(d.plan === 'Lifetime' || d.plan === 'Enterprise') ? '∞' : d.creditsBalance}</div><div class="foot">${esc(d.plan)} plan · ledger in Subscription &amp; Credits</div></div>
   </div>
   <div class="quick-actions">
@@ -1389,7 +1403,7 @@ async function viewExportCenter(c) {
     </div>
   </div>
   <div class="card" style="margin-top:16px"><h3>Image exports</h3>
-    <p class="sub">Graphic designs export as PNG/JPG from the Graphic Editor (real canvas pixels, transparent PNG supported). Batch image export and ZIP download arrive with Bulk Design in Phase 4.</p>
+    <p class="sub">Graphic designs export as PNG/JPG from the Graphic Editor (real canvas pixels, transparent PNG supported). Batch image export is live in Bulk Design — run a batch there and download all images as one ZIP from the job.</p>
   </div>`;
   const refresh = () => renderView();
   c.querySelectorAll('[data-ec-cancel]').forEach((b) => b.addEventListener('click', async () => {

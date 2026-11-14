@@ -84,7 +84,7 @@ async function viewSocial(c) {
       <button class="btn btn-sm" data-edit-post="${p.id}">Edit</button>
       ${['draft', 'scheduled', 'failed'].includes(p.status) ? `<button class="btn btn-sm btn-primary" data-pub-post="${p.id}">Publish now</button>` : ''}
       ${['draft', 'scheduled', 'failed'].includes(p.status) ? `<button class="btn btn-sm" data-manual-post="${p.id}">Mark posted manually</button>` : ''}
-      ${p.status !== 'published' ? `<button class="btn btn-sm btn-danger" data-del-post="${p.id}">Delete</button>` : ''}
+      ${!['published', 'manual'].includes(p.status) ? `<button class="btn btn-sm btn-danger" data-del-post="${p.id}">Delete</button>` : ''}
     </span></div>`).join('') : '<p class="sub" style="margin-top:8px">No posts yet — compose your first one above.</p>'}
   </div>`;
 

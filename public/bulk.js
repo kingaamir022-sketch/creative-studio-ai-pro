@@ -163,6 +163,14 @@ const BulkUI = (() => {
     return `<option value="">— not mapped —</option>${columns.map((col) => `<option value="${esc(col)}" ${col === selected ? 'selected' : ''}>${esc(col)}</option>`).join('')}`;
   }
 
+  // C-01: a template field with no explicit mapping uses the same-name
+  // dataset column automatically — pre-select it so the UI shows what
+  // will actually be used. Normalised like the server (upper, spaces→_).
+  function sameNameColumn(columns, field) {
+    const norm = (s) => String(s || '').trim().toUpperCase().replace(/\s+/g, '_');
+    return (columns || []).find((c) => norm(c) === norm(field)) || '';
+  }
+
   /* ---------- Step 1: Template ---------- */
   async function renderStepTemplate(body, kind) {
     const { job, fields } = detail;
@@ -175,10 +183,10 @@ const BulkUI = (() => {
     }
     const fieldRows = fields && fields.fields ? fields.fields.map((f) => `
       <tr><td><code>{{${esc(f.name)}}</code></td><td>${esc(f.kind)}</td>
-      <td><select data-map-field="${esc(f.name)}">${fieldOptions(detail.dataset.columns, (s.fieldMapping || {})[f.name])}</select></td></tr>`).join('') : '';
+      <td><select data-map-field="${esc(f.name)}">${fieldOptions(detail.dataset.columns, (s.fieldMapping || {})[f.name] || sameNameColumn(detail.dataset.columns, f.name))}</select></td></tr>`).join('') : '';
     body.innerHTML = `
     <div class="card"><h3>Template &amp; field mapping</h3>
-      <p class="sub">${quiz ? 'Quiz Video preset — the columns below are fixed by the quiz format. Map each one to your spreadsheet column.' : 'Each <code>{{FIELD}}</code> in the template is filled from a spreadsheet column. The mapping is saved with the batch.'}</p>
+      <p class="sub">${quiz ? 'Quiz Video preset — the columns below are fixed by the quiz format. Map each one to your spreadsheet column.' : 'Each <code>{{FIELD}}</code> in the template is filled from a spreadsheet column. A field with no explicit mapping uses the same-name column automatically. The mapping is saved with the batch.'}</p>
       ${fields ? `<div class="table-wrap"><table class="table"><thead><tr><th>Template field</th><th>Type</th><th>Spreadsheet column</th></tr></thead><tbody>${fieldRows || '<tr><td colspan="3">No dynamic fields found in this template yet. Add {{FIELD}} placeholders in the editor, or bind clips in the Template Builder.</td></tr>'}</tbody></table></div>`
         : '<p class="sub">Could not scan the template fields.</p>'}
       <button class="btn btn-primary" id="save-mapping">Save mapping</button>

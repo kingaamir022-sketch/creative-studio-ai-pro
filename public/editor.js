@@ -154,6 +154,10 @@ window.DesignEditor = (function () {
   }
   async function saveDesign(saveVersion) {
     if (!ed) return false;
+    // C-06: autofit every text layer before saving; warn (but still save)
+    // when a layer cannot fit even at the smallest readable size.
+    const attention = autofitDesign(ed.design);
+    if (attention.length) toast(`Text in ${attention.map((n) => `"${n}"`).join(', ')} does not fit its box even at the smallest readable size — shorten the text.`, true);
     setSaveState('Saving…');
     try {
       await api(`/api/projects/${ed.projectId}`, {
@@ -235,6 +239,7 @@ window.DesignEditor = (function () {
         <button class="btn btn-sm" id="ed-export-jpg">Export JPG</button>
         <button class="btn btn-sm btn-primary" id="ed-save-library">Save to Library</button>
       </div>
+      <div class="ed-note warn" id="ed-server-warn" style="display:none;margin:8px 12px 0"></div>
       <div class="ed-body">
         <div class="ed-left">
           <div class="ed-tabs" id="ed-tabs">
@@ -481,6 +486,39 @@ window.DesignEditor = (function () {
     canvas.appendChild(gh);
     renderRulers();
     updateSelectionUI();
+    updateServerWarn();
+  }
+
+  // C-12: the server renderer (Bulk Design PNGs, document PDFs) drops some
+  // editor features — ellipse/triangle shapes, rounded corners, shadows,
+  // gradient text, text stroke/underline. The editor preview renders them
+  // fine, so warn in the editor itself instead of surprising the user in
+  // the exported file. Mirrors src/design-render.js's unsupported list.
+  function serverRenderWarnings(design) {
+    const found = new Set();
+    for (const l of design.layers || []) {
+      if (l.type === 'shape') {
+        const s = l.shape || {};
+        if (s.kind === 'ellipse' || s.kind === 'triangle') found.add(`${s.kind} shapes are not rendered`);
+        if (s.kind === 'rect' && s.radius) found.add('rounded corners are drawn square');
+        if (s.shadow) found.add('shape shadows are not rendered');
+      } else if (l.type === 'text') {
+        const t = l.text || {};
+        if (t.gradient) found.add('gradient text is rendered as a solid colour');
+        if (t.shadow) found.add('text shadows are not rendered');
+        if (t.stroke) found.add('text outlines are not rendered');
+        if (t.underline) found.add('underlines are not rendered');
+      }
+    }
+    return [...found];
+  }
+  function updateServerWarn() {
+    const el = document.getElementById('ed-server-warn');
+    if (!el || !ed) return;
+    const w = serverRenderWarnings(ed.design);
+    if (!w.length) { el.style.display = 'none'; el.textContent = ''; return; }
+    el.style.display = 'block';
+    el.textContent = `⚠️ Server render (Bulk Design / document PDF) will drop: ${w.join('; ')}. The editor preview and PNG/JPG export keep them.`;
   }
 
   function renderRulers() {
@@ -660,6 +698,8 @@ window.DesignEditor = (function () {
       layer.w = w; layer.h = h; layer.x = Math.round(x); layer.y = Math.round(y);
       if (layer.type === 'text' && orig.fontSize) {
         layer.text.fontSize = clamp(Math.round(orig.fontSize * (h / orig.h)), 6, 1000);
+        // C-06: a resized box re-fits its text (shrink only, never grow).
+        autofitTextLayer(layer);
       }
       const el = document.querySelector(`#ed-canvas .ed-layer[data-id="${CSS.escape(layer.id)}"]`);
       if (el) {
@@ -713,6 +753,9 @@ window.DesignEditor = (function () {
       if (!cancel && val !== layer.text.text) {
         pushHistory();
         layer.text.text = val;
+        // C-06: edited text is autofitted to its box before it renders.
+        const fit = autofitTextLayer(layer);
+        if (fit.status === 'attention') toast(`Text in layer "${layer.name}" still does not fit its box at the smallest readable size — shorten the text.`, true);
         renderStage();
         renderProps();
         scheduleSave();
@@ -1258,6 +1301,12 @@ window.DesignEditor = (function () {
         }
         if (el.dataset.prop === 'opacity') v = clamp(parseFloat(el.value) || 0, 0, 100) / 100;
         setPathValue(layer, el.dataset.prop, v);
+        // C-06: text, font or box changed — autofit so the layer never
+        // overflows its box; warn when it still cannot fit at 12px.
+        if (layer.type === 'text' && (el.dataset.prop.startsWith('text.') || el.dataset.prop === 'w' || el.dataset.prop === 'h')) {
+          const fit = autofitTextLayer(layer);
+          if (fit.status === 'attention') toast(`Text in layer "${layer.name}" still does not fit its box at the smallest readable size — shorten the text.`, true);
+        }
         renderStage();
         renderProps();
         scheduleSave();
@@ -1600,6 +1649,56 @@ window.DesignEditor = (function () {
     }
     return out.length ? out : [''];
   }
+
+  // --- C-06: editor autofit (never-overflow rule on the main editing path).
+  // Measures with a real canvas context (same metrics as the export), wraps
+  // first, then shrinks the font to the readable minimum (12px). Returns
+  // { fontSize, lines, status } — 'ok' | 'adjusted' | 'attention' (still
+  // does not fit at 12px: the text must be shortened).
+  let __measureCtx = null;
+  function measureCtx() {
+    if (!__measureCtx) __measureCtx = document.createElement('canvas').getContext('2d');
+    return __measureCtx;
+  }
+  function fitTextLayer(layer) {
+    if (!layer || layer.type !== 'text' || !layer.text) return { fontSize: 0, lines: [], status: 'ok' };
+    const t = layer.text;
+    const lh = t.lineHeight || 1.2;
+    const ctx = measureCtx();
+    const linesAt = (size) => {
+      ctx.font = `${t.fontStyle || 'normal'} ${t.fontWeight || 400} ${size}px "${t.fontFamily || 'Poppins'}", sans-serif`;
+      try { ctx.letterSpacing = `${t.letterSpacing || 0}px`; } catch { /* older browsers */ }
+      return wrapText(ctx, t.text, layer.w);
+    };
+    const maxLines = Math.max(1, Math.floor(layer.h / (t.fontSize * lh)));
+    let size = t.fontSize;
+    let lines = linesAt(size);
+    let tooWide = lines.some((l) => ctx.measureText(l).width > layer.w + 0.5);
+    while ((lines.length > maxLines || tooWide) && size > 12) {
+      size -= 1;
+      lines = linesAt(size);
+      tooWide = lines.some((l) => ctx.measureText(l).width > layer.w + 0.5);
+    }
+    const fits = lines.length <= maxLines && !tooWide;
+    return { fontSize: size, lines, status: fits ? (size < t.fontSize ? 'adjusted' : 'ok') : 'attention' };
+  }
+  function autofitTextLayer(layer) {
+    const fit = fitTextLayer(layer);
+    if (fit.fontSize && fit.fontSize < layer.text.fontSize) layer.text.fontSize = fit.fontSize;
+    layer.text.needsAttention = fit.status === 'attention';
+    return fit;
+  }
+  // Autofit every text layer in a design (save/export pre-check). Returns
+  // the names of layers that still cannot fit at the readable minimum.
+  function autofitDesign(design) {
+    const attention = [];
+    for (const l of design.layers || []) {
+      if (l.type !== 'text') continue;
+      const fit = autofitTextLayer(l);
+      if (fit.status === 'attention') attention.push(l.name || l.id);
+    }
+    return attention;
+  }
   function drawTextLayer(ctx, layer) {
     const t = layer.text;
     const { x, y, w } = layer;
@@ -1732,6 +1831,12 @@ window.DesignEditor = (function () {
       ctx.rotate(((layer.rotation || 0) * Math.PI) / 180);
       ctx.translate(-(layer.x + layer.w / 2), -(layer.y + layer.h / 2));
       ctx.globalAlpha = layer.opacity;
+      // C-06 backstop: no layer may draw past its own box, whatever its
+      // content (text that still cannot fit is clipped, never overflowing
+      // onto the next layer).
+      ctx.beginPath();
+      ctx.rect(layer.x, layer.y, layer.w, layer.h);
+      ctx.clip();
       try {
         if (layer.type === 'text') drawTextLayer(ctx, layer);
         else if (layer.type === 'shape') drawShapeLayer(ctx, layer);
@@ -1752,6 +1857,10 @@ window.DesignEditor = (function () {
 
   async function exportDesign(format) {
     if (!ed) return;
+    // C-06: autofit before export so the file matches the fit rule; warn
+    // when a layer still cannot fit.
+    const attention = autofitDesign(ed.design);
+    if (attention.length) toast(`Text in ${attention.map((n) => `"${n}"`).join(', ')} does not fit its box even at the smallest readable size — shorten the text.`, true);
     const scale = parseFloat((document.getElementById('ed-export-scale') || {}).value || '1');
     try {
       const v = await api('/api/design/validate', { method: 'POST', body: JSON.stringify({ design: ed.design }) });
@@ -1792,6 +1901,9 @@ window.DesignEditor = (function () {
 
   async function saveExportToLibrary() {
     if (!ed) return;
+    // C-06: autofit before the library render, same as export.
+    const attention = autofitDesign(ed.design);
+    if (attention.length) toast(`Text in ${attention.map((n) => `"${n}"`).join(', ')} does not fit its box even at the smallest readable size — shorten the text.`, true);
     toast('Rendering and saving to Media Library…');
     try {
       const { canvas, failed } = await renderToCanvas(ed.design, 1);

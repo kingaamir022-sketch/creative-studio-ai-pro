@@ -12,19 +12,32 @@ const AIStudio = (() => {
   let pollTimer = null;
   let currentJob = null;
 
-  const MODES = [
-    { id: 'image', label: 'Text to Image', kind: 'image', icon: '🖼️' },
-    { id: 'image-edit', label: 'Image to Image', kind: 'image', icon: '🎨' },
-    { id: 'video', label: 'Text to Video', kind: 'video', icon: '🎥' },
-    { id: 'video-image', label: 'Image to Video', kind: 'video', icon: '📽️' },
-    { id: 'voice', label: 'AI Voice', kind: 'tts', icon: '🎙️' },
-    { id: 'quiz', label: 'AI Quiz Questions', kind: 'llm', icon: '❓' },
-    { id: 'design', label: 'AI Design Assist', kind: 'llm', icon: '✨' },
-    { id: 'write', label: 'Magic Write', kind: 'llm', icon: '✍️' },
-    { id: 'transcribe', label: 'AI Transcribe', kind: 'stt', icon: '📝' },
-    { id: 'music-mood', label: 'Music Mood Tags', kind: 'llm', icon: '🎵' },
-    { id: 'music-generate', label: 'AI Music', kind: 'music', icon: '🎼' },
-  ];
+  // C-11: the mode list is derived from the backend's /api/ai/status
+  // `modes` (the single source of truth) — the old hardcoded MODES list
+  // silently dropped the backend's 12th mode ('deck'). MODE_META only
+  // carries the display label/icon/kind per mode id; if the status call
+  // fails, the full table is used as a fallback.
+  const MODE_META = {
+    'image': { id: 'image', label: 'Text to Image', kind: 'image', icon: '🖼️' },
+    'image-edit': { id: 'image-edit', label: 'Image to Image', kind: 'image', icon: '🎨' },
+    'video': { id: 'video', label: 'Text to Video', kind: 'video', icon: '🎥' },
+    'video-image': { id: 'video-image', label: 'Image to Video', kind: 'video', icon: '📽️' },
+    'voice': { id: 'voice', label: 'AI Voice', kind: 'tts', icon: '🎙️' },
+    'quiz': { id: 'quiz', label: 'AI Quiz Questions', kind: 'llm', icon: '❓' },
+    'design': { id: 'design', label: 'AI Design Assist', kind: 'llm', icon: '✨' },
+    'write': { id: 'write', label: 'Magic Write', kind: 'llm', icon: '✍️' },
+    'transcribe': { id: 'transcribe', label: 'AI Transcribe', kind: 'stt', icon: '📝' },
+    'music-mood': { id: 'music-mood', label: 'Music Mood Tags', kind: 'llm', icon: '🎵' },
+    'music-generate': { id: 'music-generate', label: 'AI Music', kind: 'music', icon: '🎼' },
+    'deck': { id: 'deck', label: 'AI Deck (Presentation)', kind: 'llm', icon: '📊' },
+  };
+  function modes() {
+    if (status && Array.isArray(status.modes) && status.modes.length) {
+      return status.modes.map((id) => MODE_META[id]).filter(Boolean);
+    }
+    return Object.values(MODE_META);
+  }
+  const MODES = Object.values(MODE_META);
 
   async function loadAll() {
     const [st, js, im, au, vp, pr] = await Promise.all([
@@ -47,7 +60,7 @@ const AIStudio = (() => {
     return status.kinds[kind];
   }
 
-  function modeDef(id) { return MODES.find((m) => m.id === id) || MODES[0]; }
+  function modeDef(id) { return modes().find((m) => m.id === id) || modes()[0]; }
 
   function fieldsFor(m) {
     switch (m) {
@@ -98,6 +111,12 @@ const AIStudio = (() => {
           <div class="ed-field"><label>Length</label><select id="ai-f-length"><option value="short">Short</option><option value="medium">Medium</option><option value="long">Long</option></select></div>
         </div>
         <p class="sub">Magic Write uses your LLM provider (OpenAI or free Gemini). No key configured → it refuses with “key needed” instead of inventing text.</p>`;
+      case 'deck': return `
+        <div class="ed-field"><label>Topic</label><input id="ai-f-topic" placeholder="e.g. How photosynthesis works, our Q3 sales results"></div>
+        <div class="ed-field"><label>Number of slides (2–20)</label><input id="ai-f-slide-count" type="number" min="2" max="20" value="6"></div>
+        <div class="ed-field"><label>Style</label><select id="ai-f-style"><option value="professional">Professional</option><option value="creative">Creative</option><option value="minimal">Minimal</option><option value="bold">Bold</option></select></div>
+        <div class="ed-field"><label>Audience (optional)</label><input id="ai-f-audience" placeholder="e.g. school students, investors, new customers"></div>
+        <p class="sub">Creates a NEW presentation project (title slide first, then text slides, at most one quiz and one chart slide) — nothing existing is changed. Uses your LLM provider.</p>`;
       default: return '';
     }
   }
@@ -115,6 +134,8 @@ const AIStudio = (() => {
     const voice = val('ai-f-voice'); if (voice) out.voiceProfileId = Number(voice);
     const topic = val('ai-f-topic'); if (topic !== undefined) out.topic = topic;
     const count = val('ai-f-count'); if (count !== undefined && count !== '') out.count = Number(count);
+    const slides = val('ai-f-slide-count'); if (slides !== undefined && slides !== '') out.slideCount = Number(slides);
+    const audience = val('ai-f-audience'); if (audience !== undefined) out.audience = audience;
     const diff = val('ai-f-difficulty'); if (diff) out.difficulty = diff;
     const lang = val('ai-f-language'); if (lang) out.language = lang;
     const name = val('ai-f-name'); if (name !== undefined) out.name = name;
@@ -195,6 +216,11 @@ const AIStudio = (() => {
           <div class="ed-field"><label>Result</label><textarea id="ai-write-text" rows="8" readonly>${esc(r.text || '')}</textarea></div>
           ${(r.alternatives || []).length ? `<div class="ed-field"><label>Alternatives</label>${(r.alternatives || []).map((a) => `<div class="kv"><span>${esc(a)}</span><button class="btn btn-sm" data-copy-alt="${esc(a)}">Copy</button></div>`).join('')}</div>` : ''}
           <div class="ed-btnrow"><button class="btn" id="ai-copy-write">Copy result</button></div>`;
+      case 'deck':
+        return `<p class="sub">Deck: <b>${esc(r.projectName || '')}</b> — ${r.slideCount || 0} slides.</p>
+          ${(r.needsAttention || []).length ? `<p class="sub" style="color:var(--warning, #d97706)">Needs attention: ${esc(r.needsAttention.join('; '))}</p>` : ''}
+          <p class="sub">A NEW presentation project was created — nothing existing was changed.</p>
+          <div class="ed-btnrow"><button class="btn btn-primary" id="ai-open-deck">Open in Presentations</button></div>`;
       default: return '';
     }
   }
@@ -214,13 +240,15 @@ const AIStudio = (() => {
     if (bulk) bulk.addEventListener('click', () => go('bulk-video'));
     const open = document.getElementById('ai-open-design');
     if (open) open.addEventListener('click', () => go('design-editor', { projectId: r.projectId }));
+    const openDeck = document.getElementById('ai-open-deck');
+    if (openDeck) openDeck.addEventListener('click', () => go('presentations'));
     const cw = document.getElementById('ai-copy-write');
     if (cw) cw.addEventListener('click', async () => { await navigator.clipboard.writeText(r.text || ''); toast('Text copied.'); });
     document.querySelectorAll('[data-copy-alt]').forEach((b) => b.addEventListener('click', async () => { await navigator.clipboard.writeText(b.dataset.copyAlt); toast('Alternative copied.'); }));
   }
 
   async function view(c, presetMode) {
-    if (presetMode && MODES.some((m) => m.id === presetMode)) mode = presetMode;
+    if (presetMode && modes().some((m) => m.id === presetMode)) mode = presetMode;
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     await loadAll();
     const def = modeDef(mode);
@@ -229,7 +257,7 @@ const AIStudio = (() => {
     c.innerHTML = `
     <div class="card"><h3>✨ AI Studio</h3>
       <p class="sub">Real AI generation through configurable providers. Every result is saved to your Media Library. Without a key, a mode refuses honestly with “key needed” — nothing is faked.</p>
-      <div class="ai-modes">${MODES.map((m) => {
+      <div class="ai-modes">${modes().map((m) => {
         const kst = kindState(m.kind);
         return `<button class="ai-mode-btn ${m.id === mode ? 'active' : ''}" data-mode="${m.id}">${m.icon} ${m.label} ${kst.configured ? '' : '<span class="badge warn">key needed</span>'}</button>`;
       }).join('')}</div>
