@@ -55,7 +55,7 @@ app.use('/api', require('./src/routes/system'));
 
 // Health check (no auth) — used by tests and the dashboard status.
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, version: '2.7.0', phase: 13, db: 'ok' });
+  res.json({ ok: true, version: '2.7.1', phase: 14, db: 'ok' });
 });
 
 // Public published websites (no auth) — /sites/:slug/...
@@ -91,9 +91,17 @@ if (require.main === module) {
   // auto-apply is off, applies when it is on).
   require('./src/routes/updates').startUpdateChecker();
   app.listen(config.port, config.host, () => {
-    console.log(`CreativeStudio AI Pro (v2.7.0 — CapCut Desktop Exact) running at http://${config.host}:${config.port}`);
+    console.log(`CreativeStudio AI Pro (v2.7.1 — Updater Fix) running at http://${config.host}:${config.port}`);
     console.log(`DB: ${config.dbPath}`);
     console.log(`Uploads: ${config.uploadsDir}`);
+    // v2.7.1 — a fresh boot means any restart is done: clear a stale
+    // pending-restart warning and a stale update-restart flag (a flag
+    // left over at boot is by definition already consumed/irrelevant).
+    try {
+      const _updater = require('./src/routes/updates')._updater;
+      _updater.clearPendingRestart();
+      _updater.clearUpdateRestartFlag();
+    } catch { /* a state-file problem must never break boot */ }
   });
 }
 
