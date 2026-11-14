@@ -172,6 +172,17 @@ function validateTimeline(t) {
           if (k.y !== undefined && (!isNum(k.y) || k.y < 0 || k.y > 100)) errors.push(`${where}: keyframe y must be 0–100.`);
           if (k.scale !== undefined && (!isNum(k.scale) || k.scale < 0.5 || k.scale > 3)) errors.push(`${where}: keyframe scale must be 0.5–3.`);
           if (k.opacity !== undefined && (!isNum(k.opacity) || k.opacity < 0 || k.opacity > 1)) errors.push(`${where}: keyframe opacity must be 0–1.`);
+          // Rotation fix (v2.4.0): keyframes animate x, y, scale and
+          // opacity only — the renderer (keyframeAt) never reads any other
+          // keyframe property, so rotation/volume (or any unknown) keyframes
+          // used to validate as fine and then be silently dropped. Reject
+          // them with a clear error instead of a silent no-op.
+          for (const key of Object.keys(k)) {
+            if (['t', 'x', 'y', 'scale', 'opacity'].includes(key)) continue;
+            const hint = key === 'rotation' ? ' — set rotation on the clip itself'
+              : key === 'volume' ? ' — set volume on the clip itself' : '';
+            errors.push(`${where}: keyframe property "${key}" is not supported (keyframes animate x, y, scale and opacity only)${hint}.`);
+          }
         }
       }
       if (i > 0) {

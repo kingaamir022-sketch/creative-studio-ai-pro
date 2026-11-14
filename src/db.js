@@ -551,7 +551,7 @@ function listProjects(userId, { search = '', trashed = 0, folderId = null } = {}
   const params = [userId, trashed ? 1 : 0];
   if (search) { sql += ' AND name LIKE ?'; params.push(`%${search}%`); }
   if (folderId) { sql += ' AND folder_id = ?'; params.push(folderId); }
-  sql += ' ORDER BY updated_at DESC';
+  sql += ' ORDER BY updated_at DESC, id DESC';
   return db.prepare(sql).all(...params);
 }
 function getProject(userId, id) {

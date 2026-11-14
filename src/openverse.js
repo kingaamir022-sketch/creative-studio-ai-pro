@@ -56,7 +56,7 @@ async function fetchJson(url, timeoutMs) {
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let res;
   try {
-    res = await fetch(url, { headers: { 'User-Agent': 'CreativeStudio-AI-Pro/2.3.1 (stock-assets)' }, signal: ctrl.signal });
+    res = await fetch(url, { headers: { 'User-Agent': 'CreativeStudio-AI-Pro/2.4.0 (stock-assets)' }, signal: ctrl.signal });
   } catch (e) {
     throw openverseError(0, e.name === 'AbortError' ? 'request timed out' : (e.message || e));
   } finally {
@@ -165,7 +165,7 @@ async function saveToLibrary(userId, type, id) {
   const timer = setTimeout(() => ctrl.abort(), DOWNLOAD_TIMEOUT_MS);
   let res;
   try {
-    res = await fetch(item.url, { headers: { 'User-Agent': 'CreativeStudio-AI-Pro/2.3.1 (stock-assets)' }, signal: ctrl.signal });
+    res = await fetch(item.url, { headers: { 'User-Agent': 'CreativeStudio-AI-Pro/2.4.0 (stock-assets)' }, signal: ctrl.signal });
   } catch (e) {
     throw openverseError(0, e.name === 'AbortError' ? 'download timed out' : (e.message || e));
   } finally {

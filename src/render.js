@@ -80,6 +80,18 @@ function clipFilters(clip, W, H, dur) {
   if (clip.rotation === 90) parts.push('transpose=1');
   else if (clip.rotation === 180) parts.push('transpose=2,transpose=2');
   else if (clip.rotation === 270) parts.push('transpose=2');
+  // Rotation fix (v2.4.0): a 90°/270° transpose swaps the frame to H×W,
+  // so without this the output is the transposed size and the render
+  // validator fails ("Width is 720, expected 1280") — and xfade fails
+  // outright when the rotated segment meets an unrotated one (FFmpeg 234).
+  // Scale+pad the rotated frame back to the project size (W×H) right after
+  // the transpose, so every rotated clip renders at the project size in
+  // all cases: alone, with transitions, and with keyframes (clipFilters
+  // runs in both the plain and the keyframed chain). 180° needs no fix
+  // (two transposes keep the dimensions).
+  if (clip.rotation === 90 || clip.rotation === 270) {
+    parts.push(`scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1`);
+  }
   if (clip.flip === 'h') parts.push('hflip');
   else if (clip.flip === 'v') parts.push('vflip');
   const b = num(f.brightness), c = num(f.contrast), s = num(f.saturation);
@@ -352,11 +364,18 @@ function buildRenderPlan({ timeline, mediaById, settings = {}, tmpDir }) {
       const pos = clip.keyframes && clip.keyframes.length ? vm.keyframeAt(clip, 0) : { x: 70, y: 70 };
       const ox = Math.round((W - ow) * (pos.x / 100));
       const srcDur = clip.duration * clip.speed;
-      const oy = Math.round((H - Math.round(ow * (timeline.height / timeline.width))) * (pos.y / 100));
-      filterParts.push(
-        `[${ii}:v]trim=start=${fmt(clip.srcStart)}:end=${fmt(clip.srcStart + srcDur)},setpts=(PTS-STARTPTS)/${fmt(clip.speed)},` +
-        `scale=${ow}:-2,setsar=1,fps=${fps},format=yuv420p[${oLabel}]`
-      );
+      // Rotation fix (v2.4.0): the editor preview rotates overlay clips
+      // (CSS rotate) but the render chain never applied it, so a rotated
+      // sticker/overlay exported unrotated. Transpose + scale back to the
+      // overlay width; the height estimate swaps aspect for 90°/270°.
+      const ovRot90 = clip.rotation === 90 || clip.rotation === 270;
+      const ovH = Math.round(ow * (ovRot90 ? timeline.width / timeline.height : timeline.height / timeline.width));
+      const oy = Math.round((H - ovH) * (pos.y / 100));
+      let ovChain = `[${ii}:v]trim=start=${fmt(clip.srcStart)}:end=${fmt(clip.srcStart + srcDur)},setpts=(PTS-STARTPTS)/${fmt(clip.speed)},` +
+        `scale=${ow}:-2,setsar=1`;
+      if (ovRot90) ovChain += `,transpose=${clip.rotation === 90 ? 1 : 2},scale=${ow}:-2,setsar=1`;
+      ovChain += `,fps=${fps},format=yuv420p[${oLabel}]`;
+      filterParts.push(ovChain);
       const out = `ovr${segCounter++}`;
       filterParts.push(`[${curLabel}][${oLabel}]overlay=x=${ox}:y=${oy}:enable='between(t,${fmt(clip.start)},${fmt(clip.start + clip.duration)})'[${out}]`);
       curLabel = out;
@@ -566,7 +585,10 @@ async function processJob(job) {
   const settings = payload.settings || {};
   const userId = job.user_id;
   const dir = rendersDirFor(userId);
-  const outPath = path.join(dir, `${job.id}.mp4`);
+  // v2.4.0 — export format: MP4 or MOV (same H.264 + AAC, container only).
+  // FFmpeg infers the container from the output extension.
+  const format = settings.format === 'mov' ? 'mov' : 'mp4';
+  const outPath = path.join(dir, `${job.id}.${format}`);
   const logPath = path.join(dir, `${job.id}.log`);
   const tmpDir = path.join(dir, `tmp-${job.id}`);
   fs.mkdirSync(tmpDir, { recursive: true });
@@ -635,6 +657,22 @@ async function processJob(job) {
     await new Promise((resolve, reject) => {
       const child = spawn('ffmpeg', [...plan.args, outPath], { stdio: ['ignore', 'pipe', 'pipe'] });
       entry.child = child;
+      // v2.4.0 — watchdog: a corrupt or undecodable input (e.g. a broken
+      // image with -loop 1, which FFmpeg retries forever) used to keep
+      // FFmpeg alive indefinitely and brick the single-slot queue, so
+      // every later render stayed queued forever. Kill it after a generous
+      // duration-based limit and fail this job honestly instead. The limit
+      // is 30x the video length (worst observed render speed is ~0.06x
+      // realtime ≈ 17x, so 30x leaves headroom) with a 10-minute floor;
+      // RENDER_WATCHDOG_MS overrides it (used by tests).
+      const watchdogMs = parseInt(process.env.RENDER_WATCHDOG_MS || '', 10)
+        || Math.max(600_000, Math.ceil(total * 30) * 1000);
+      const watchdog = setTimeout(() => {
+        appendLog(logPath, `\nRender watchdog: FFmpeg exceeded ${Math.round(watchdogMs / 60000)} min for a ${total}s render — killing it. The source media may be corrupt.\n`);
+        try { child.kill('SIGKILL'); } catch { /* ignore */ }
+        reject(new Error(`Render timed out after ${Math.round(watchdogMs / 60000)} minutes (expected ~${total}s of video). The source media may be corrupt — try re-uploading it.`));
+      }, watchdogMs);
+      if (watchdog.unref) watchdog.unref();
       let tail = '';
       const onData = (buf) => {
         const text = buf.toString();
@@ -651,8 +689,9 @@ async function processJob(job) {
       };
       child.stdout.on('data', onData);
       child.stderr.on('data', onData);
-      child.on('error', (err) => reject(new Error(`Could not start FFmpeg: ${err.message}`)));
+      child.on('error', (err) => { clearTimeout(watchdog); reject(new Error(`Could not start FFmpeg: ${err.message}`)); });
       child.on('close', (code, signal) => {
+        clearTimeout(watchdog);
         if (entry.cancelled) return resolve('cancelled');
         if (code === 0) return resolve('done');
         const lastLines = tail.split('\n').filter(Boolean).slice(-8).join(' ');
