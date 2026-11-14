@@ -126,6 +126,14 @@ function toast(msg, isErr) {
   setTimeout(() => t.remove(), 4200);
 }
 
+// v2.7.1 — desktop app: the restart instruction says "restart the app";
+// the browser/server install keeps the Start.bat wording, byte-identical.
+// `runAgain` selects the Dashboard/Home variant ("run npm start again").
+function restartActionText(isDesktop, runAgain = false) {
+  if (isDesktop) return 'restart the app';
+  return runAgain ? 'restart the server (close Start.bat / run npm start again)' : 'restart the server (close Start.bat / npm start again)';
+}
+
 /* ---------- Theme (v2.0.0): Light / Dark, persisted, OS-aware on first load ---------- */
 function currentTheme() { return document.documentElement.getAttribute('data-theme') || 'dark'; }
 function applyTheme(t) {
@@ -507,7 +515,7 @@ function renderAuth() {
   root.innerHTML = `
   <div class="auth-wrap"><div class="auth-card">
     <div class="logo"><div class="logo-mark">C</div><div class="logo-name">Creative<span>Studio</span> AI Pro</div></div>
-    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.7.0 — Desktop App</p>
+    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.7.1 — Desktop App</p>
     <div class="auth-toggle">
       <button id="tab-login" class="active">Log in</button>
       <button id="tab-signup">Sign up</button>
@@ -575,7 +583,7 @@ async function viewDashboard(c) {
       <button class="btn btn-ghost" id="dash-update-dismiss">Dismiss</button>
     </div></div>` : ''}
   ${upd && upd.pendingRestart ? `<div class="card" style="border-color:var(--warning);margin-bottom:16px"><h3>✓ Update applied${upd.lastApplied ? ` — v${esc(upd.lastApplied.version)}` : ''}</h3>
-    <p class="sub">The new files are in place. Restart the server (close Start.bat / run npm start again) to finish the update.</p></div>` : ''}
+    <p class="sub">The new files are in place. ${restartActionText(upd.desktop, true).replace(/^r/, 'R')} to finish the update.</p></div>` : ''}
   <div class="grid grid-4">
     <div class="stat"><div class="lbl">Projects</div><div class="num">${d.counts.projects}</div><div class="foot">${d.counts.trashedProjects} in trash</div></div>
     <div class="stat"><div class="lbl">Media files</div><div class="num">${d.counts.media}</div><div class="foot">${esc(d.storage.usedLabel)} used</div></div>
@@ -621,7 +629,7 @@ async function viewDashboard(c) {
       const r = await api('/api/updates/apply', { method: 'POST' });
       toast(r.message || `Updated to ${r.to}.`);
       setTimeout(() => { window.location.reload(); }, 3000);
-    } catch (e) { toast(e.message, true); renderView(); }
+    } catch (e) { if (/No update is available/i.test(e.message)) toast('You are up to date.'); else toast(e.message, true); renderView(); }
   });
   const dashUpdateSettings = document.getElementById('dash-update-settings');
   if (dashUpdateSettings) dashUpdateSettings.addEventListener('click', () => go('settings'));
@@ -706,7 +714,7 @@ async function viewHome(c) {
       <button class="btn btn-ghost" id="home-update-dismiss">Dismiss</button>
     </div></div>` : ''}
   ${upd && upd.pendingRestart ? `<div class="card" style="border-color:var(--warning)"><h3>✓ Update applied${upd.lastApplied ? ` — v${esc(upd.lastApplied.version)}` : ''}</h3>
-    <p class="sub">The new files are in place. Restart the server (close Start.bat / run npm start again) to finish the update.</p></div>` : ''}
+    <p class="sub">The new files are in place. ${restartActionText(upd.desktop, true).replace(/^r/, 'R')} to finish the update.</p></div>` : ''}
   <div class="home-hero">
     <button class="home-new-btn" id="home-new-project"><span class="cc-create-plus">＋</span> New Project</button>
   </div>
@@ -896,7 +904,7 @@ async function viewHome(c) {
       const r = await api('/api/updates/apply', { method: 'POST' });
       toast(r.message || `Updated to ${r.to}.`);
       setTimeout(() => { window.location.reload(); }, 3000);
-    } catch (e) { toast(e.message, true); renderView(); }
+    } catch (e) { if (/No update is available/i.test(e.message)) toast('You are up to date.'); else toast(e.message, true); renderView(); }
   });
   const homeUpdateSettings = document.getElementById('home-update-settings');
   if (homeUpdateSettings) homeUpdateSettings.addEventListener('click', () => go('settings'));
@@ -1722,7 +1730,7 @@ async function viewSettings(c) {
     <div class="kv"><span>Last check</span><span>${updStatus.lastCheck ? fmtDate(updStatus.lastCheck) : 'Never checked'}${updStatus.lastCheckError ? ` — <span style="color:var(--danger)">${esc(updStatus.lastCheckError)}</span>` : ''}</span></div>
     ${updStatus.available ? `<div class="kv"><span>Release notes</span><span>${esc(updStatus.available.notes || '—')}</span></div>` : ''}
     ${updStatus.lastApplied ? `<div class="kv"><span>Last applied update</span><span>v${esc(updStatus.lastApplied.version)} · ${fmtDate(updStatus.lastApplied.at)}</span></div>` : ''}
-    ${updStatus.pendingRestart ? '<p class="sub" style="margin-top:8px;color:var(--warning)">⚠ An update was applied — restart the server (close Start.bat / npm start again) to finish it.</p>' : ''}
+    ${updStatus.pendingRestart ? `<p class="sub" style="margin-top:8px;color:var(--warning)">⚠ An update was applied — ${restartActionText(updStatus.desktop)} to finish it.</p>` : ''}
     ${updStatus.staged ? `<div class="kv"><span>Staged update</span><span>v${esc(updStatus.staged.version)} · ${updStatus.staged.files.length} files</span></div>` : ''}
     <div class="kv"><span>Backups kept</span><span>${updStatus.backups}</span></div>
     ${updStatus.available && updStatus.available.fullReinstall ? '<p class="sub" style="margin-top:8px;color:var(--warning)">⚠ This update changes dependencies and needs a fresh download — it will NOT be applied in place. Download the new portable/source package from Drive instead.</p>' : ''}
@@ -1871,7 +1879,7 @@ async function viewSettings(c) {
       toast(r.message || `Updated to ${r.to}.`);
       if (r.restarting) toast('The app is restarting to apply the update — it will reopen on its own.');
       setTimeout(() => { window.location.reload(); }, 3000);
-    } catch (e) { toast(e.message, true); renderView(); }
+    } catch (e) { if (/No update is available/i.test(e.message)) toast('You are up to date.'); else toast(e.message, true); renderView(); }
   });
   const uRollback = document.getElementById('u-rollback');
   if (uRollback) uRollback.addEventListener('click', async () => {
