@@ -1,24 +1,25 @@
-CreativeStudio AI Pro v2.0.0 — Kaise chalana hai (How to run)
+CreativeStudio AI Pro v2.6.0 — Kaise chalana hai (How to run)
 =============================================================
 
-PEHLE (ek dafa):
-1. Is folder ko apne PC par kahin extract karein, jaise C:\CreativeStudio-AI-Pro
-2. Node.js install hona chahiye (https://nodejs.org — LTS version).
-   Check karne ke liye terminal mein likhein: node --version
-3. Folder mein terminal khol kar likhein: npm install
-   (pehli dafa thora waqt lagega — libraries download hongi)
-
-HAR DAFA chalane ke liye:
-1. Folder mein terminal khol kar likhein: npm start
-2. Browser mein kholein: http://localhost:4820
+DESKTOP APP (sab se asaan — pehli dafa bhi, har dafa bhi):
+1. "CreativeStudio AI Pro.exe" par double-click karein
+   (ya Start Menu / Desktop shortcut se kholein).
+2. App khud server start karke apni window mein khul jayegi —
+   browser ya terminal ki zaroorat nahi.
 3. Pehli dafa Sign up karein — pehla account OWNER banta hai.
-   Band karne ke liye terminal mein Ctrl+C dabayein.
+   Band karne ke liye window band kar dein — server khud band ho jata hai.
+
+FALLBACK (agar exe na chale):
+1. Isi folder mein Start.bat par double-click karein —
+   ye browser mein http://localhost:4820 khol dega.
+2. Ya terminal mein: npm start, phir browser mein http://localhost:4820
+   (is ke liye Node.js install hona chahiye: https://nodejs.org — LTS).
 
 Agar "localhost refused to connect" aaye to matlab server chal nahi raha —
-upar wale steps se npm start dobara chalaiye.
+app band karke dobara kholein, ya Start.bat dobara chalaiye.
 
-Windows portable (bina install ke) chahiye to Drive folder mein
-CreativeStudio-AI-Pro-v2.0.0-Windows.zip download karein — extract karein
-aur Start.bat double-click karein.
+Aap ka data (projects, uploads, database) app folder ke andar
+data/ , uploads/ aur renders/ mein rehta hai — update ya dobara
+install par ye folders delete NAHI hote.
 
 Details: docs/INSTALL.md

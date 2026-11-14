@@ -55,7 +55,7 @@ app.use('/api', require('./src/routes/system'));
 
 // Health check (no auth) — used by tests and the dashboard status.
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, version: '2.5.0', phase: 10, db: 'ok' });
+  res.json({ ok: true, version: '2.6.0', phase: 11, db: 'ok' });
 });
 
 // Public published websites (no auth) — /sites/:slug/...
@@ -91,7 +91,7 @@ if (require.main === module) {
   // auto-apply is off, applies when it is on).
   require('./src/routes/updates').startUpdateChecker();
   app.listen(config.port, config.host, () => {
-    console.log(`CreativeStudio AI Pro (v2.5.0 — CapCut Parity Round) running at http://${config.host}:${config.port}`);
+    console.log(`CreativeStudio AI Pro (v2.6.0 — Desktop App) running at http://${config.host}:${config.port}`);
     console.log(`DB: ${config.dbPath}`);
     console.log(`Uploads: ${config.uploadsDir}`);
   });
