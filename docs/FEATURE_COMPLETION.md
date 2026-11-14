@@ -835,6 +835,70 @@ confirmed on the user's PC; Linux verification of the running shell was
 done under Xvfb, and the unit tests above never launch Electron at all
 (they import only the pure-logic `app-config.js`).
 
+## 1i. v2.6.1 addendum — "Multi-Owner" (2026-11-14)
+
+v2.6.1 ends the single-OWNER installation: three Gmail accounts are OWNER
+on any installation, not just the first account created. Signup grants
+OWNER + Lifetime to any of them even when it is not the first account, and
+login promotes an existing account with one of these emails back to OWNER
+(the pre-v2.6.1 case, or an OWNER demoted by another OWNER). Health is now
+`version: '2.6.1', phase: 12`; the dashboard system string is
+`'2.6.1 (Desktop App)'` and the index title is `v2.6.1 Desktop App`.
+
+**What was added.** `src/ownerEmails.js` — the allowlist
+(`kingaamir022@gmail.com`, `josnking01@gmail.com`, `a030210523@gmail.com`)
+with `isOwnerEmail()` (case-insensitive, trims spaces); the `OWNER_EMAILS`
+env var (comma-separated) replaces the list when set.
+`src/routes/auth.js` — signup makes an allowlisted email OWNER + Lifetime
+(first-account rule unchanged for everyone else); login promotes an
+allowlisted non-OWNER account to OWNER + Lifetime and audits it
+(`owner_promoted`). `src/db.js` — `countOwners()` backs the guards.
+`src/routes/admin.js` + `src/routes/system.js` — last-OWNER guards
+(defense-in-depth): demoting or deleting the final OWNER is refused
+(`'Cannot demote the last OWNER.'` / `'Cannot delete the last OWNER.'`,
+403); the existing self-demote / self-delete refusals stay 400 with their
+existing messages, and they are checked before the last-OWNER guard.
+Granting OWNER stays OWNER-only: an ADMIN gets 403 on both role endpoints
+(`PATCH /api/admin/users/:id/role` and `PATCH /api/users/:id`), and no
+ADMIN may demote, suspend or delete any OWNER account. `public/app.js` —
+the login/network error is friendly now: one shared helper
+(`toFriendlyNetworkError`) maps a `fetch()` throw (server unreachable,
+e.g. Start.bat not running) to `SERVER_UNREACHABLE_MSG`
+('Server se connect nahi ho raha — Start.bat chal raha hai? Page refresh
+karke dobara koshish karein.') in both `api()` and `apiForm()`; the login
+handler already displays `err.message` and needed no change, and
+server-returned messages (wrong password etc.) are shown exactly as the
+server sends them. The bare browser message never appears in `app.js`.
+
+**Tests (new, port 4855):** `tests/multi-owner-261.test.js` — 14/14 green
+in its own run (`node --test tests/multi-owner-261.test.js`). First signup
+→ OWNER + Lifetime, second non-listed signup → USER + Free; both
+allowlisted non-first signups → OWNER + Lifetime; `isOwnerEmail()` unit
+checks (case, spaces, rejects, non-strings); login promotion end-to-end
+(OWNER demotes the allowlisted OWNER to USER, that user logs in and is
+OWNER again — the observable form of the promotion, since signup already
+auto-promotes); OWNER promotes USER → OWNER on both role endpoints and
+ADMIN → OWNER; ADMIN gets 403 granting OWNER (both endpoints) and 403
+demoting / suspending / deleting an OWNER; last-OWNER sequence (demote
+3 → 1 OWNER, sole OWNER self-demote 400, self-delete 400, ADMIN delete of
+the sole OWNER 403, exactly one OWNER left); wrong-password login is 401
+with the exact server message; health 2.6.1 / phase 12; static guards on
+the guard strings and on the friendly client message. Existing version
+assertions were bumped 2.6.0 → 2.6.1 / phase 11 → 12 (`api`,
+`acceptance`, `design`, `home-flow-240`, `music`, `shorts`, `social`,
+`electron-260`, and `update` — whose test app copy mirrors the real
+`package.json`, so its twelve 2.6.0 values move too); `package.json`
+`test` now also runs `tests/multi-owner-261.test.js`. The v2.6.0 suite was
+395/395; with these 14 new tests the suite is 409 — the coordinator's
+final full run confirms the total.
+
+**Honest limits.** The allowlist lives in code, not in a setting: changing
+the three OWNER Gmails needs a code change and a release (the env override
+is the escape hatch for a custom install). Login promotion only fires on
+login, so a demoted allowlisted account stays USER until it signs in
+again. The friendly message only covers the unreachable-server case — a
+server that answers with an error still shows the server's own text.
+
 ## 2. Key modules (from the master prompt)
 
 | Module | Status |
