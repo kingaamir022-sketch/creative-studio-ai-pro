@@ -38,6 +38,7 @@ app.use('/api/voice', require('./src/routes/voice'));
 app.use('/api/shorts', require('./src/routes/shorts'));
 app.use('/api/ai', require('./src/routes/ai'));
 app.use('/api/magic', require('./src/routes/magic'));
+app.use('/api/docs-slides', require('./src/routes/docs-slides'));
 app.use('/api/social', require('./src/routes/social'));
 app.use('/api/integrations', require('./src/routes/integrations'));
 app.use('/api/admin', require('./src/routes/admin'));
@@ -49,8 +50,11 @@ app.use('/api', require('./src/routes/system'));
 
 // Health check (no auth) — used by tests and the dashboard status.
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, version: '2.2.2', phase: 9, db: 'ok' });
+  res.json({ ok: true, version: '2.2.3', phase: 9, db: 'ok' });
 });
+
+// Public published websites (no auth) — /sites/:slug/...
+app.use('/sites', require('./src/routes/docs-slides').siteStatic);
 
 // Frontend (single-page app).
 app.use(express.static(path.join(__dirname, 'public')));
@@ -76,7 +80,7 @@ if (require.main === module) {
   // auto-apply is off, applies when it is on).
   require('./src/routes/updates').startUpdateChecker();
   app.listen(config.port, config.host, () => {
-    console.log(`CreativeStudio AI Pro (v2.2.2 — Magic Tools) running at http://${config.host}:${config.port}`);
+    console.log(`CreativeStudio AI Pro (v2.2.3 — Docs & Slides) running at http://${config.host}:${config.port}`);
     console.log(`DB: ${config.dbPath}`);
     console.log(`Uploads: ${config.uploadsDir}`);
   });
