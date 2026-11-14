@@ -1,8 +1,9 @@
 {
  "app": "CreativeStudio AI Pro",
- "version": "2.5.0",
- "notes": "CapCut parity round: 16-effect video effects library + adjustment layers, chroma key, speed curves (0.1-100x), keyframe rotation/volume/easing with 2.8x faster keyframed renders, 28 transitions (apply-to-all, up to 5s), filter presets + LUTs, stabilisation, video masking, N video tracks, 2K/4K + WebM/HEVC/HDR export, reverse/freeze, voice processing, auto reframe, optical flow, font fidelity (real Google Fonts), emoji colour rendering, extract audio, waveforms, SRT captions workflow, compound clips, full 27-binding shortcut map with rebind panel, Sheets spreadsheet type, CMYK + DOCX internals, TikTok chunk upload, Pexels stock video, Magic Grab per-object, Content Planner depth, edit-share collaboration, Settings pages, PWA, project settings dialog. No new dependencies, fullReinstall false.",
- "package": "update-2.5.0.json",
- "packageSha256": "94bfa8145f30aac95bdced884fc8ddf394263ff3eb61a84186fb1cf3cae97d5b",
- "publishedAt": "2026-11-14T10:15:47.880Z"
+ "version": "2.6.0",
+ "notes": "Desktop app: Electron shell (own window + icon, single-instance, loading screen, quit kills server), real multi-size .ico, Windows packaging via electron-packager, NSIS installer with v2.5.0 data migration (data/uploads/renders/.env move into resources/app). One-time Setup.exe install from Drive (fullReinstall), then in-app updates resume.",
+ "package": "update-2.6.0.json",
+ "packageSha256": "d747a55d6701865a1bd8a484cd92dfadd4ebbd3760d2e12e00292440f966a379",
+ "publishedAt": "2026-11-14T11:30:20.270Z",
+ "fullReinstall": true
 }
