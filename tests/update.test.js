@@ -128,7 +128,7 @@ async function setFeedUrl(url) {
 
 before(async () => {
   copyTree(path.resolve(__dirname, '..'), appCopy);
-  assert.equal(appVersion(), '2.2.2', 'test app copy must start at 2.2.2');
+  assert.equal(appVersion(), '2.2.3', 'test app copy must start at 2.2.3');
 
   mockServer = http.createServer(mockHandler);
   await new Promise((resolve) => mockServer.listen(0, '127.0.0.1', resolve));
@@ -175,7 +175,7 @@ after(async () => {
 test('Updates: status shows current version; unreachable feed reported honestly, never fake up-to-date', async () => {
   const st = await req('/api/updates/status');
   assert.equal(st.status, 200, JSON.stringify(st.json));
-  assert.equal(st.json.current, '2.2.2');
+  assert.equal(st.json.current, '2.2.3');
   assert.equal(st.json.available, null, 'nothing available before any check');
   assert.equal(st.json.feedReachable, null, 'never checked yet — must not claim reachable');
   // Point at a dead feed: the check must fail honestly.
@@ -208,11 +208,11 @@ test('Updates: check finds a newer version; up-to-date when equal', async () => 
   assert.equal(chk.status, 200, JSON.stringify(chk.json));
   assert.ok(chk.json.available, 'update should be available');
   assert.equal(chk.json.latest, '9.9.9');
-  assert.equal(chk.json.current, '2.2.2');
+  assert.equal(chk.json.current, '2.2.3');
   const st = await req('/api/updates/status');
   assert.equal(st.json.available.version, '9.9.9');
   assert.equal(st.json.feedReachable, true);
-  feed.version = '2.2.2';
+  feed.version = '2.2.3';
   const chk2 = await req('/api/updates/check', { method: 'POST' });
   assert.equal(chk2.status, 200, JSON.stringify(chk2.json));
   assert.equal(chk2.json.available, null, 'equal version is up-to-date');
@@ -234,7 +234,7 @@ test('Updates: auto-apply OFF never applies without the apply call', async () =>
   feed.version = '9.9.9'; feed.mode = 'good'; feed.fullReinstall = false;
   const chk = await req('/api/updates/check', { method: 'POST' });
   assert.ok(chk.json.available, 'update should be available');
-  assert.equal(appVersion(), '2.2.2', 'check alone must not change any file');
+  assert.equal(appVersion(), '2.2.3', 'check alone must not change any file');
   assert.ok(!fs.existsSync(path.join(appCopy, 'docs', 'update-test.txt')), 'no staged file landed without apply');
 });
 
@@ -243,12 +243,12 @@ test('Updates: tampered package rejected — wrong package SHA, and wrong inner 
   const a = await req('/api/updates/apply', { method: 'POST' });
   assert.equal(a.status, 502, JSON.stringify(a.json));
   assert.match(a.json.error, /hash mismatch/i);
-  assert.equal(appVersion(), '2.2.2', 'tampered package changed nothing');
+  assert.equal(appVersion(), '2.2.3', 'tampered package changed nothing');
   feed.mode = 'bad-file-sha';
   const b = await req('/api/updates/apply', { method: 'POST' });
   assert.equal(b.status, 502, JSON.stringify(b.json));
   assert.match(b.json.error, /hash mismatch/i);
-  assert.equal(appVersion(), '2.2.2');
+  assert.equal(appVersion(), '2.2.3');
   feed.mode = 'good';
 });
 
@@ -256,7 +256,7 @@ test('Updates: apply updates files + bumps version; rollback restores the backup
   feed.version = '9.9.9'; feed.mode = 'good'; feed.fullReinstall = false;
   const a = await req('/api/updates/apply', { method: 'POST' });
   assert.equal(a.status, 200, JSON.stringify(a.json));
-  assert.equal(a.json.from, '2.2.2');
+  assert.equal(a.json.from, '2.2.3');
   assert.equal(a.json.to, '9.9.9');
   assert.equal(a.json.restartRequired, true, 'Linux apply needs a restart to take effect');
   assert.equal(appVersion(), '9.9.9', 'package.json on disk is the new version');
@@ -268,11 +268,11 @@ test('Updates: apply updates files + bumps version; rollback restores the backup
   assert.equal(st.json.history.at(-1).action, 'apply');
   const rb = await req('/api/updates/rollback', { method: 'POST' });
   assert.equal(rb.status, 200, JSON.stringify(rb.json));
-  assert.equal(rb.json.restored, '2.2.2');
-  assert.equal(appVersion(), '2.2.2', 'rollback restored package.json');
+  assert.equal(rb.json.restored, '2.2.3');
+  assert.equal(appVersion(), '2.2.3', 'rollback restored package.json');
   assert.ok(!fs.existsSync(path.join(appCopy, 'docs', 'update-test.txt')), 'rollback removed the file the update added');
   const st2 = await req('/api/updates/status');
-  assert.equal(st2.json.current, '2.2.2');
+  assert.equal(st2.json.current, '2.2.3');
 });
 
 test('Updates: fullReinstall update is refused — nothing applied', async () => {
@@ -281,7 +281,7 @@ test('Updates: fullReinstall update is refused — nothing applied', async () =>
   assert.equal(a.status, 409, JSON.stringify(a.json));
   assert.match(a.json.error, /fresh download/i);
   assert.equal(a.json.fullReinstall, true);
-  assert.equal(appVersion(), '2.2.2', 'full-reinstall package changed nothing');
+  assert.equal(appVersion(), '2.2.3', 'full-reinstall package changed nothing');
   assert.ok(!fs.existsSync(path.join(appCopy, 'docs', 'update-test.txt')));
   feed.fullReinstall = false; feed.version = '9.9.9';
 });

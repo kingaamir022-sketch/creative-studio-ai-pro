@@ -64,7 +64,7 @@ test('health endpoint is up', async () => {
   assert.equal(r.status, 200);
   assert.equal(r.json.ok, true);
   assert.equal(r.json.phase, 9);
-  assert.equal(r.json.version, '2.2.2');
+  assert.equal(r.json.version, '2.2.3');
 });
 
 test('unauthenticated API calls are rejected', async () => {
