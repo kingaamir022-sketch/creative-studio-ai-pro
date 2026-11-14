@@ -16,11 +16,17 @@
 //
 // Safety (same as PageCommand): package SHA-256 verified, every file's
 // SHA-256 verified, paths are allow-listed (app code only — never .env,
-// never data/, never uploads/, never node_modules/, never node.exe/ffmpeg),
-// replaced files are backed up first (last 2 backups kept), and Rollback
-// restores the previous version. A package that needs fresh dependencies
-// sets fullReinstall: true and is NEVER applied — the UI says plainly that
+// never data/, never uploads/, never node.exe/ffmpeg), replaced files are
+// backed up first (last 2 backups kept), and Rollback restores the
+// previous version. A package that needs fresh dependencies sets
+// fullReinstall: true and is NEVER applied — the UI says plainly that
 // it needs a fresh download.
+//
+// v2.2.4 — dependency updates in place: a package may ALSO carry a
+// node_modules overlay (pure-JS dependency files only, every file
+// SHA-256 verified, backup + rollback cover them too). Native modules
+// (.node binaries) are refused — those releases still need fullReinstall.
+// See docs/UPDATER.md for the full design.
 //
 // Windows file locks: the running server cannot be replaced safely from
 // inside itself on Windows, so on win32 the apply writes a small
@@ -35,6 +41,14 @@ const { spawn } = require('child_process');
 
 const DEFAULT_FEED_URL = 'https://raw.githubusercontent.com/kingaamir022-sketch/creative-studio-ai-pro/main/updates';
 const MAX_BACKUPS = 2;
+// v2.2.4 — node_modules overlay (dependency updates in-app). A release
+// that adds/changes a pure-JS production dependency may carry the changed
+// package files under `node_modules/` in the update bundle. Caps keep a
+// bad package from filling the disk; native modules are NEVER carried
+// (a .node binary or binding.gyp needs a compiled build for the user's
+// exact platform — those releases still set fullReinstall).
+const MAX_OVERLAY_BYTES = 250 * 1024 * 1024;
+const MAX_OVERLAY_FILES = 50000;
 
 // App-code files only. Everything else (secrets, user data, runtimes) is
 // never touched by an update package.
@@ -45,6 +59,17 @@ const ALLOWED = (p) => {
     p.startsWith('src/') || p.startsWith('public/') || p.startsWith('docs/') ||
     p.startsWith('scripts/') || p.startsWith('.github/');
 };
+// Overlay files: only regular files under node_modules/, no traversal,
+// no absolute paths, no backslashes, no symlinks (content is always a
+// regular file in the bundle — there is no way to express a symlink).
+const ALLOWED_OVERLAY = (p) => {
+  if (!p || typeof p !== 'string') return false;
+  if (p.includes('..') || path.isAbsolute(p) || p.includes('\\')) return false;
+  if (!p.startsWith('node_modules/')) return false;
+  if (p.endsWith('/')) return false;
+  return true;
+};
+const isNativeFile = (p) => p.toLowerCase().endsWith('.node') || p.endsWith('binding.gyp');
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 const cmpVer = (a, b) => {
   const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number);
@@ -65,10 +90,13 @@ function effectiveFeed(st) {
 // The Windows apply batch (pure function — unit-testable without Windows).
 // Waits for the server PID to disappear, copies staged files over the
 // install, restores the backup if a copy fails, then relaunches Start.bat.
-function buildApplyBatch({ appDir, stagedDir, backupDir, pid, launcher }) {
+// `addedFiles` (v2.2.4): node_modules files the update ADDS (they did not
+// exist before) — on failure they are deleted, because restoring the
+// backup cannot remove a file the backup never had.
+function buildApplyBatch({ appDir, stagedDir, backupDir, pid, launcher, addedFiles = [] }) {
   const q = (s) => `"${String(s).replace(/"/g, '')}"`;
   const launch = launcher || path.join(appDir, 'Start.bat');
-  return [
+  const lines = [
     '@echo off',
     'REM CreativeStudio AI Pro — auto-update apply (written by the updater).',
     'REM Waits for the server to exit, swaps in the staged files, relaunches.',
@@ -89,10 +117,19 @@ function buildApplyBatch({ appDir, stagedDir, backupDir, pid, launcher }) {
     'exit /b 0',
     ':failed',
     `echo Update copy failed — restoring backup. > ${q(path.join(appDir, 'update-error.log'))}`,
+  ];
+  if (addedFiles.length) {
+    // Delete files the update added (the backup never had them, so a plain
+    // restore would leave them behind). The list lives in the backup dir
+    // as ADDED-FILES.txt, one Windows-style relative path per line.
+    lines.push(`if exist ${q(path.join(backupDir, 'ADDED-FILES.txt'))} for /F "usebackq delims=" %%F in (${q(path.join(backupDir, 'ADDED-FILES.txt'))}) do if exist ${q('%APPDIR%\\%%F')} del /F /Q ${q('%APPDIR%\\%%F')} >nul 2>&1`);
+  }
+  lines.push(
     `xcopy /E /Y /Q %BACKUP%\\* %APPDIR%\\ >nul 2>&1`,
     'del "%~f0"',
     'exit /b 1',
-  ].join('\r\n');
+  );
+  return lines.join('\r\n');
 }
 
 function createUpdater(appDir, dataDir) {
@@ -154,14 +191,18 @@ function createUpdater(appDir, dataDir) {
     }
     const cur = currentVersion();
     const newer = cmpVer(manifest.version, cur) > 0;
+    // v2.2.4: a package that carries native modules cannot be applied in
+    // place — treat it as fullReinstall even if the publisher forgot the
+    // flag, so the UI tells the user to download the fresh package.
+    const fullReinstall = Boolean(manifest.fullReinstall || manifest.hasNativeModules);
     s.available = newer
-      ? { version: manifest.version, notes: manifest.notes || '', publishedAt: manifest.publishedAt || '', fullReinstall: Boolean(manifest.fullReinstall) }
+      ? { version: manifest.version, notes: manifest.notes || '', publishedAt: manifest.publishedAt || '', fullReinstall, depsChanged: Array.isArray(manifest.depsChanged) ? manifest.depsChanged : [], hasNodeModules: Boolean(manifest.hasNodeModules) }
       : null;
     s.lastCheckError = null;
     saveState(s);
     return {
       configured: true, current: cur, latest: manifest.version, available: newer,
-      notes: manifest.notes || '', fullReinstall: Boolean(manifest.fullReinstall), manifest,
+      notes: manifest.notes || '', fullReinstall, manifest,
     };
   }
 
@@ -179,6 +220,29 @@ function createUpdater(appDir, dataDir) {
       const bytes = Buffer.from(bundle.files[name].content_b64, 'base64');
       if (sha256(bytes) !== bundle.files[name].sha256) throw new Error('File hash mismatch in package: ' + name + ' — rejected.');
     }
+    // v2.2.4 — node_modules overlay: every overlay file is verified the
+    // same way (path allow-list + per-file SHA-256) BEFORE anything is
+    // staged. Native modules are refused outright — they need a compiled
+    // build for the user's platform, which an overlay cannot provide.
+    const overlay = bundle.nodeModules || {};
+    const overlayNames = Object.keys(overlay);
+    if (bundle.hasNativeModules) {
+      throw new Error('Update package contains native modules (.node binaries) — it cannot be applied in place. Download the fresh package instead (fullReinstall).');
+    }
+    if (overlayNames.length > MAX_OVERLAY_FILES) {
+      throw new Error(`Update package carries too many dependency files (${overlayNames.length} > ${MAX_OVERLAY_FILES}) — rejected.`);
+    }
+    let overlayBytes = 0;
+    for (const name of overlayNames) {
+      if (!ALLOWED_OVERLAY(name)) throw new Error('Package contains a dependency file outside node_modules/: ' + name + ' — rejected.');
+      if (isNativeFile(name)) throw new Error('Package contains a native module file: ' + name + ' — rejected (needs a fresh install).');
+      const bytes = Buffer.from(overlay[name].content_b64, 'base64');
+      if (sha256(bytes) !== overlay[name].sha256) throw new Error('File hash mismatch in package: ' + name + ' — rejected.');
+      overlayBytes += bytes.length;
+    }
+    if (overlayBytes > MAX_OVERLAY_BYTES) {
+      throw new Error(`Update package carries too much dependency data (${Math.round(overlayBytes / 1024 / 1024)} MB > ${MAX_OVERLAY_BYTES / 1024 / 1024} MB) — rejected. Download the fresh package instead (fullReinstall).`);
+    }
     fs.rmSync(stagedDir, { recursive: true, force: true });
     fs.mkdirSync(stagedDir, { recursive: true });
     for (const name of names) {
@@ -186,8 +250,13 @@ function createUpdater(appDir, dataDir) {
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.writeFileSync(dest, Buffer.from(bundle.files[name].content_b64, 'base64'));
     }
+    for (const name of overlayNames) {
+      const dest = path.join(stagedDir, name);
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, Buffer.from(overlay[name].content_b64, 'base64'));
+    }
     const s = state();
-    s.staged = { version: bundle.version, notes: bundle.notes || '', fullReinstall: Boolean(bundle.fullReinstall), at: new Date().toISOString(), files: names };
+    s.staged = { version: bundle.version, notes: bundle.notes || '', fullReinstall: Boolean(bundle.fullReinstall), at: new Date().toISOString(), files: names, nodeModules: overlayNames, depsChanged: Array.isArray(bundle.depsChanged) ? bundle.depsChanged : [] };
     saveState(s);
     return s.staged;
   }
@@ -201,7 +270,12 @@ function createUpdater(appDir, dataDir) {
     }
   }
 
-  function makeBackup(files, from, to) {
+  // Back up the files an update will replace — app files AND overlay
+  // (node_modules) files — so rollback can restore both. Files the update
+  // ADDS (no previous version on disk) are recorded in
+  // `addedNodeModules` + ADDED-FILES.txt: rollback DELETES them instead
+  // of restoring. Returns { dir, addedNodeModules }.
+  function makeBackup(files, nodeModules, from, to) {
     const backupDir = path.join(updDir, 'backup-' + from + '-' + Date.now());
     fs.mkdirSync(backupDir, { recursive: true });
     for (const name of files) {
@@ -212,9 +286,32 @@ function createUpdater(appDir, dataDir) {
         fs.copyFileSync(cur, b);
       }
     }
-    fs.writeFileSync(path.join(backupDir, 'BACKUP-META.json'), JSON.stringify({ from, to, files, at: new Date().toISOString() }, null, 1));
+    const addedNodeModules = [];
+    for (const name of nodeModules || []) {
+      const cur = path.join(appDir, name);
+      if (fs.existsSync(cur)) {
+        const b = path.join(backupDir, name);
+        fs.mkdirSync(path.dirname(b), { recursive: true });
+        fs.copyFileSync(cur, b);
+      } else {
+        addedNodeModules.push(name);
+      }
+    }
+    fs.writeFileSync(path.join(backupDir, 'BACKUP-META.json'), JSON.stringify({ from, to, files, nodeModules: nodeModules || [], addedNodeModules, at: new Date().toISOString() }, null, 1));
+    // Windows batch reads this (one Windows-style path per line) to delete
+    // added files when a batch apply fails.
+    fs.writeFileSync(path.join(backupDir, 'ADDED-FILES.txt'), addedNodeModules.map((p) => p.split('/').join('\\')).join('\r\n'));
     pruneBackups();
-    return backupDir;
+    return { dir: backupDir, addedNodeModules };
+  }
+
+  // Restore one file from the backup, or delete it when the backup never
+  // had it (the update added it).
+  function restoreOne(backupDir, name) {
+    const b = path.join(backupDir, name);
+    const dest = path.join(appDir, name);
+    if (fs.existsSync(b)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(b, dest); }
+    else if (fs.existsSync(dest)) fs.rmSync(dest);
   }
 
   // In-process apply (Linux / dev / tests): backup, copy, record history.
@@ -224,9 +321,15 @@ function createUpdater(appDir, dataDir) {
     if (!s.staged) throw new Error('No staged update to apply.');
     const from = currentVersion(), to = s.staged.version;
     const files = s.staged.files;
-    const backupDir = makeBackup(files, from, to);
+    const nodeModules = s.staged.nodeModules || [];
+    const { dir: backupDir } = makeBackup(files, nodeModules, from, to);
     try {
       for (const name of files) {
+        const dest = path.join(appDir, name);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(path.join(stagedDir, name), dest);
+      }
+      for (const name of nodeModules) {
         const dest = path.join(appDir, name);
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.copyFileSync(path.join(stagedDir, name), dest);
@@ -234,18 +337,15 @@ function createUpdater(appDir, dataDir) {
     } catch (e) {
       // Half-applied install: restore the backup immediately and report.
       try {
-        for (const name of files) {
-          const b = path.join(backupDir, name), dest = path.join(appDir, name);
-          if (fs.existsSync(b)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(b, dest); }
-          else if (fs.existsSync(dest)) fs.rmSync(dest);
-        }
+        for (const name of files) restoreOne(backupDir, name);
+        for (const name of nodeModules) restoreOne(backupDir, name);
       } catch { /* best effort; the backup on disk is still there */ }
       throw new Error('Apply failed, rolled back to ' + from + ': ' + (e.message || e));
     }
-    s.history.push({ action: 'apply', from, to, at: new Date().toISOString(), backup: path.basename(backupDir) });
+    s.history.push({ action: 'apply', from, to, at: new Date().toISOString(), backup: path.basename(backupDir), nodeModules: nodeModules.length });
     s.staged = null; s.available = null; s.pendingRestart = true; s.lastApplied = { version: to, at: new Date().toISOString() };
     saveState(s);
-    return { from, to, backup: path.basename(backupDir), restartRequired: true };
+    return { from, to, backup: path.basename(backupDir), restartRequired: true, nodeModulesApplied: nodeModules.length };
   }
 
   // Windows apply: backup + write the apply batch, launch it detached, then
@@ -256,14 +356,16 @@ function createUpdater(appDir, dataDir) {
     if (!s.staged) throw new Error('No staged update to apply.');
     const from = currentVersion(), to = s.staged.version;
     const files = s.staged.files;
-    const backupDir = makeBackup(files, from, to);
+    const nodeModules = s.staged.nodeModules || [];
+    const { dir: backupDir, addedNodeModules } = makeBackup(files, nodeModules, from, to);
     const batch = buildApplyBatch({
       appDir, stagedDir, backupDir, pid: process.pid,
       launcher: path.join(appDir, 'Start.bat'),
+      addedFiles: addedNodeModules,
     });
     fs.mkdirSync(updDir, { recursive: true });
     fs.writeFileSync(batchFile, batch);
-    s.history.push({ action: 'apply', from, to, at: new Date().toISOString(), backup: path.basename(backupDir), via: 'batch' });
+    s.history.push({ action: 'apply', from, to, at: new Date().toISOString(), backup: path.basename(backupDir), via: 'batch', nodeModules: nodeModules.length });
     s.staged = null; s.available = null; s.pendingRestart = true; s.lastApplied = { version: to, at: new Date().toISOString() };
     saveState(s);
     try {
@@ -272,7 +374,7 @@ function createUpdater(appDir, dataDir) {
     } catch (e) {
       throw new Error('Could not start the Windows apply batch: ' + (e.message || e));
     }
-    return { from, to, backup: path.basename(backupDir), restarting: true };
+    return { from, to, backup: path.basename(backupDir), restarting: true, nodeModulesApplied: nodeModules.length };
   }
 
   function rollback() {
@@ -282,11 +384,8 @@ function createUpdater(appDir, dataDir) {
     if (!backups.length) throw new Error('No backup available to roll back to.');
     const dir = path.join(updDir, backups[backups.length - 1]);
     const meta = JSON.parse(fs.readFileSync(path.join(dir, 'BACKUP-META.json'), 'utf8'));
-    for (const name of meta.files) {
-      const b = path.join(dir, name), dest = path.join(appDir, name);
-      if (fs.existsSync(b)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(b, dest); }
-      else if (fs.existsSync(dest)) fs.rmSync(dest); // file was added by the update
-    }
+    for (const name of meta.files) restoreOne(dir, name);
+    for (const name of meta.nodeModules || []) restoreOne(dir, name);
     s.history.push({ action: 'rollback', from: meta.to, to: meta.from, at: new Date().toISOString() });
     s.pendingRestart = true; s.lastApplied = null;
     saveState(s);
@@ -346,6 +445,7 @@ function createUpdater(appDir, dataDir) {
 }
 
 module.exports = {
-  createUpdater, cmpVer, ALLOWED, effectiveFeed, buildApplyBatch,
-  DEFAULT_FEED_URL, MAX_BACKUPS,
+  createUpdater, cmpVer, ALLOWED, ALLOWED_OVERLAY, isNativeFile,
+  effectiveFeed, buildApplyBatch,
+  DEFAULT_FEED_URL, MAX_BACKUPS, MAX_OVERLAY_BYTES, MAX_OVERLAY_FILES,
 };

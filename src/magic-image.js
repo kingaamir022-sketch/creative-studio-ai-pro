@@ -178,15 +178,12 @@ async function callImageEdits({ userId, imageBuf, imageName, maskBuf, prompt, si
   form.append('prompt', prompt);
   form.append('model', model);
   form.append('size', size);
-  const res = await providers.fetchWithTimeout(`${p.baseUrl}/images/edits`, {
+  const res = await providers.fetchWithRetry(`${p.baseUrl}/images/edits`, {
     method: 'POST', headers: { Authorization: `Bearer ${p.key}` }, body: form,
   }, 180000);
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    const err = new Error(`${p.label} failed (${res.status}): ${String(detail || 'no detail').slice(0, 300)}`);
-    err.code = 'PROVIDER_ERROR';
-    err.status = res.status;
-    throw err;
+    throw providers.friendlyProviderError(p.label, res.status, detail);
   }
   const json = await res.json();
   const b64 = json && json.data && json.data[0] && json.data[0].b64_json;

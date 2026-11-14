@@ -38,11 +38,10 @@ function keyNeededError(providerLabel, extra) {
   return err;
 }
 
-function providerError(providerLabel, res, detail) {
-  const err = new Error(`${providerLabel} failed (${res.status}): ${String(detail || 'no detail').slice(0, 300)}`);
-  err.code = 'PROVIDER_ERROR';
-  err.status = res.status;
-  return err;
+function providerError(providerLabel, res, detail, retried = false) {
+  // One plain line for the user; the raw detail goes to the server log
+  // only (see providers.friendlyProviderError) — never a raw JSON dump.
+  return providers.friendlyProviderError(providerLabel, res.status, detail, { retried });
 }
 
 function cancelledError() {
@@ -104,7 +103,7 @@ async function generateImage(userId, { prompt, size = '1:1', style, sourceMediaI
     form.append('output_format', 'png');
     form.append('aspect_ratio', size in OPENAI_IMAGE_SIZES ? size : '1:1');
     if (style) form.append('style_preset', style);
-    const res = await providers.fetchWithTimeout(`${p.baseUrl}/v2beta/stable-image/generate/sd3`, {
+    const res = await providers.fetchWithRetry(`${p.baseUrl}/v2beta/stable-image/generate/sd3`, {
       method: 'POST', headers: { Authorization: `Bearer ${p.key}`, Accept: 'image/*' }, body: form, signal,
     }, 120000);
     if (!res.ok) throw providerError(p.label, res, await res.text().catch(() => ''));
@@ -125,7 +124,7 @@ async function generateImage(userId, { prompt, size = '1:1', style, sourceMediaI
       form.append('prompt', clean);
       form.append('model', editModel);
       form.append('size', sizePx);
-      const res = await providers.fetchWithTimeout(`${p.baseUrl}/images/edits`, {
+      const res = await providers.fetchWithRetry(`${p.baseUrl}/images/edits`, {
         method: 'POST', headers: { Authorization: `Bearer ${p.key}` }, body: form, signal,
       }, 120000);
       if (!res.ok) throw providerError(p.label, res, await res.text().catch(() => ''));
@@ -137,7 +136,7 @@ async function generateImage(userId, { prompt, size = '1:1', style, sourceMediaI
     } else {
       const body = { model, prompt: clean, size: sizePx, n: 1, response_format: 'b64_json' };
       if (style) body.style = style;
-      const res = await providers.fetchWithTimeout(`${p.baseUrl}/images/generations`, {
+      const res = await providers.fetchWithRetry(`${p.baseUrl}/images/generations`, {
         method: 'POST', headers: { Authorization: `Bearer ${p.key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body), signal,
       }, 120000);
@@ -190,7 +189,7 @@ async function pollRunwayTask(p, taskId, signal, onProgress) {
   let polls = 0;
   for (;;) {
     if (signal && signal.aborted) throw cancelledError();
-    const res = await providers.fetchWithTimeout(`${p.baseUrl}/tasks/${encodeURIComponent(taskId)}`, {
+    const res = await providers.fetchWithRetry(`${p.baseUrl}/tasks/${encodeURIComponent(taskId)}`, {
       method: 'GET', headers: { Authorization: `Bearer ${p.key}` }, signal,
     }, 30000);
     if (!res.ok) throw providerError(p.label, res, await res.text().catch(() => ''));
@@ -229,14 +228,14 @@ async function generateVideo(userId, { prompt, sourceMediaId, duration = 5, aspe
     if (media.kind !== 'image') throw new Error('Image-to-video needs a source image.');
     const buf = fs.readFileSync(mediaFilePath(userId, media));
     const dataUri = `data:${media.mime_type || 'image/png'};base64,${buf.toString('base64')}`;
-    const res = await providers.fetchWithTimeout(`${p.baseUrl}/image_to_video`, {
+    const res = await providers.fetchWithRetry(`${p.baseUrl}/image_to_video`, {
       method: 'POST', headers: { Authorization: `Bearer ${p.key}`, 'Content-Type': 'application/json', 'X-Runway-Version': '2024-11-06' },
       body: JSON.stringify({ promptImage: dataUri, promptText: clean, model: p.model, ratio, duration: secs }), signal,
     }, 60000);
     if (!res.ok) throw providerError(p.label, res, await res.text().catch(() => ''));
     taskId = (await res.json()).id;
   } else {
-    const res = await providers.fetchWithTimeout(`${p.baseUrl}/text_to_video`, {
+    const res = await providers.fetchWithRetry(`${p.baseUrl}/text_to_video`, {
       method: 'POST', headers: { Authorization: `Bearer ${p.key}`, 'Content-Type': 'application/json', 'X-Runway-Version': '2024-11-06' },
       body: JSON.stringify({ promptText: clean, model: p.model, ratio, duration: secs }), signal,
     }, 60000);
@@ -247,7 +246,7 @@ async function generateVideo(userId, { prompt, sourceMediaId, duration = 5, aspe
   if (onProgress) onProgress(25);
   const outputUrl = await pollRunwayTask(p, taskId, signal, onProgress);
   if (onProgress) onProgress(90);
-  const dl = await providers.fetchWithTimeout(outputUrl, { signal }, 300000);
+  const dl = await providers.fetchWithRetry(outputUrl, { signal }, 300000);
   if (!dl.ok) throw new Error(`Could not download the generated video (${dl.status}).`);
   const buffer = Buffer.from(await dl.arrayBuffer());
   const stamp = Date.now().toString(36);
@@ -259,7 +258,7 @@ async function generateVideo(userId, { prompt, sourceMediaId, duration = 5, aspe
 }
 
 // --- LLM (JSON mode) -----------------------------------------------------------
-async function chatJson(userId, { system, user, model: modelOverride, temperature = 0.3 } = {}, signal) {
+async function chatJson(userId, { system, user, model: modelOverride, temperature = 0.3 } = {}, signal, meta = {}) {
   const p = providers.resolveProvider(providers.activeProviderForKind('llm'));
   // Free alternative (v2.2.1): when the paid OpenAI provider has no key,
   // point the user at Google Gemini — a free Google AI Studio key, no card.
@@ -267,32 +266,87 @@ async function chatJson(userId, { system, user, model: modelOverride, temperatur
     ? 'AI text generation arrives with a key — see Phase 7 (AI Creative Studio). Free alternative: Google Gemini — get a free key from Google AI Studio (aistudio.google.com, no card required), add it in Settings → AI Providers, and set Gemini as the active LLM provider.'
     : 'AI text generation arrives with a key — see Phase 7 (AI Creative Studio).';
   if (!p.configured) throw keyNeededError(p.label, keyHint);
-  const res = await providers.fetchWithTimeout(`${p.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${p.key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: modelOverride || p.model,
-      messages: [
-        { role: 'system', content: system || 'You are a helpful assistant. Always reply with valid JSON only.' },
-        { role: 'user', content: user },
-      ],
-      response_format: { type: 'json_object' },
-      temperature,
-    }),
-    signal,
-  }, 120000);
-  if (!res.ok) throw providerError(p.label, res, await res.text().catch(() => ''));
-  const json = await res.json();
-  const content = json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
-  if (!content) throw new Error('The LLM provider returned no text.');
-  const stripped = String(content).replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-  try {
-    return JSON.parse(stripped);
-  } catch {
-    const err = new Error('The LLM provider returned text that is not valid JSON.');
-    err.code = 'PROVIDER_ERROR';
-    throw err;
+  // v2.2.4 — retry + fallback. Candidates: the configured model first,
+  // then the provider's other listed models in order. Each candidate gets
+  // the full transient retry budget (429/503/... with backoff, inside
+  // fetchWithRetry). A 404 naming a retired model moves to the next
+  // candidate at once; a model that stays overloaded after its retries
+  // also moves on. Anything else (bad key, bad request) fails now —
+  // another model would not help. `meta` reports what really happened
+  // ({ model, attempts, fallback, modelsTried }) so callers can log and
+  // record which model finally succeeded.
+  const requested = modelOverride || p.model;
+  const candidates = [requested, ...((p.models || []).filter((m) => m && m !== requested))];
+  const tried = [];
+  let totalAttempts = 0;
+  for (const model of candidates) {
+    const callMeta = {};
+    const res = await providers.fetchWithRetry(`${p.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${p.key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: system || 'You are a helpful assistant. Always reply with valid JSON only.' },
+          { role: 'user', content: user },
+        ],
+        response_format: { type: 'json_object' },
+        temperature,
+      }),
+      signal,
+    }, 120000, callMeta);
+    totalAttempts += callMeta.attempts || 1;
+    tried.push(model);
+    meta.modelsTried = [...tried];
+    meta.attempts = totalAttempts;
+    if (res.ok) {
+      const json = await res.json();
+      const content = json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
+      if (!content) throw new Error('The LLM provider returned no text.');
+      const stripped = String(content).replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      let parsed;
+      try {
+        parsed = JSON.parse(stripped);
+      } catch {
+        const err = new Error('The LLM provider returned text that is not valid JSON.');
+        err.code = 'PROVIDER_ERROR';
+        throw err;
+      }
+      meta.model = model;
+      meta.fallback = model !== requested;
+      if (model !== requested) console.log(`[LLM] ${p.label}: model "${requested}" unavailable, succeeded with fallback "${model}" (tried: ${tried.join(', ')})`);
+      else if (callMeta.retried) console.log(`[LLM] ${p.label}: succeeded with "${model}" after ${callMeta.attempts} attempts`);
+      return parsed;
+    }
+    const detail = await res.text().catch(() => '');
+    const isLast = model === candidates[candidates.length - 1];
+    if (res.status === 404 && providers.friendlyModelError(p, model, res.status, detail)) {
+      console.log(`[LLM] ${p.label}: model "${model}" is no longer available — trying the next model`);
+      if (isLast) {
+        const err = new Error(`All ${p.label} models tried (${tried.join(', ')}) are no longer available. Check Settings → AI Providers for the current model list.`);
+        err.code = 'MODEL_NOT_FOUND';
+        err.status = 404;
+        meta.model = null;
+        meta.fallback = true;
+        throw err;
+      }
+      continue;
+    }
+    if (providers.TRANSIENT_STATUSES.includes(res.status)) {
+      console.log(`[LLM] ${p.label}: model "${model}" stayed overloaded after ${callMeta.attempts || 1} attempts — trying the next model`);
+      if (isLast) {
+        meta.model = null;
+        meta.fallback = candidates.length > 1;
+        throw providerError(p.label, res, detail, true);
+      }
+      continue;
+    }
+    // Any other failure (bad key, bad request, server error): fail now.
+    meta.model = null;
+    throw providerError(p.label, res, detail, Boolean(callMeta.retried));
   }
+  // Unreachable — candidates always has at least the requested model.
+  throw new Error(`The LLM provider returned no result (tried: ${tried.join(', ')}).`);
 }
 
 function csvEscape(v) {
@@ -307,10 +361,11 @@ async function generateQuizQuestions(userId, { topic, count = 5, difficulty = 'm
   if (!cleanTopic) throw new Error('A quiz topic is required.');
   const n = Math.max(1, Math.min(10, parseInt(count, 10) || 5));
   const diff = QUIZ_DIFFICULTIES.includes(difficulty) ? difficulty : 'mixed';
+  const meta = {};
   const out = await chatJson(userId, {
     system: 'You write quiz questions. Reply with valid JSON only, no other text.',
     user: `Generate quiz questions. Write exactly ${n} multiple-choice quiz questions about "${cleanTopic}" (difficulty: ${diff}, language: ${language}). Reply as a JSON object {"questions":[{"question":"...","options":["...","...","...","..."],"correct":"A","explanation":"one short sentence"}]}. Rules: exactly 4 options per question, correct is the letter A, B, C or D, options are short (under 22 characters when possible), questions under 80 characters when possible.`,
-  }, signal);
+  }, signal, meta);
   const list = Array.isArray(out.questions) ? out.questions : [];
   if (!list.length) throw new Error('The LLM provider returned no quiz questions.');
   const questions = list.slice(0, n).map((q, i) => {
@@ -335,7 +390,7 @@ async function generateQuizQuestions(userId, { topic, count = 5, difficulty = 'm
     q.question, ...q.options, q.correct, q.explanation, q.category, q.difficulty, q.timerSeconds,
   ].map(csvEscape).join(','))].join('\n');
   credits.chargeCredits(userId, 'ai_quiz', `Generated ${questions.length} quiz questions about "${cleanTopic}"`);
-  return { questions, csv, topic: cleanTopic };
+  return { questions, csv, topic: cleanTopic, model: meta.model || null };
 }
 
 const DESIGN_FONTS = ['Poppins', 'Inter', 'Montserrat', 'Playfair Display', 'Roboto', 'Oswald', 'Lato', 'Raleway', 'Bebas Neue', 'Dancing Script'];
@@ -549,7 +604,7 @@ async function transcribeAudio(userId, mediaId, { language } = {}, signal) {
     form.append('response_format', 'verbose_json');
     form.append('timestamp_granularities[]', 'word');
     if (language) form.append('language', language);
-    const res = await providers.fetchWithTimeout(`${p.baseUrl}/audio/transcriptions`, {
+    const res = await providers.fetchWithRetry(`${p.baseUrl}/audio/transcriptions`, {
       method: 'POST', headers: { Authorization: `Bearer ${p.key}` }, body: form, signal,
     }, 300000);
     if (!res.ok) throw providerError(p.label, res, await res.text().catch(() => ''));
@@ -609,7 +664,7 @@ async function generateMusic(userId, { prompt, duration = 8 } = {}, signal, onPr
   const p = providers.resolveProvider(providers.activeProviderForKind('music'));
   if (!p.configured) throw keyNeededError(p.label, 'AI music generation arrives with a key — see Phase 7 (AI Creative Studio).');
   if (onProgress) onProgress(10);
-  const create = await providers.fetchWithTimeout(`${p.baseUrl}/models/meta/musicgen/predictions`, {
+  const create = await providers.fetchWithRetry(`${p.baseUrl}/models/meta/musicgen/predictions`, {
     method: 'POST',
     headers: { Authorization: `Token ${p.key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ input: { prompt: clean, duration: secs } }), signal,
@@ -622,7 +677,7 @@ async function generateMusic(userId, { prompt, duration = 8 } = {}, signal, onPr
   let polls = 0;
   for (;;) {
     if (signal && signal.aborted) throw cancelledError();
-    const res = await providers.fetchWithTimeout(pollUrl, {
+    const res = await providers.fetchWithRetry(pollUrl, {
       method: 'GET', headers: { Authorization: `Token ${p.key}` }, signal,
     }, 30000);
     if (!res.ok) throw providerError(p.label, res, await res.text().catch(() => ''));
@@ -635,7 +690,7 @@ async function generateMusic(userId, { prompt, duration = 8 } = {}, signal, onPr
       const url = Array.isArray(out) ? out[0] : (typeof out === 'string' ? out : null);
       if (!url) throw new Error('The music provider finished but returned no audio URL.');
       if (onProgress) onProgress(90);
-      const dl = await providers.fetchWithTimeout(url, { signal }, 300000);
+      const dl = await providers.fetchWithRetry(url, { signal }, 300000);
       if (!dl.ok) throw new Error(`Could not download the generated music (${dl.status}).`);
       const buffer = Buffer.from(await dl.arrayBuffer());
       const stamp = Date.now().toString(36);
@@ -748,7 +803,7 @@ async function runAiJob(jobRow) {
       }
       case 'quiz': {
         const q = await generateQuizQuestions(userId, params, ctrl.signal);
-        result = { questions: q.questions, csv: q.csv, topic: q.topic };
+        result = { questions: q.questions, csv: q.csv, topic: q.topic, model: q.model || null };
         break;
       }
       case 'design': {

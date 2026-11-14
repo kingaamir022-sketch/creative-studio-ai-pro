@@ -35,7 +35,10 @@ const PROVIDERS = [
   {
     id: 'gemini', kind: 'llm', label: 'LLM — Google Gemini (free tier)',
     envKey: 'GEMINI_API_KEY', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    models: ['gemini-2.0-flash', 'gemini-2.5-flash'], defaultModel: 'gemini-2.0-flash',
+    // v2.2.4: Google retired gemini-2.0-flash (404 "no longer available").
+    // The current default is gemini-3.8-flash; see RETIRED_MODELS below
+    // for installs that still have the old model saved.
+    models: ['gemini-3.8-flash', 'gemini-2.5-flash'], defaultModel: 'gemini-3.8-flash',
     test: { method: 'GET', path: '/models' },
     phase: 7,
     about: 'Chat completions via Google\'s OpenAI-compatible endpoint (beta — same chat/completions shape, Bearer key). Free API key from Google AI Studio (aistudio.google.com), no card required. The free tier has rate limits — check your project\'s limits in AI Studio. Powers AI quiz questions, design assist, captions/posts and music mood tags.',
@@ -98,6 +101,13 @@ const PROVIDERS = [
   },
 ];
 
+// Models a provider has retired (Google answers 404 for them). A stored
+// model override naming one is upgraded to the provider's current default
+// at resolve time, so an install that saved the old default keeps working
+// after an update — no manual fix, no failed job. The stored value is
+// left alone; the resolved (effective) model is what every call uses.
+const RETIRED_MODELS = { 'gemini-2.0-flash': 'gemini-3.8-flash' };
+
 // The default (primary) provider per kind — used until the user picks another.
 const DEFAULT_ACTIVE = { image: 'image', video: 'video', llm: 'llm', tts: 'tts', stt: 'stt', music: 'music' };
 
@@ -120,11 +130,17 @@ function resolveProvider(id) {
   if (!def) return null;
   const cfg = db.getProviderConfig(id) || {};
   const key = storedKey(id) || process.env[def.envKey] || null;
+  // A stored model override naming a retired model is upgraded to the
+  // provider's current default (see RETIRED_MODELS above).
+  const storedModel = cfg.model || null;
+  const model = storedModel && RETIRED_MODELS[storedModel]
+    ? RETIRED_MODELS[storedModel]
+    : (storedModel || def.defaultModel);
   return {
     ...def,
     key,
     baseUrl: (cfg.base_url || def.defaultBaseUrl).replace(/\/$/, ''),
-    model: cfg.model || def.defaultModel,
+    model,
     configured: Boolean(key),
     source: storedKey(id) ? 'stored (encrypted)' : (process.env[def.envKey] ? 'environment' : 'none'),
   };
@@ -177,6 +193,41 @@ function requireProvider(id) {
   return r;
 }
 
+// A provider 404 that names a model ("... is no longer available ...")
+// means the configured model was retired — not that the key or the
+// account is broken. Turn the raw provider dump into a message that
+// names the working alternative and where to change it. Returns null
+// when the response is not a model-not-found — callers then use the
+// generic provider error. `provider` is a resolved provider object
+// (from resolveProvider) or a provider id.
+function friendlyModelError(provider, model, status, detail) {
+  if (!provider || status !== 404) return null;
+  const text = String(detail || '');
+  const isModelNotFound = /no longer available|not found|does not exist|is not supported/i.test(text)
+    || /models\/[A-Za-z0-9._-]+/i.test(text);
+  if (!isModelNotFound) return null;
+  const p = typeof provider === 'string' ? resolveProvider(provider) : provider;
+  const label = (p && p.label) || 'the provider';
+  // Google itself names the replacement ("... update your code to use
+  // models/gemini-3.8-flash") — prefer that; otherwise the provider's
+  // current default model.
+  const named = text.match(/use models\/([A-Za-z0-9._-]+)/i);
+  const fallback = (named && named[1]) || (p && p.defaultModel) || null;
+  const where = `Settings → AI Providers → ${label} (Model)`;
+  const err = new Error(
+    `The model "${model}" is no longer available on ${label} (404). `
+    + (fallback && fallback !== model
+      ? `Use "${fallback}" instead — change the model in ${where}, or clear the model field to use the current default.`
+      : `Pick a current model in ${where}.`),
+  );
+  err.code = 'MODEL_NOT_FOUND';
+  err.status = 404;
+  err.provider = p ? p.id : null;
+  err.model = model;
+  err.suggestedModel = fallback;
+  return err;
+}
+
 async function fetchWithTimeout(url, options, ms = 20000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
@@ -188,6 +239,99 @@ async function fetchWithTimeout(url, options, ms = 20000) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// --- Transient failures: retry + friendly errors (v2.2.4) ------------------
+// A provider that answers 429 (rate limit), 502, 503 (overloaded) or 504
+// is usually fine a few seconds later — a single try must never fail a
+// job. 500 is deliberately NOT retried: it usually means a real request
+// problem, and retrying it would only burn time.
+const TRANSIENT_STATUSES = [429, 502, 503, 504];
+// 4 attempts, waits of 2s, 5s, 10s between them. Tests set
+// AI_RETRY_DELAYS_MS (e.g. '30,60,120') so retry tests run fast.
+const DEFAULT_RETRY_DELAYS_MS = [2000, 5000, 10000];
+function retryDelays() {
+  const raw = process.env.AI_RETRY_DELAYS_MS;
+  if (raw) {
+    const parsed = raw.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isFinite(n) && n >= 0);
+    if (parsed.length) return parsed;
+  }
+  return DEFAULT_RETRY_DELAYS_MS;
+}
+function sleepAbortable(ms, signal) {
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    if (signal) {
+      if (signal.aborted) { clearTimeout(t); resolve(); }
+      else signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+    }
+  });
+}
+// Retry a provider fetch on transient HTTP statuses. Returns the final
+// Response (ok or not — callers still check res.ok). `meta` (optional)
+// receives { attempts, retried }. A caller abort (job cancelled) is
+// never retried; a timeout is treated as transient and retried.
+async function fetchWithRetry(url, options, ms = 20000, meta) {
+  const delays = retryDelays();
+  const maxAttempts = delays.length + 1;
+  const callerSignal = options && options.signal;
+  let lastRes = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let res;
+    try {
+      res = await fetchWithTimeout(url, options, ms);
+    } catch (e) {
+      if (callerSignal && callerSignal.aborted) throw e;
+      if (attempt === maxAttempts) throw e;
+      if (meta) { meta.attempts = attempt; meta.retried = true; }
+      console.log(`[provider] ${url} timed out (attempt ${attempt}/${maxAttempts}) — retrying in ${delays[attempt - 1]} ms`);
+      await sleepAbortable(delays[attempt - 1], callerSignal);
+      continue;
+    }
+    if (meta) { meta.attempts = attempt; meta.retried = attempt > 1; }
+    if (res.ok || !TRANSIENT_STATUSES.includes(res.status) || attempt === maxAttempts) return res;
+    // Consume the error body so the connection can be reused, then wait.
+    try { await res.text(); } catch { /* ignore */ }
+    console.log(`[provider] ${url} returned ${res.status} (attempt ${attempt}/${maxAttempts}) — retrying in ${delays[attempt - 1]} ms`);
+    await sleepAbortable(delays[attempt - 1], callerSignal);
+    if (callerSignal && callerSignal.aborted) return res;
+    lastRes = res;
+  }
+  return lastRes;
+}
+
+// One plain line for the user, raw detail in the server log only — never
+// a raw provider JSON dump on screen. Returns an Error (code
+// PROVIDER_ERROR, .status set) so callers can throw it directly.
+function friendlyProviderError(providerLabel, status, detail, { retried = false } = {}) {
+  const raw = String(detail || '');
+  // The raw detail is for diagnosis — it goes to the log, never to the user.
+  try { console.error(`[AI] ${providerLabel} failed (${status}): ${raw.slice(0, 500)}`); } catch { /* ignore */ }
+  const tried = retried ? ' The request was retried automatically.' : '';
+  let message;
+  if (status === 429) {
+    message = `${providerLabel} is rate-limited right now (429).${tried} Please try again in a minute or two.`;
+  } else if (status === 503 || /overload|high demand|temporarily unavailable/i.test(raw)) {
+    message = `${providerLabel} is temporarily overloaded (${status}).${tried} Please try again in a few minutes — no key or settings change is needed.`;
+  } else if (status === 401 || status === 403) {
+    message = `${providerLabel} rejected the key (${status}). Check the key in Settings → AI Providers — it may be wrong, revoked, or out of credit.`;
+  } else {
+    // One plain line from the provider's own message when it has one.
+    let line = '';
+    try {
+      const j = JSON.parse(raw);
+      const m = (j && j.error && (j.error.message || j.error)) || (j && j.message) || '';
+      line = String(m || '');
+    } catch { line = raw.split('\n')[0] || ''; }
+    line = line.replace(/["{}[\]]/g, '').trim().slice(0, 200);
+    message = line
+      ? `${providerLabel} failed (${status}): ${line}`
+      : `${providerLabel} failed (${status}). Please try again.`;
+  }
+  const err = new Error(message);
+  err.code = 'PROVIDER_ERROR';
+  err.status = status;
+  return err;
 }
 
 // Minimal REAL validation call for a provider: list models / balance /
@@ -204,10 +348,10 @@ async function testProvider(id) {
   else if (id === 'music') headers.Authorization = `Token ${r.key}`;
   else headers.Authorization = `Bearer ${r.key}`;
   try {
-    const res = await fetchWithTimeout(`${r.baseUrl}${r.test.path}`, { method: r.test.method, headers }, 20000);
+    const res = await fetchWithRetry(`${r.baseUrl}${r.test.path}`, { method: r.test.method, headers }, 20000);
     const text = await res.text().catch(() => '');
     if (!res.ok) {
-      return { ok: false, error: `${r.label} rejected the key (${res.status}): ${text.slice(0, 200) || 'no detail'}` };
+      return { ok: false, error: friendlyProviderError(r.label, res.status, text).message };
     }
     let detail = 'Connection OK — the key was accepted.';
     try {
@@ -223,7 +367,9 @@ async function testProvider(id) {
 }
 
 module.exports = {
-  KINDS, PROVIDERS, DEFAULT_ACTIVE,
+  KINDS, PROVIDERS, DEFAULT_ACTIVE, RETIRED_MODELS,
+  TRANSIENT_STATUSES, DEFAULT_RETRY_DELAYS_MS, retryDelays,
   getProvider, resolveProvider, activeProviderForKind,
   providerStatus, requireProvider, testProvider, fetchWithTimeout,
+  fetchWithRetry, friendlyProviderError, friendlyModelError,
 };

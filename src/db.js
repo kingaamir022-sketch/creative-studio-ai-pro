@@ -296,7 +296,7 @@ CREATE TABLE IF NOT EXISTS plan_requests (
 CREATE TABLE IF NOT EXISTS marketplace_templates (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL DEFAULT 'design' CHECK (kind IN ('design','video')),
+  kind TEXT NOT NULL DEFAULT 'design' CHECK (kind IN ('design','video','deck')),
   source_type TEXT NOT NULL DEFAULT 'template' CHECK (source_type IN ('template','project')),
   source_id INTEGER,
   name TEXT NOT NULL,
@@ -326,6 +326,37 @@ CREATE TABLE IF NOT EXISTS marketplace_reports (
   reason TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- v2.2.4 — Collaboration: project sharing + comments. NO live co-editing
+-- (explicitly out of scope): a share is read-only access, a comment is a
+-- thread on a project. A share is either a per-user share
+-- (shared_with_user_id set, token NULL) or a read-only link share
+-- (token set, shared_with_user_id NULL). One row per (project, user) and
+-- one link per project at most — duplicates are never created.
+CREATE TABLE IF NOT EXISTS project_shares (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  shared_with_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  token TEXT UNIQUE,
+  permission TEXT NOT NULL DEFAULT 'view' CHECK (permission IN ('view')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(project_id, shared_with_user_id),
+  UNIQUE(project_id, token)
+);
+CREATE TABLE IF NOT EXISTS project_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  parent_id INTEGER REFERENCES project_comments(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_project_shares_project ON project_shares(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_shares_token ON project_shares(token);
+CREATE INDEX IF NOT EXISTS idx_project_shares_user ON project_shares(shared_with_user_id);
+CREATE INDEX IF NOT EXISTS idx_project_comments_project ON project_comments(project_id, created_at);
 CREATE TABLE IF NOT EXISTS oauth_configs (
   provider TEXT PRIMARY KEY,
   client_id TEXT,
@@ -388,6 +419,40 @@ CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id);
     COMMIT;
     PRAGMA foreign_keys=ON;`);
   db.exec('CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, trashed)');
+})();
+
+// v2.2.4 — Library & Assistant: marketplace templates gained the 'deck'
+// kind (deck projects can now be published/installed). Same rebuild
+// pattern as v2.2.3 — SQLite cannot ALTER a CHECK constraint. Idempotent.
+(function migrateMarketplaceKinds() {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='marketplace_templates'").get();
+  if (!row || !row.sql || row.sql.includes("'deck'")) return;
+  db.exec(`PRAGMA foreign_keys=OFF;
+    BEGIN TRANSACTION;
+    ALTER TABLE marketplace_templates RENAME TO marketplace_templates_old_v224;
+    CREATE TABLE marketplace_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL DEFAULT 'design' CHECK (kind IN ('design','video','deck')),
+      source_type TEXT NOT NULL DEFAULT 'template' CHECK (source_type IN ('template','project')),
+      source_id INTEGER,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      tags TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'General',
+      content TEXT NOT NULL DEFAULT '{}',
+      preview_media_id INTEGER REFERENCES media(id) ON DELETE SET NULL,
+      downloads INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','removed')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT INTO marketplace_templates (id, user_id, kind, source_type, source_id, name, description, tags, category, content, preview_media_id, downloads, status, created_at, updated_at)
+      SELECT id, user_id, kind, source_type, source_id, name, description, tags, category, content, preview_media_id, downloads, status, created_at, updated_at FROM marketplace_templates_old_v224;
+    DROP TABLE marketplace_templates_old_v224;
+    COMMIT;
+    PRAGMA foreign_keys=ON;`);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_marketplace_status ON marketplace_templates(status, created_at)');
 })();
 
 // Phase 3 columns (added idempotently so existing installs migrate on boot).
@@ -694,14 +759,22 @@ function listProviderConfig() {
 }
 function upsertProviderConfig(provider, { baseUrl, model }) {
   const cur = getProviderConfig(provider);
+  // Compute the next values in JS, then assign them outright. An empty
+  // string means CLEAR the override (store NULL, back to the provider
+  // default); undefined means "not provided, keep the current value".
+  // (The old COALESCE(excluded.x, provider_config.x) form could not tell
+  // "clear" apart from "keep" — an emptied model field silently kept the
+  // old, possibly retired, model.)
+  const nextBaseUrl = baseUrl !== undefined ? (baseUrl || null) : (cur ? cur.base_url : null);
+  const nextModel = model !== undefined ? (model || null) : (cur ? cur.model : null);
   db.prepare(`INSERT INTO provider_config (provider, base_url, model)
     VALUES (?,?,?) ON CONFLICT(provider) DO UPDATE SET
-    base_url = COALESCE(excluded.base_url, provider_config.base_url),
-    model = COALESCE(excluded.model, provider_config.model),
+    base_url = excluded.base_url,
+    model = excluded.model,
     updated_at = datetime('now')`).run(
     provider,
-    baseUrl !== undefined ? (baseUrl || null) : (cur ? cur.base_url : null),
-    model !== undefined ? (model || null) : (cur ? cur.model : null)
+    nextBaseUrl,
+    nextModel
   );
   return getProviderConfig(provider);
 }
@@ -1248,6 +1321,98 @@ function reportMarketplaceTemplate(templateId, userId, reason) {
   return db.prepare('SELECT * FROM marketplace_reports WHERE id = ?').get(info.lastInsertRowid);
 }
 
+// --- Project shares + comments (v2.2.4, Collaboration) ----------------------
+// Shares are READ-ONLY by design (permission is always 'view'). There is
+// NO live co-editing: a shared user can view the project and comment, but
+// never edit it. A share is either per-user (shared_with_user_id) or a
+// read-only link (token). The UNIQUE constraints make duplicate shares
+// impossible — re-sharing returns the existing row.
+function createProjectShare(ownerUserId, projectId, { sharedWithUserId = null, token = null } = {}) {
+  if (sharedWithUserId) {
+    const existing = db.prepare('SELECT * FROM project_shares WHERE project_id = ? AND shared_with_user_id = ?').get(projectId, sharedWithUserId);
+    if (existing) return { ...existing, alreadyShared: true };
+    const info = db.prepare(`INSERT INTO project_shares
+      (project_id, owner_user_id, shared_with_user_id, token, permission) VALUES (?,?,?,NULL,'view')`)
+      .run(projectId, ownerUserId, sharedWithUserId);
+    return db.prepare('SELECT * FROM project_shares WHERE id = ?').get(info.lastInsertRowid);
+  }
+  if (token) {
+    const existing = db.prepare('SELECT * FROM project_shares WHERE project_id = ? AND token = ?').get(projectId, token);
+    if (existing) return { ...existing, alreadyShared: true };
+    const info = db.prepare(`INSERT INTO project_shares
+      (project_id, owner_user_id, shared_with_user_id, token, permission) VALUES (?,?,NULL,?,'view')`)
+      .run(projectId, ownerUserId, token);
+    return db.prepare('SELECT * FROM project_shares WHERE id = ?').get(info.lastInsertRowid);
+  }
+  throw new Error('A share needs either a user or a link token.');
+}
+function getProjectShare(id) {
+  return db.prepare('SELECT * FROM project_shares WHERE id = ?').get(id);
+}
+function getProjectShareByToken(token) {
+  return db.prepare('SELECT * FROM project_shares WHERE token = ?').get(token);
+}
+function getProjectShareForUser(projectId, userId) {
+  return db.prepare('SELECT * FROM project_shares WHERE project_id = ? AND shared_with_user_id = ?').get(projectId, userId);
+}
+function getProjectLinkShare(projectId) {
+  return db.prepare('SELECT * FROM project_shares WHERE project_id = ? AND token IS NOT NULL').get(projectId);
+}
+function listProjectShares(projectId) {
+  return db.prepare(`SELECT s.*, u.name AS shared_with_name, u.email AS shared_with_email
+    FROM project_shares s LEFT JOIN users u ON u.id = s.shared_with_user_id
+    WHERE s.project_id = ? ORDER BY s.created_at`).all(projectId);
+}
+function deleteProjectShare(id) {
+  return db.prepare('DELETE FROM project_shares WHERE id = ?').run(id).changes > 0;
+}
+function listSharedWithMe(userId) {
+  return db.prepare(`SELECT p.*, s.id AS share_id, s.created_at AS shared_at,
+      u.name AS owner_name, u.email AS owner_email
+    FROM project_shares s
+    JOIN projects p ON p.id = s.project_id
+    JOIN users u ON u.id = s.owner_user_id
+    WHERE s.shared_with_user_id = ? AND p.trashed = 0 ORDER BY s.created_at DESC`).all(userId);
+}
+function canViewProject(userId, project) {
+  if (!project) return false;
+  if (project.user_id === userId) return true;
+  return Boolean(getProjectShareForUser(project.id, userId));
+}
+
+// Comments: one level of replies only (parent_id points at a top-level
+// comment). Resolving applies to the whole thread (the top-level comment).
+function createProjectComment(userId, projectId, { body, parentId = null }) {
+  if (parentId) {
+    const parent = db.prepare('SELECT * FROM project_comments WHERE id = ? AND project_id = ?').get(parentId, projectId);
+    if (!parent) throw new Error('The comment being replied to was not found on this project.');
+    if (parent.parent_id) throw new Error('Replies can only be added to a top-level comment, not to another reply.');
+  }
+  const info = db.prepare(`INSERT INTO project_comments
+    (project_id, user_id, parent_id, body) VALUES (?,?,?,?)`).run(projectId, userId, parentId, body);
+  return getProjectComment(info.lastInsertRowid);
+}
+function getProjectComment(id) {
+  return db.prepare(`SELECT c.*, u.name AS author_name
+    FROM project_comments c JOIN users u ON u.id = c.user_id WHERE c.id = ?`).get(id);
+}
+function listProjectComments(projectId) {
+  return db.prepare(`SELECT c.*, u.name AS author_name
+    FROM project_comments c JOIN users u ON u.id = c.user_id
+    WHERE c.project_id = ? ORDER BY c.created_at ASC`).all(projectId);
+}
+function resolveProjectComment(id, resolved) {
+  const cur = db.prepare('SELECT * FROM project_comments WHERE id = ?').get(id);
+  if (!cur) return null;
+  const topId = cur.parent_id || cur.id;
+  db.prepare(`UPDATE project_comments SET status = ?, updated_at = datetime('now')
+    WHERE id = ? OR parent_id = ?`).run(resolved ? 'resolved' : 'open', topId, topId);
+  return getProjectComment(id);
+}
+function deleteProjectComment(id) {
+  return db.prepare('DELETE FROM project_comments WHERE id = ?').run(id).changes > 0;
+}
+
 // --- Google OAuth config (Phase 8) ---
 // Client id/secret for Google OAuth (Sheets + Drive read). The secret is
 // encrypted at rest; the client id is not a secret and is returned.
@@ -1358,6 +1523,10 @@ module.exports = {
   createMarketplaceTemplate, getMarketplaceTemplate, listMarketplaceTemplates,
   updateMarketplaceTemplate, deleteMarketplaceTemplate, rateMarketplaceTemplate,
   listMarketplaceRatings, reportMarketplaceTemplate,
+  createProjectShare, getProjectShare, getProjectShareByToken, getProjectShareForUser,
+  getProjectLinkShare, listProjectShares, deleteProjectShare, listSharedWithMe,
+  canViewProject, createProjectComment, getProjectComment, listProjectComments,
+  resolveProjectComment, deleteProjectComment,
   getOAuthConfig, upsertOAuthConfig,
   listUsersAdmin, listAuditAll, deleteUserById, platformStats, userUsageSummary,
   getProviderSettings, upsertProvider,

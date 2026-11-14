@@ -85,15 +85,8 @@ function keyNeededError(providerLabel) {
   return err;
 }
 
-async function fetchWithTimeout(url, options, ms = 60000) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  try {
-    return await fetch(url, { ...options, signal: ctrl.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// Provider calls go through the registry's fetchWithRetry (transient
+// 429/503 retries + friendly errors) — see src/providers.js.
 
 // --- Voice resolution --------------------------------------------------------
 // Per-row VOICE value (profile name or numeric id) beats the bulk job's
@@ -150,7 +143,7 @@ async function synthesizeSpeech(userId, profile, text) {
   if (profile.kind === 'clone' && profile.provider_voice_id) {
     const key = providerKey('voice_clone') || envKey('ELEVENLABS_API_KEY');
     if (!key) throw keyNeededError('Voice cloning + TTS (ElevenLabs)');
-    const res = await fetchWithTimeout(
+    const res = await providers.fetchWithRetry(
       `${providerBaseUrl('voice_clone') || ELEVENLABS_API}/text-to-speech/${encodeURIComponent(profile.provider_voice_id)}`,
       {
         method: 'POST',
@@ -160,25 +153,21 @@ async function synthesizeSpeech(userId, profile, text) {
     );
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      const err = new Error(`ElevenLabs speech failed (${res.status}): ${detail.slice(0, 200) || 'no detail'}`);
-      err.code = 'PROVIDER_ERROR';
-      throw err;
+      throw providers.friendlyProviderError('Voice cloning + TTS (ElevenLabs)', res.status, detail);
     }
     audioBuffer = Buffer.from(await res.arrayBuffer());
     provider = 'elevenlabs';
   } else if (profile.kind === 'ai' && profile.ai_voice) {
     const key = providerKey('tts') || envKey('OPENAI_API_KEY');
     if (!key) throw keyNeededError('Text-to-speech (OpenAI)');
-    const res = await fetchWithTimeout(`${providerBaseUrl('tts') || OPENAI_API}/audio/speech`, {
+    const res = await providers.fetchWithRetry(`${providerBaseUrl('tts') || OPENAI_API}/audio/speech`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: 'tts-1', input: clean, voice: profile.ai_voice }),
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      const err = new Error(`OpenAI speech failed (${res.status}): ${detail.slice(0, 200) || 'no detail'}`);
-      err.code = 'PROVIDER_ERROR';
-      throw err;
+      throw providers.friendlyProviderError('Text-to-speech (OpenAI)', res.status, detail);
     }
     audioBuffer = Buffer.from(await res.arrayBuffer());
     provider = 'openai-tts';
@@ -239,14 +228,12 @@ async function cloneVoice(userId, profile) {
   const form = new FormData();
   form.append('name', profile.name);
   form.append('files', new Blob([buf], { type: media.mime_type || 'audio/mpeg' }), media.original_name);
-  const res = await fetchWithTimeout(`${providerBaseUrl('voice_clone') || ELEVENLABS_API}/voices/add`, {
+  const res = await providers.fetchWithRetry(`${providerBaseUrl('voice_clone') || ELEVENLABS_API}/voices/add`, {
     method: 'POST', headers: { 'xi-api-key': key }, body: form,
   }, 120000);
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    const err = new Error(`ElevenLabs voice cloning failed (${res.status}): ${detail.slice(0, 300) || 'no detail'}`);
-    err.code = 'PROVIDER_ERROR';
-    throw err;
+    throw providers.friendlyProviderError('Voice cloning + TTS (ElevenLabs)', res.status, detail);
   }
   const json = await res.json();
   if (!json.voice_id) throw new Error('ElevenLabs did not return a voice id.');
