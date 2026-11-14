@@ -25,6 +25,7 @@ const MODE_PARAMS = {
   'music-mood': ['mediaId'],
   'music-generate': ['prompt', 'duration'],
   'write': ['prompt', 'task', 'tone', 'length'],
+  'deck': ['topic', 'slideCount', 'style', 'audience'],
 };
 
 function cleanParams(mode, body) {

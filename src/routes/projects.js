@@ -6,7 +6,7 @@ const db = require('../db');
 const auth = require('../auth');
 
 const router = express.Router();
-const TYPES = ['design', 'video', 'bulk', 'shorts', 'social'];
+const TYPES = ['design', 'video', 'bulk', 'shorts', 'social', 'deck', 'doc'];
 
 router.get('/', auth.requireAuth, (req, res) => {
   const { search = '', trashed = '0', folderId = '' } = req.query;
