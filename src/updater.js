@@ -93,7 +93,7 @@ function effectiveFeed(st) {
 // `addedFiles` (v2.2.4): node_modules files the update ADDS (they did not
 // exist before) — on failure they are deleted, because restoring the
 // backup cannot remove a file the backup never had.
-function buildApplyBatch({ appDir, stagedDir, backupDir, pid, launcher, addedFiles = [] }) {
+function buildApplyBatch({ appDir, stagedDir, backupDir, pid, launcher, electronPid, addedFiles = [] }) {
   const q = (s) => `"${String(s).replace(/"/g, '')}"`;
   const launch = launcher || path.join(appDir, 'Start.bat');
   const lines = [
@@ -104,11 +104,18 @@ function buildApplyBatch({ appDir, stagedDir, backupDir, pid, launcher, addedFil
     `set STAGED=${q(stagedDir)}`,
     `set BACKUP=${q(backupDir)}`,
     `set SRVPID=${pid || ''}`,
+    // v2.7.1 — desktop app: also wait for the Electron parent process to
+    // exit before copying, so the batch never fights the running shell.
+    `set ELECTRONPID=${electronPid || ''}`,
     'timeout /t 2 /nobreak >nul',
     ':waitloop',
-    'if "%SRVPID%"=="" goto docopy',
+    'if "%SRVPID%"=="" goto waitloop2',
     'tasklist /FI "PID eq %SRVPID%" 2>nul | find /I "%SRVPID%" >nul',
     'if %errorlevel%==0 (timeout /t 1 /nobreak >nul & goto waitloop)',
+    ':waitloop2',
+    'if "%ELECTRONPID%"=="" goto docopy',
+    'tasklist /FI "PID eq %ELECTRONPID%" 2>nul | find /I "%ELECTRONPID%" >nul',
+    'if %errorlevel%==0 (timeout /t 1 /nobreak >nul & goto waitloop2)',
     ':docopy',
     `xcopy /E /Y /Q %STAGED%\\* %APPDIR%\\ >nul 2>&1`,
     'if %errorlevel% neq 0 goto failed',
@@ -351,7 +358,12 @@ function createUpdater(appDir, dataDir) {
   // Windows apply: backup + write the apply batch, launch it detached, then
   // the caller exits the server. The batch waits for our PID, swaps the
   // files, and relaunches Start.bat. Returns {from, to, restarting: true}.
-  function applyViaBatch() {
+  // v2.7.1 — desktop mode: `opts.desktop` writes the restart flag (so the
+  // Electron shell quits quietly instead of showing its crash dialog) and
+  // the batch waits for the Electron PID too, relaunching via `launcher`
+  // (the desktop exe) instead of Start.bat. With no opts the behaviour
+  // is exactly as before: Start.bat launcher, no flag file.
+  function applyViaBatch(opts = {}) {
     const s = state();
     if (!s.staged) throw new Error('No staged update to apply.');
     const from = currentVersion(), to = s.staged.version;
@@ -360,7 +372,8 @@ function createUpdater(appDir, dataDir) {
     const { dir: backupDir, addedNodeModules } = makeBackup(files, nodeModules, from, to);
     const batch = buildApplyBatch({
       appDir, stagedDir, backupDir, pid: process.pid,
-      launcher: path.join(appDir, 'Start.bat'),
+      launcher: opts.launcher || path.join(appDir, 'Start.bat'),
+      electronPid: opts.electronPid,
       addedFiles: addedNodeModules,
     });
     fs.mkdirSync(updDir, { recursive: true });
@@ -368,6 +381,7 @@ function createUpdater(appDir, dataDir) {
     s.history.push({ action: 'apply', from, to, at: new Date().toISOString(), backup: path.basename(backupDir), via: 'batch', nodeModules: nodeModules.length });
     s.staged = null; s.available = null; s.pendingRestart = true; s.lastApplied = { version: to, at: new Date().toISOString() };
     saveState(s);
+    if (opts.desktop) writeUpdateRestartFlag();
     try {
       const child = spawn('cmd.exe', ['/c', batchFile], { detached: true, stdio: 'ignore', windowsHide: true });
       child.unref();
@@ -407,6 +421,21 @@ function createUpdater(appDir, dataDir) {
     if (s.pendingRestart) { s.pendingRestart = false; saveState(s); }
   }
 
+  // v2.7.1 — desktop update-restart flag. The server writes it when a
+  // desktop (Electron) update apply starts; the Electron shell consumes
+  // it on the server child's exit and quits quietly instead of showing
+  // its "Server band ho gaya" crash dialog. The flag lives in updDir
+  // (data/updates/), which the shell's dataDir shares, so both sides
+  // see the same file. clear is a no-op when the flag is absent.
+  const restartFlagFile = path.join(updDir, 'restarting-for-update');
+  function writeUpdateRestartFlag() {
+    fs.mkdirSync(updDir, { recursive: true });
+    fs.writeFileSync(restartFlagFile, new Date().toISOString());
+  }
+  function clearUpdateRestartFlag() {
+    try { fs.rmSync(restartFlagFile, { force: true }); } catch { /* absent or unreadable — nothing to clear */ }
+  }
+
   // Auto-check loop: first check after `initialDelayMs`, then every
   // `intervalMs`. Never throws — a failed check is recorded, never fatal.
   // getSettings: () => ({feedType, feedUrl, autoCheck, autoApply}).
@@ -440,6 +469,7 @@ function createUpdater(appDir, dataDir) {
   return {
     currentVersion, check, downloadAndStage, applyStaged, applyViaBatch,
     rollback, state, backupsCount, dismiss, clearPendingRestart,
+    writeUpdateRestartFlag, clearUpdateRestartFlag,
     startUpdateChecker, updDir, stagedDir, batchFile,
   };
 }
