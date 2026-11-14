@@ -1,6 +1,6 @@
-# CreativeStudio AI Pro — Feature Completion Report (Phase 10, Final QA)
+# CreativeStudio AI Pro — Feature Completion Report (Phase 11, Final QA)
 
-**Version:** 2.5.0 · **Date:** 2026-11-14 · **Suite:** `npm test` — **376/376 pass, 0 fail** (284 baseline in v2.4.0 + 92 new parity tests: 39 render + 24 AI + 9 editor + 20 planner; single clean run, exit 0)
+**Version:** 2.6.0 · **Date:** 2026-11-14 · **Suite:** `npm test` — **395/395 pass, 0 fail** (376 baseline in v2.5.0 + 19 new Electron tests; single clean run, exit 0)
 (exit 0, single clean run; see [Acceptance verdicts](#acceptance-verdicts-a–d) below).
 
 **Rule of this report:** every feature is exactly one of **Implemented**,
@@ -766,6 +766,74 @@ of ids were all found and fixed during testing.
 24/24, `tests/parity-editor-250.test.js` 9/9, `tests/parity-planner-250.test.js`
 20/20 — 92 new tests, all green in their own runs; the full-suite count
 is in the header above (single clean `npm test` run).
+
+## 1h. v2.6.0 addendum — "Desktop app" (2026-11-14)
+
+v2.6.0 turns CreativeStudio into a proper desktop app: an Electron shell
+around the same server, so the app gets its own window and icon instead of
+a localhost browser tab. The shell is deliberately THIN — the real app is
+still `server.js`, run as a CHILD PROCESS (bundled `runtime/node.exe` on
+Windows, plain `node` in dev) and never `require()`'d into Electron,
+because better-sqlite3 is compiled for Node's ABI and Electron's Node ABI
+differs. Health is now `version: '2.6.0', phase: 11`; the dashboard system
+string is `'2.6.0 (Desktop App)'`.
+
+**What was added.** `electron/main.js` — single-instance lock (a second
+launch focuses the existing window instead of opening another), loading
+window while the server starts, crash/restart dialog when the server child
+dies, and quit kills the child (SIGTERM, SIGKILL after 5 s — no orphan
+node.exe). `electron/app-config.js` — pure logic with no `require('electron')`,
+so it is unit-testable in plain Node: port resolution (4820, then 4821…4840,
+then a loud error), health polling, window-state save/load with clamping to
+a visible area, the server launch spec, and the menu template.
+`electron/preload.js` — contextBridge only, intentionally exposing nothing
+(the SPA needs only fetch/XHR). `electron/loading.html` and a real
+`electron/icon.ico` (9,307 B; 16/32/48/256 px, verified by parsing the ICO
+header in the tests). Menu: File / View / Window / Help, every leaf item
+with a real `click` handler — File > New Project drives the SPA's real New
+Project flow (clicks the in-page button), Help > About shows the version,
+Help > Open Data Folder opens the app's data folder. `scripts/package-electron.js`
+(`npm run package:win`, `npm run desktop` for dev) stages the portable tree
+and runs electron-packager (electron 45.3.1 + electron-packager 17.1.2,
+pinned devDependencies); the Windows CI workflow now does a full `npm ci`
+(packager is a devDependency, pruned back out of the output), stages
+`electron/`, runs the packager step, and uploads the
+`CreativeStudio AI Pro-win32-x64/` artifact. The NSIS installer
+(`installer-260.nsi`, in the delivery folder) installs
+`CreativeStudio AI Pro.exe` with Start Menu + Desktop shortcuts and
+migrates a v2.5.0 install's `data/`, `uploads/`, `renders/` and `.env` from
+the old install-root layout into `resources\app\`, so no user data is lost
+on upgrade; uninstall removes the app files but keeps the user's data.
+`fullReinstall: true` for this release — Electron is a new runtime the
+in-app updater cannot install, so v2.6.0 is a one-time Setup.exe install;
+once installed, later updates arrive in-app again.
+
+**Tests (new, port 4854):** `tests/electron-260.test.js` — 19/19 green in
+its own run (`node --test tests/electron-260.test.js`). Port resolution
+(free → preferred, busy → next free, all 21 busy → throws), health polling
+(resolves against a scratch `{ok:true}` server; rejects inside a 500 ms
+timeout against a dead port), window state (missing/corrupt file →
+1280×800 defaults, off-screen/oversized clamps, save/load round-trip),
+server command (dev shape `node server.js`; packaged shape
+`runtime/node.exe` with the app `bin/` first on PATH; packaged without a
+bundled node falls back to plain `node`), menu (exactly File/View/Window/
+Help; every leaf has a `click` or a `role`), the ICO header (16/32/48/256),
+and static guards on `main.js` (single-instance lock, contextIsolation,
+preload wired, no `require('./server')`). Existing version assertions were
+bumped 2.5.0 → 2.6.0 / phase 10 → 11 (`api`, `design`, `acceptance`,
+`home-flow-240`, `music`, `shorts`, `social`, `update` tests); the
+`update.test.js` publish-package test still asserts its old 2.1.0 package
+untouched, and all v2.5.0 history comments were left as history.
+
+**Honest limits.** The win32 exe icon + version stamp are applied by the
+Windows CI build only: electron-packager always runs rcedit for win32, and
+Linux packaging fails with "wine64 not found" — wine is NOT installed on
+this VM by design, so a Linux-made win32 build would ship without the
+custom icon and stamp. Real-Windows behaviour — window restore,
+single-instance focus, and the NSIS data migration — is still to be
+confirmed on the user's PC; Linux verification of the running shell was
+done under Xvfb, and the unit tests above never launch Electron at all
+(they import only the pure-logic `app-config.js`).
 
 ## 2. Key modules (from the master prompt)
 
