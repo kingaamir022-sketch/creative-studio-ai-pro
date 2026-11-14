@@ -201,11 +201,11 @@ after(async () => {
 });
 
 /* ---------------- Health / version ---------------- */
-test('Health reports v2.6.1 phase 12', async () => {
+test('Health reports v2.7.0 phase 13', async () => {
   const r = await req('/api/health');
   assert.equal(r.status, 200);
-  assert.equal(r.json.version, '2.6.1');
-  assert.equal(r.json.phase, 12);
+  assert.equal(r.json.version, '2.7.0');
+  assert.equal(r.json.phase, 13);
 });
 
 /* ---------------- Social post CRUD + limits ---------------- */

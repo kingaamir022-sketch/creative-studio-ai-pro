@@ -145,11 +145,11 @@ after(async () => {
   if (server) server.kill('SIGKILL');
 });
 
-test('health reports 2.6.1', async () => {
+test('health reports 2.7.0', async () => {
   const h = await req('/api/health');
   assert.equal(h.status, 200);
-  assert.equal(h.json.version, '2.6.1');
-  assert.equal(h.json.phase, 12);
+  assert.equal(h.json.version, '2.7.0');
+  assert.equal(h.json.phase, 13);
 });
 
 test('home landing data: dashboard carries real recent projects + version', async () => {
@@ -157,7 +157,7 @@ test('home landing data: dashboard carries real recent projects + version', asyn
   const second = await createProject('Home Recent B', 'video', { timeline: blankTimeline('16:9', 30) });
   const d = await req('/api/dashboard', { cookie: ownerCookie });
   assert.equal(d.status, 200);
-  assert.equal(d.json.system.version, '2.6.1 (Desktop App)');
+  assert.equal(d.json.system.version, '2.7.0 (CapCut Desktop Exact)');
   assert.ok(Array.isArray(d.json.recentProjects), 'recentProjects must be an array');
   const ids = d.json.recentProjects.map((p) => p.id);
   assert.ok(ids.includes(first.id) && ids.includes(second.id), 'both created projects appear in recentProjects');
@@ -184,7 +184,7 @@ test('home screen is served: index links home.css, app.js carries the flow, deep
   const index = await req('/');
   assert.equal(index.status, 200);
   assert.ok(index.text.includes('/home.css'), 'index.html links home.css');
-  assert.ok(index.text.includes('v2.6.1 Desktop App'), 'index title is 2.6.1');
+  assert.ok(index.text.includes('v2.7.0 Desktop App'), 'index title is 2.7.0');
   const css = await req('/home.css');
   assert.equal(css.status, 200);
   assert.ok(css.text.includes('.home-hero') && css.text.includes('.home-new-btn'), 'home.css carries the hero + New Project styles');

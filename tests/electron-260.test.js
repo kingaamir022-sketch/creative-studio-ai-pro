@@ -1,5 +1,5 @@
 'use strict';
-// electron-260.test.js — v2.6.1 Desktop App (Electron shell) tests.
+// electron-260.test.js — v2.7.0 Desktop App (Electron shell) tests.
 // Imports ONLY electron/app-config.js (pure logic, no require('electron')),
 // so this file runs in plain Node. The shell itself is never launched here:
 // window behaviour, single-instance and the NSIS migration are verified on
@@ -95,13 +95,13 @@ test('waitForHealth: resolves with the health object once the server answers {ok
   const server = http.createServer((req, res) => {
     assert.equal(req.url, '/api/health');
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, version: '2.6.1', phase: 12, db: 'ok' }));
+    res.end(JSON.stringify({ ok: true, version: '2.7.0', phase: 13, db: 'ok' }));
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
     const health = await cfg.waitForHealth(`http://127.0.0.1:${server.address().port}`);
     assert.equal(health.ok, true);
-    assert.equal(health.version, '2.6.1');
+    assert.equal(health.version, '2.7.0');
   } finally {
     await new Promise((r) => server.close(r));
   }
@@ -202,12 +202,12 @@ function fakeHandlers() {
 }
 
 test('buildMenuTemplate: exactly the File/View/Window/Help groups, in order', () => {
-  const menu = cfg.buildMenuTemplate(fakeHandlers(), '2.6.1');
+  const menu = cfg.buildMenuTemplate(fakeHandlers(), '2.7.0');
   assert.deepEqual(menu.map((g) => g.label), ['File', 'View', 'Window', 'Help']);
 });
 
 test('buildMenuTemplate: every leaf item has a click handler or a role — no dead entries', () => {
-  const menu = cfg.buildMenuTemplate(fakeHandlers(), '2.6.1');
+  const menu = cfg.buildMenuTemplate(fakeHandlers(), '2.7.0');
   const leaves = [];
   const walk = (items) => {
     for (const item of items) {
@@ -227,9 +227,9 @@ test('buildMenuTemplate: every leaf item has a click handler or a role — no de
 });
 
 test('buildMenuTemplate: Help > About carries the current version', () => {
-  const menu = cfg.buildMenuTemplate(fakeHandlers(), '2.6.1');
+  const menu = cfg.buildMenuTemplate(fakeHandlers(), '2.7.0');
   const help = menu.find((g) => g.label === 'Help');
-  assert.ok(help.submenu.some((i) => i.label && i.label.includes('2.6.1')), 'About item must show v2.6.1');
+  assert.ok(help.submenu.some((i) => i.label && i.label.includes('2.7.0')), 'About item must show v2.7.0');
 });
 
 /* ---------- icon.ico ---------- */
