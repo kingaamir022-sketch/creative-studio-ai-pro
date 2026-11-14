@@ -42,6 +42,46 @@ real-provider or real-platform call has ever run**.
 | 25 | Analytics | Implemented | DB-only numbers: renders over time, AI generations by mode, posts by status/platform, storage, top templates, credit burn. No invented benchmarks. |
 | 26 | Settings | Implemented | Provider keys (AES-256-GCM encrypted, never returned in full), Google Sheets OAuth config, platform connections, profile, preferences. |
 | 27 | Subscription & Credits | Implemented | Plans Free/Starter/Pro/Business/Enterprise, transparent credit ledger (charge on success, pre-flight 402 block at 0 balance), usage history. **No payment gateway by design** — plan changes are OWNER-approved requests; no payment is taken in this build. |
+| 28 | Presentations (v2.2.3) | Implemented | New `deck` project type: 6 slide layouts (title, text, text-image, chart, quiz, blank), add/move/duplicate/delete slides, speaker notes, per-slide duration, present mode, never-overflow fit check + batch uniform fonts for quiz slides, export to slide images (ZIP), PDF, or MP4 video (render queue). AI deck generation via the LLM (needs a key; free Gemini works). |
+| 29 | Documents (v2.2.3) | Implemented | New `doc` project type: headings, paragraphs, lists, quotes, tables, images, charts, dividers; autosave; export to HTML, real .docx (Word Open XML) and PDF (A4 pages rendered with the real font metrics); print-friendly view. |
+| 30 | Charts (v2.2.3) | Implemented | Bar/line/pie/doughnut charts from pasted CSV or a manual table; duplicate rows permanently skipped (never doubled); SVG + PNG render (pure-JS rasterizer + FFmpeg text labels); save to Media Library as a real image, embeddable in decks, docs, designs and websites. |
+| 31 | Website (v2.2.3) | Implemented | Publish a design, deck or document as a static website (index.html + assets) served locally at /sites/:slug/; unpublish removes it. Local hosting only — no custom domain, no external host. |
+| 32 | Print (v2.2.3) | Implemented | Print-ready PDF export: A4 / US Letter / Poster 18×24 in at 150 DPI, configurable bleed (0–10 mm) and margin, crop marks + safe-zone guide drawn as vector lines. RGB PDF — CMYK conversion is not built. |
+
+## 1b. v2.2.3 addendum — Docs & Slides (Release B)
+
+**Version:** 2.2.3 · **Date:** 2026-11-14 · **Suite:** `npm test` — **195/195 pass**
+(new `tests/docs-slides.test.js`, 14 tests, port 4845 — ports 4831–4844
+were already taken by the other 14 suites).
+
+- **Decks:** `deck` project type, slide ops as pure functions
+  (`src/docs-slides.js`), deck → design conversion reusing the Phase 4
+  server renderer (real PNGs, real fonts), video export through the real
+  render queue (slideshow MP4, ffprobe-validated), PDF via the minimal
+  PDF writer (`src/pdf-writer.js`, JPEG pages). AI deck generation is a
+  new AI mode (`deck`) on the Phase 7 job queue — without an LLM key the
+  job fails `key_needed` and creates no project.
+- **Docs:** `doc` project type; DOCX is a real Word file (archiver zip:
+  `[Content_Types].xml`, `word/document.xml`, embedded images with
+  `word/media`); PDF pages are A4 designs paginated with `fitText` line
+  splitting (tables repeat their header across pages).
+- **Charts:** `src/chart.js` — CSV/table parsing with the standing
+  duplicate-skip rule, SVG output, and a pure-JS PNG rasterizer
+  (zlib-deflated, no dependency) with FFmpeg `drawtext` labels.
+- **Website:** static bundle builder (`buildWebsite`) + `/sites/:slug/`
+  public serving from `data/websites/`; slug + row in the `websites` table.
+- **Print:** `designsToPrintPdf` — full-bleed pages, crop marks, safe-zone
+  rectangle; A4/Letter/Poster at 150 DPI.
+- **Bug fixed along the way (latent since Phase 4):** the server design
+  renderer built image-layer filter chains as `[0:v],scale=…` — a comma
+  after an input link is an empty filter and FFmpeg refused the whole
+  render ("No such filter: ''"). Any design with an image layer could
+  never render. Fixed in `src/design-render.js` (link joins the first
+  filter with no comma); the deck/chart/print flows exposed it. The video
+  renderer (`src/render.js`) was checked and does not have the pattern.
+- **Still pending after v2.2.3:** Stock Assets, AI Assistant, Magic Switch
+  (incl. translate), template-library depth, live co-editing (v2.2.4);
+  the CapCut design pass (v2.3.0); CMYK conversion for print PDFs.
 
 **Global UI:** global search (projects & media) — Implemented; notification
 centre — Implemented (real DB notifications); user profile — Implemented;
@@ -57,6 +97,7 @@ simplified mobile layout — Implemented as designed.
 | Graphic Design Studio | Implemented (text curvature Pending; Magic Resize + Magic Animate presets live in v2.2.2) |
 | Video Editor | Implemented (chroma key, stabilisation, speed ramping, proxy editing, 4K, 3rd track Pending) |
 | Magic Tools (v2.2.2) | Implemented: Magic Resize (local reflow), Magic Animate presets (10), Magic Eraser (needs image key), Magic Expand (AI needs key; solid/blur local), Background Remover + Magic Grab (free local ONNX, no key), Magic Write (LLM, needs key; free Gemini works) |
+| Docs & Slides (v2.2.3) | Implemented (AI deck generation needs an LLM key; CMYK print Pending) |
 | Bulk Video Studio + Dynamic Background Engine | Implemented (AI/prompt backgrounds need an image key; A vs B quiz Pending) |
 | AI Music Sync Director | Implemented (AI generation/mood need keys; multi-track mixing Pending) |
 | Long Video to Shorts | Implemented (face tracking Pending; 60-min end-to-end render not run) |
@@ -88,7 +129,7 @@ simplified mobile layout — Implemented as designed.
 | `.env.example` | Implemented (no real secrets in it) |
 | Install + deployment guides | Implemented (`docs/INSTALL.md`, `docs/DEPLOYMENT.md`) |
 | API docs | Implemented (`docs/API.md`) |
-| Automated tests | Implemented (`npm test`, 132 tests, all passing) |
+| Automated tests | Implemented (`npm test`, 195 tests, all passing — v2.2.3) |
 | Error handling / honest errors | Implemented (`key_needed`, `NOT_CONNECTED`, 402 credit block, clear messages; never a fake success) |
 | Production build | Pending (no build step by design; see `docs/DEPLOYMENT.md` for the production notes) |
 
@@ -129,9 +170,11 @@ simplified mobile layout — Implemented as designed.
 - A vs B quiz format not built; 5-question quiz video at 3s countdown =
   38s, not 45–60s (60s+ needs 8 questions or a 5–6s countdown).
 - Max 2 video tracks, no 4K, no chroma key/stabilisation/proxy editing,
-  no motion paths/easing, no face/subject tracking, no AI Assistant, no stock assets.
+  no motion paths/easing, no face/subject tracking, no AI Assistant, no stock assets,
+  no Magic Switch (incl. translate), no CMYK print conversion, no live co-editing.
   Background remover and Magic Grab ARE built (v2.2.2, free local ONNX model) —
-  the "no vision model, no background remover" line is retired.
+  the "no vision model, no background remover" line is retired. Presentations,
+  Documents, Charts, Website and Print ARE built (v2.2.3).
 - 60-minute video not rendered end-to-end (same pipeline; proven on the
   30s known-structure video — see acceptance C).
 - One music track + video audio; beat detection is weaker on
