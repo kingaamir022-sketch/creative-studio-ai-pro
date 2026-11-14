@@ -1,8 +1,8 @@
 {
  "app": "CreativeStudio AI Pro",
- "version": "2.3.1",
- "notes": "Fix round: all 27 gaps from the full v2.3.0 verification audit (C-01–C-27) fixed in one release — unmapped bulk fields fall back to the same-name column, quiz CTA fit-checked, 21 overflowing template layers fixed, Graphic Editor autofit, slide animation moves panel with text, model status flips to ready, Magic Eraser friendly errors, Music Sync on a free track, A/V sync after transitions, DOCX chart images, AI Studio deck mode, server-render warnings, AI Assist fit, image dimensions, Shorts transcript source, solid-navy quiz fallback, Export Center copy, republish reuses its site, published-site viewport scaling, malformed JSON 400, notification unread count, per-user analytics, user-delete file cleanup, provider test 402, live FFmpeg dashboard line, version fingerprints, manual-post delete protection. C-28/29/30 not built by design. No new dependencies, fullReinstall false.",
- "package": "update-2.3.1.json",
- "packageSha256": "7abbc4a269e7e4571eaf1dbbd062c02a287fd852bcc176fe84f619f8c1aff8a4",
- "publishedAt": "2026-11-14T05:53:41.692Z"
+ "version": "2.4.0",
+ "notes": "CapCut Home & Flow: home screen as landing (hero + New Project, real recent projects, templates row, quick-access cards for all 36 features), New Project chooser (9 types, import-first media step, per-type editor landing), Effects/Transitions split into separate views, real stickers on the overlay track, MOV export, drag-drop import, ratio selector, template category chips, dashboard video durations, Collaboration view, mobile bottom sheets + 44px touch targets + 390px phone layout, render watchdog (corrupt media fails honestly instead of bricking the queue). Rotation fix (same release): 90/270 clip rotation now renders at the project size alone, with transitions, and with keyframes; overlay rotation honoured; keyframe validation rejects rotation/volume. No new dependencies, fullReinstall false.",
+ "package": "update-2.4.0.json",
+ "packageSha256": "e30ae48ac915fb530af5456809bb7aa23d23eb2a056c9b5cb42cd5520944f2b3",
+ "publishedAt": "2026-11-14T08:03:04.029Z"
 }
