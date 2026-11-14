@@ -1,6 +1,6 @@
 # CreativeStudio AI Pro — Feature Completion Report (Phase 9, Final QA)
 
-**Version:** 2.3.1 · **Date:** 2026-11-14 · **Suite:** `npm test` — **249/249 pass, 0 fail**
+**Version:** 2.4.0 · **Date:** 2026-11-14 · **Suite:** `npm test` — **284/284 pass, 0 fail** (275 baseline + 9 rotation-fix tests)
 (exit 0, single clean run; see [Acceptance verdicts](#acceptance-verdicts-a–d) below).
 
 **Rule of this report:** every feature is exactly one of **Implemented**,
@@ -11,7 +11,7 @@ until the user supplies a key, token, or OAuth connection. No real provider
 key, platform token, or Google credential exists in this build, so **no
 real-provider or real-platform call has ever run**.
 
-## 1. The 35 sidebar sections (CapCut groups, v2.3.0)
+## 1. The 36 sidebar features (CapCut groups, v2.3.0; Effects/Transitions split in v2.4.0)
 
 | # | Section | Status | Notes |
 |---|---------|--------|-------|
@@ -28,30 +28,31 @@ real-provider or real-platform call has ever run**.
 | 11 | AI Music Studio | Implemented | Real local DSP: BPM/beat grid/downbeats/energy curve/drop detection, waveform, confidence; Music Library (own/licensed audio only); Sync Director (cut/transition on beat, divisor, pulse, fade/volume/loop); beat-snap + beat ruler. AI music generation / mood tagging are live in Phase 7 but **need a music / LLM key**. **Pending:** multi-track audio mixing. |
 | 12 | Auto Captions | Implemented | Manual transcripts (plain text = estimated timing, SRT/VTT = exact), editable, SRT/VTT export, word-by-word burn-in, Urdu/English/Roman Urdu/Arabic RTL/Hindi. Automatic transcription is live in Phase 7 but **needs an STT key** (refuses with 402 `key_needed` without one — never a fake transcript). |
 | 13 | Background Remover | Implemented (v2.2.2) | Free local U-2-Net ONNX model (`onnxruntime-web`, WASM) — no key, nothing uploaded. Model (~168 MB) downloads once on first use into `data/models/u2net.onnx` and is cached; offline → honest 503. Also powers Magic Grab. Live in Magic Tools; the sidebar entry is now the Magic Tools view. |
-| 14 | Effects & Transitions | Implemented | Searchable library of the effects that really exist (filters, transitions, text animations); the view lists chroma key, stabilisation, object removal, proxy editing, speed ramping and motion paths as **not built**, never as working. |
-| 15 | Animation Studio | Implemented | Keyframes (position/scale/opacity, linear interpolation) + text fade/slide/pop animations, auto + manual per-element timing. **v2.2.2 — Magic Animate presets:** 10 one-click presets (fade, slide-up, slide-left, pop, zoom, bounce, float, pulse, spin, typewriter); design presets apply to a layer in the Graphic Editor and preview live with CSS; clip presets expand into real video keyframes held to the clip end. **Still pending:** motion paths, easing curves; typewriter and spin are design-only (drawtext cannot render them — never offered for clips). |
-| 16 | Brand Kit | Implemented | Brand profiles (logos, colours, fonts), one-click apply to designs. |
-| 17 | Media Library | Implemented | Real uploads (image/video/audio, 200 MB default), search/tags/folders/favourites/preview, delete removes the disk file. |
-| 18 | Stock Assets | Implemented (v2.2.4) | Free stock images + audio via Openverse (key-free anonymous API, verified live) — search by keyword/license/category, preview, save straight into the Media Library with attribution + license recorded; re-saving the same asset returns the existing row (duplicate skipped, never a second copy). **Honest limit:** Openverse has no video search (images + audio only) — the UI says so plainly; stock video stays an upload-your-own-file flow. |
-| 19 | Social Media Creator | Implemented | Compose + attach from library, real per-platform char limits, AI caption/hashtags via Phase 7 LLM (**needs an LLM key**; local template captions are clearly labelled, never "AI"), drafts/scheduling, scheduler. Publishing **only via official platform APIs when connected** — no platform is connected on a fresh install, so Publish refuses with `NOT_CONNECTED`; never a fake publish. **Pending:** TikTok video upload (initialises, chunk upload unimplemented — fails honestly). |
-| 20 | Content Calendar | Implemented | Month view of scheduled posts, schedule/reschedule from the composer, scheduler runs due posts (every 15 s + manual run). |
-| 21 | Export Center | Implemented | Render-job list, download, save-to-library, ZIP. Formats actually offered: PNG/JPG designs, MP4 video at 720p/1080p. **Pending:** WebP/SVG, MOV/WebM, 4K, custom naming. |
-| 22 | Projects | Implemented | CRUD, duplicate, trash/restore/permanent delete, autosave, version history (latest 20) + restore, per-user ownership. |
-| 23 | Templates Marketplace | Implemented | In-app only (no external store): publish design/video/deck templates, browse/search, install = a real editable project, rate, report. **v2.2.4:** built-in library grown 8 → 26 (20 design + 3 video + 3 deck), all validated and installable from the Marketplace view; decks publishable too. **Pending:** bulk-job templates are not publishable. |
-| 24 | AI Assistant | Implemented (v2.2.4) | Project-aware assistant: summarise a project, suggest improvements, "make this more professional" (design + deck), "create five versions" (design). Every action creates a NEW project — the original is never edited in place. Needs an LLM key (free Gemini works); without one it refuses 402 `PROVIDER_KEY_NEEDED` and creates nothing. |
-| 25 | Analytics | Implemented | DB-only numbers: renders over time, AI generations by mode, posts by status/platform, storage, top templates, credit burn. No invented benchmarks. |
-| 26 | Settings | Implemented | Provider keys (AES-256-GCM encrypted, never returned in full), Google Sheets OAuth config, platform connections, profile, preferences. |
-| 27 | Subscription & Credits | Implemented | Plans Free/Starter/Pro/Business/Enterprise, transparent credit ledger (charge on success, pre-flight 402 block at 0 balance), usage history. **No payment gateway by design** — plan changes are OWNER-approved requests; no payment is taken in this build. |
-| 28 | Presentations (v2.2.3) | Implemented | New `deck` project type: 6 slide layouts (title, text, text-image, chart, quiz, blank), add/move/duplicate/delete slides, speaker notes, per-slide duration, present mode, never-overflow fit check + batch uniform fonts for quiz slides, export to slide images (ZIP), PDF, or MP4 video (render queue). AI deck generation via the LLM (needs a key; free Gemini works). |
-| 29 | Documents (v2.2.3) | Implemented | New `doc` project type: headings, paragraphs, lists, quotes, tables, images, charts, dividers; autosave; export to HTML, real .docx (Word Open XML) and PDF (A4 pages rendered with the real font metrics); print-friendly view. |
-| 30 | Charts (v2.2.3) | Implemented | Bar/line/pie/doughnut charts from pasted CSV or a manual table; duplicate rows permanently skipped (never doubled); SVG + PNG render (pure-JS rasterizer + FFmpeg text labels); save to Media Library as a real image, embeddable in decks, docs, designs and websites. |
-| 31 | Website (v2.2.3) | Implemented | Publish a design, deck or document as a static website (index.html + assets) served locally at /sites/:slug/; unpublish removes it. Local hosting only — no custom domain, no external host. |
-| 32 | Print (v2.2.3) | Implemented | Print-ready PDF export: A4 / US Letter / Poster 18×24 in at 150 DPI, configurable bleed (0–10 mm) and margin, crop marks + safe-zone guide drawn as vector lines. RGB PDF — CMYK conversion is not built. |
-| 33 | AI Studio | Needs credentials | The 10-mode studio (text, image, video, voice, quiz, transcription, music, deck, captions, design) through the Phase 7 provider registry; every mode refuses `key_needed` without its provider key, never a fake result. |
-| 34 | Voices | Implemented | Your own voice from a short sample is the default on all videos; AI voices too; bulk voice picker + per-row override. Real cloning/TTS needs a provider key; recorded narration works now. |
-| 35 | Admin Panel | Implemented | OWNER/ADMIN only: users, plan requests, platform stats, audit log, system health. |
+| 14 | Effects | Implemented | Searchable library of the motion effects that really exist (keyframe animations, filters, text animations); the view lists chroma key, stabilisation, object removal, proxy editing, speed ramping and motion paths as **not built**, never as working. Clip presets apply in one click from the editor's Effects tab (`POST /api/magic/animate` → real keyframes). Fade and Slide are NOT here — they are transitions. |
+| 15 | Transitions | Implemented | Clip-to-clip transitions (Fade, Dissolve, Slide, Wipe) rendered with FFmpeg xfade between adjacent clips on the same video track; the editor's Transitions tab lists only these. Fade and Slide are transitions, not effects — never mixed with Effects. |
+| 16 | Animation Studio | Implemented | Keyframes (position/scale/opacity, linear interpolation) + text fade/slide/pop animations, auto + manual per-element timing. **v2.2.2 — Magic Animate presets:** 10 one-click presets (fade, slide-up, slide-left, pop, zoom, bounce, float, pulse, spin, typewriter); design presets apply to a layer in the Graphic Editor and preview live with CSS; clip presets expand into real video keyframes held to the clip end. **Still pending:** motion paths, easing curves; typewriter and spin are design-only (drawtext cannot render them — never offered for clips). |
+| 17 | Brand Kit | Implemented | Brand profiles (logos, colours, fonts), one-click apply to designs. |
+| 18 | Media Library | Implemented | Real uploads (image/video/audio, 200 MB default), search/tags/folders/favourites/preview, delete removes the disk file. |
+| 19 | Stock Assets | Implemented (v2.2.4) | Free stock images + audio via Openverse (key-free anonymous API, verified live) — search by keyword/license/category, preview, save straight into the Media Library with attribution + license recorded; re-saving the same asset returns the existing row (duplicate skipped, never a second copy). **Honest limit:** Openverse has no video search (images + audio only) — the UI says so plainly; stock video stays an upload-your-own-file flow. |
+| 20 | Social Media Creator | Implemented | Compose + attach from library, real per-platform char limits, AI caption/hashtags via Phase 7 LLM (**needs an LLM key**; local template captions are clearly labelled, never "AI"), drafts/scheduling, scheduler. Publishing **only via official platform APIs when connected** — no platform is connected on a fresh install, so Publish refuses with `NOT_CONNECTED`; never a fake publish. **Pending:** TikTok video upload (initialises, chunk upload unimplemented — fails honestly). |
+| 21 | Content Calendar | Implemented | Month view of scheduled posts, schedule/reschedule from the composer, scheduler runs due posts (every 15 s + manual run). |
+| 22 | Export Center | Implemented | Render-job list, download, save-to-library, ZIP. Formats actually offered: PNG/JPG designs, MP4 and MOV video at 720p/1080p (MOV = same H.264+AAC, QuickTime container, v2.4.0). **Pending:** WebP/SVG, WebM, 4K, custom naming. |
+| 23 | Projects | Implemented | CRUD, duplicate, trash/restore/permanent delete, autosave, version history (latest 20) + restore, per-user ownership. |
+| 24 | Templates Marketplace | Implemented | In-app only (no external store): publish design/video/deck templates, browse/search, install = a real editable project, rate, report. **v2.2.4:** built-in library grown 8 → 26 (20 design + 3 video + 3 deck), all validated and installable from the Marketplace view; decks publishable too. **Pending:** bulk-job templates are not publishable. |
+| 25 | AI Assistant | Implemented (v2.2.4) | Project-aware assistant: summarise a project, suggest improvements, "make this more professional" (design + deck), "create five versions" (design). Every action creates a NEW project — the original is never edited in place. Needs an LLM key (free Gemini works); without one it refuses 402 `PROVIDER_KEY_NEEDED` and creates nothing. |
+| 26 | Analytics | Implemented | DB-only numbers: renders over time, AI generations by mode, posts by status/platform, storage, top templates, credit burn. No invented benchmarks. |
+| 27 | Settings | Implemented | Provider keys (AES-256-GCM encrypted, never returned in full), Google Sheets OAuth config, platform connections, profile, preferences. |
+| 28 | Subscription & Credits | Implemented | Plans Free/Starter/Pro/Business/Enterprise, transparent credit ledger (charge on success, pre-flight 402 block at 0 balance), usage history. **No payment gateway by design** — plan changes are OWNER-approved requests; no payment is taken in this build. |
+| 29 | Presentations (v2.2.3) | Implemented | New `deck` project type: 6 slide layouts (title, text, text-image, chart, quiz, blank), add/move/duplicate/delete slides, speaker notes, per-slide duration, present mode, never-overflow fit check + batch uniform fonts for quiz slides, export to slide images (ZIP), PDF, or MP4 video (render queue). AI deck generation via the LLM (needs a key; free Gemini works). |
+| 30 | Documents (v2.2.3) | Implemented | New `doc` project type: headings, paragraphs, lists, quotes, tables, images, charts, dividers; autosave; export to HTML, real .docx (Word Open XML) and PDF (A4 pages rendered with the real font metrics); print-friendly view. |
+| 31 | Charts (v2.2.3) | Implemented | Bar/line/pie/doughnut charts from pasted CSV or a manual table; duplicate rows permanently skipped (never doubled); SVG + PNG render (pure-JS rasterizer + FFmpeg text labels); save to Media Library as a real image, embeddable in decks, docs, designs and websites. |
+| 32 | Website (v2.2.3) | Implemented | Publish a design, deck or document as a static website (index.html + assets) served locally at /sites/:slug/; unpublish removes it. Local hosting only — no custom domain, no external host. |
+| 33 | Print (v2.2.3) | Implemented | Print-ready PDF export: A4 / US Letter / Poster 18×24 in at 150 DPI, configurable bleed (0–10 mm) and margin, crop marks + safe-zone guide drawn as vector lines. RGB PDF — CMYK conversion is not built. |
+| 34 | AI Studio | Needs credentials | The 10-mode studio (text, image, video, voice, quiz, transcription, music, deck, captions, design) through the Phase 7 provider registry; every mode refuses `key_needed` without its provider key, never a fake result. |
+| 35 | Voices | Implemented | Your own voice from a short sample is the default on all videos; AI voices too; bulk voice picker + per-row override. Real cloning/TTS needs a provider key; recorded narration works now. |
+| 36 | Admin Panel | Implemented | OWNER/ADMIN only: users, plan requests, platform stats, audit log, system health. |
 
-**v2.3.0 sidebar groups (CapCut order):** Create (Dashboard, AI Design Studio, Graphic Editor, Presentations, Documents, Charts) · AI Studio (AI Studio, AI Video Generator, AI Image Generator, AI Assistant) · Edit (Video Editor, Effects & Transitions, Animation Studio, Magic Tools, Auto Captions) · Bulk & Automation (Bulk Design Studio, Bulk Video Studio, Smart Template Builder, Long Video to Shorts, Music Sync Director, Voices) · Library (Media Library, Stock Assets, Templates Marketplace, Projects, Brand Kit) · Publish & Grow (Social Media Creator, Content Calendar, Website, Print, Export Center, Analytics) · Account (Admin Panel, Settings, Subscription & Credits). Effects under Effects, Transitions under Transitions, AI under AI, library under Library — nothing mixed.
+**v2.3.0 sidebar groups (CapCut order):** Create (Dashboard, AI Design Studio, Graphic Editor, Presentations, Documents, Charts) · AI Studio (AI Studio, AI Video Generator, AI Image Generator, AI Assistant) · Edit (Video Editor, Effects, Transitions, Animation Studio, Magic Tools, Auto Captions) · Bulk & Automation (Bulk Design Studio, Bulk Video Studio, Smart Template Builder, Long Video to Shorts, Music Sync Director, Voices) · Library (Media Library, Stock Assets, Templates Marketplace, Projects, Brand Kit) · Publish & Grow (Social Media Creator, Content Calendar, Website, Print, Export Center, Analytics) · Account (Admin Panel, Settings, Subscription & Credits). Effects under Effects, Transitions under Transitions, AI under AI, library under Library — nothing mixed.
 
 ## 1b. v2.2.3 addendum — Docs & Slides (Release B)
 
@@ -415,6 +416,201 @@ status bookkeeping and edge cases the suite never exercised.
 (`NOT_IMPLEMENTED`), C-29 CMYK print (PDFs DeviceRGB only), C-30 Stock
 video search (Openverse has none; honest `NO_VIDEO_SEARCH` 400).
 
+## 1f. v2.4.0 addendum — "CapCut Home & Flow" (2026-11-14)
+
+v2.3.0 only restyled the sidebar and editors. The user corrected that on
+2026-11-14: "CapCut jaisa" meant the CapCut **app flow** — launch → home
+screen → click New Project → editor, all-in-one inside. v2.4.0 builds
+that flow; nothing else changes. No new production dependency,
+`fullReinstall: false`.
+
+**Home screen — the landing after login** (`public/app.js` `viewHome`,
+`public/home.css`, new): the app shell's existing top bar (logo, search,
+credits, avatar) stays; below it a CapCut-desktop home — hero greeting
+with the big "＋ New Project" button, Recent Projects (REAL projects from
+`/api/dashboard`, newest first, type + updated date; clicking one opens
+it straight in its editor — design → graphic editor, video → four-pane
+timeline, deck → deck editor, doc → document editor, anything else →
+project detail), a Templates row (real templates from
+`GET /api/marketplace/builtin` — all 26, design/video/deck; "Use" installs
+via `POST /api/marketplace/builtin/:id/install` and opens the created
+project in its editor), and quick-access cards for all 7 sidebar groups
+so all 35 features are one click away (the cards render the same `NAV`
+list the sidebar uses, so they cannot drift). The Dashboard stays
+reachable from the sidebar; the update-available / pending-restart
+banners from the dashboard are shown on Home too. Empty states are
+honest ("No projects yet", "No templates available") — no fake data.
+Never-overflow: project and template names ellipsize with a full-name
+`title` tooltip. Dark default + working light theme (token-based CSS
+only, same tokens as the v2.3.0 design pass).
+
+**New Project flow** (`public/app.js` `openNewProjectFlow`,
+`createNewProject`): a chooser with 9 tiles — Video, Design,
+Presentation, Quiz video, Bulk Video, Bulk Design, Document, Shorts,
+Social post. Picking one shows its form (name + aspect/fps for video,
+size from live `/api/design/sizes` for design, name only for the rest),
+then "Create & open" creates the real project/job in the DB and lands
+the user inside the matching editor — no dead ends, no placeholder.
+Video uses the existing `window.VideoEditor.blankTimeline` + `POST
+/api/projects` → `video-timeline`; Design uses the existing blank-canvas
+content → `design-editor`; Deck posts the title-slide seed (same seed
+the Presentations "New Deck" button uses) → `presentations` with a
+`deckId` deep link (`public/docs-slides.js` auto-opens the deck editor
+when `state.params.deckId` is set, then clears it); Document posts the
+heading + paragraph seed → `documents` with a `docId` deep link;
+Quiz posts `POST /api/bulk` with `templateProjectId: 'quiz'` (the Quiz
+Video preset — `settings.quiz.enabled`) → `bulk-video` job detail;
+Bulk Video / Bulk Design first create a blank template project (video
+16:9 30fps / design 1080×1080, named "<batch> — template", editable
+later in its editor) and then the batch → job detail at step 1; Shorts
+and Social post create the project and land on its detail page (same as
+the old modal did). The three existing "New project" buttons (dashboard
+quick action, dashboard empty-state, Projects toolbar) now open this
+flow; the old `openProjectModal` is kept but no longer wired to any
+button. Errors surface in the modal (and as toasts) — never a silent
+no-op.
+
+**Tests:** `tests/home-flow-240.test.js` (port 4848), one test per new
+behaviour — dashboard recent-projects data + newest-first order,
+26 builtin templates across all kinds, served home files (`/home.css`,
+`viewHome` / `openNewProjectFlow` / `createNewProject` in `app.js`,
+deck/doc deep links in `docs-slides.js`), per-type project creation
+(video timeline, design canvas, deck seed, doc seed), quiz-preset bulk
+job, bulk video/design batch creation from a fresh template project,
+template install creating a real project of the right type for all
+three kinds, and the 7 sidebar groups + dashboard still routed.
+
+
+**Gap fixes (preview review, same release):** a review of the home-screen
+preview found gaps that were fixed in the real build in the same round,
+not deferred.
+
+- **Effects vs Transitions, split for real** — the single "Effects &
+  Transitions" sidebar item is now two items (`effects` / `transitions`,
+  both under Edit; 36 features + Home = 37 sidebar entries). `viewEffects`
+  is motion only (keyframes, filters); `viewTransitions` is transitions
+  only (Fade, Dissolve, Slide, Wipe, FFmpeg xfade). The editor's Effects
+  tab copy says plainly it is *not* transitions, and its preset rows are
+  clickable — selecting a clip and clicking a preset calls `POST
+  /api/magic/animate` and lands real keyframes on the clip.
+- **Stickers are real** — the editor's Stickers tab was an honest empty
+  state; it now lists image media (`/api/media?kind=image`), uploads a
+  sticker image, and places it on the overlay (PiP) video track as a
+  3s image clip (`sticker: true`, bottom-right, keyframe-movable). The
+  render-job route now accepts image media on a video track (the
+  renderer draws it as a looped still) and the preview shows the sticker
+  overlay at the same 30% width and keyframe position the FFmpeg render
+  uses. Still a hard limit: max 2 video tracks (main + one overlay).
+- **MOV export** — the Export dialog now offers Format MP4 / MOV; the
+  render job stores `settings.format`, the renderer writes
+  `<jobId>.mov`, download serves `video/quicktime`, save-to-library
+  records the right extension/mime. Unknown formats are refused 400.
+  MOV is H.264+AAC in a QuickTime container — no WebM, no 4K, no 3rd
+  track.
+- **Import-first New Project (video)** — the chooser's video step now
+  offers library videos + an upload button + a drag-drop zone, and the
+  selected media land on the timeline as clips back-to-back from 0:00
+  before the editor opens. Aspect/fps are offered for the video and
+  bulk-video templates; the quiz preset keeps its fixed 9:16 timing and
+  offers no fake choice.
+- **Ratio selector in the editor header** — a working aspect selector
+  (16:9 / 9:16 / 1:1 / 4:5) with a live dimensions badge; changing it
+  updates the timeline width/height, the stage aspect ratio and saves.
+- **Drag-drop import in the editor** — dropping video files on the
+  Media tab (audio files on the Audio tab) uploads them through
+  `/api/media/upload` and refreshes the panel; wrong-kind drops are
+  refused with a toast.
+- **Home: search, quick nav, durations, View all** — a working home
+  search (filters recent projects + templates), a quick-nav row (Home ·
+  Templates · Spaces · AI Studio · Collaboration), video durations
+  (`⏱ m:ss`, from `GET /api/dashboard` `durationSeconds`) on recent
+  cards, a Collaboration card with a live shared-with-me count, and
+  "View all" links to the full Projects / Templates lists. The
+  Marketplace built-ins are now browsable by category chips (client-side
+  filter of the fetched list; all 26 stay reachable).
+- **Collaboration view** — `viewCollaboration` (route `collaboration`,
+  home-only, not a sidebar item): shared-with-me list with Open/Leave
+  plus a how-to-share explainer.
+- **Mobile bottom sheet** — at ≤860px `.modal-back` anchors to the
+  bottom and `.modal` becomes a bottom sheet (rounded top corners,
+  88vh, scrollable). Panels stack on mobile; nothing disappears.
+- **Never fake success** — a regression test asserts no "Export Ready"
+  string exists in the served frontend files; the bulk "sample row" is a
+  real render labelled "sample".
+- **Ordering fix** — `listProjects` now orders by `updated_at DESC,
+  id DESC` so same-second ties no longer scramble newest-first.
+- **Starter clip** — a blank bulk-video template now carries a
+  `{{TITLE}}` text clip, because a clip-less timeline is refused at
+  batch creation; the batch flow no longer 400s on a fresh template.
+- **Render watchdog (found by the tests, real bug)** — a corrupt or
+  undecodable image on a video track made FFmpeg loop forever (`-loop 1`
+  retries a broken image indefinitely) and, with the single-slot render
+  queue, bricked every later render: jobs stayed queued forever. The
+  worker now kills FFmpeg after a generous duration-based limit (30x the
+  video length, 10-minute floor; `RENDER_WATCHDOG_MS` overrides it) and
+  the job fails honestly ("Render timed out … source media may be
+  corrupt") instead of hanging the queue. The suite's own sticker test
+  used to hit this with a hand-embedded corrupt 1x1 PNG — test images
+  are now generated by FFmpeg, and a dedicated test proves a corrupt
+  render fails and the very next good render still completes.
+- **Mobile is a first-class target (user clarification 2026-11-14)** —
+  the app is for phone AND desktop. Verified and fixed: viewport meta
+  already correct; no panel is `display: none` at any width (sidebar is
+  an off-canvas drawer via transform, hamburger toggles it, tapping a nav
+  item closes it; dialogs are bottom sheets at ≤860px); home grids
+  collapse to one column at 390px; timeline ruler re-aligned to the 64px
+  mobile track heads (was 0, ticks sat 64px left of their clips);
+  touch targets are ≥44px on mobile (buttons, nav items, icon buttons,
+  editor/graphic tabs, home quick-nav pills and group links, ratio
+  select, Export button; clip trim handles widened to 14px); clip and
+  canvas dragging already use pointer events, so touch drag works. The
+  single deliberate exception: the topbar credits pill hides on mobile —
+  it is a redundant chip, and the same balance/plan shows in the profile
+  menu one tap away. Deck canvas and graphic-editor stage scale to the
+  container (aspect-ratio / overflow-auto), so they fit a phone too.
+  A mobile test pins all of it (viewport, drawer, bottom sheet, 44px
+  rules, ruler alignment, pointer-event drag, one-column grids).
+- **Rotation fix (found live by the complete CapCut analysis, §3.2)** —
+  rotation 90°/270° on a clip broke every render: alone the output came
+  out transposed (720×1280) and the render validator failed it ("Width
+  is 720, expected 1280"); with a fade transition xfade failed outright
+  (FFmpeg exit 234) because the rotated segment did not match the other
+  input's size; keyframed rotation failed the same way. 180° always
+  worked. The fix scales+pads the rotated frame back to the project
+  size (W×H) right after the transpose (`src/render.js` `clipFilters`,
+  which runs in both the plain and the keyframed chains), so a rotated
+  clip renders at the project size alone, with transitions, and with
+  keyframes. The overlay (PiP) track had the same defect in reverse —
+  the editor preview rotates overlay clips but the render chain never
+  applied it, so a rotated sticker exported unrotated; the overlay chain
+  now transposes + scales back, with the PiP height estimate aspect-swapped
+  for 90°/270°. The same analysis found `POST /api/video/validate`
+  silently accepted keyframes carrying `rotation`/`volume` — properties
+  the renderer never honours (`keyframeAt` reads x/y/scale/opacity only)
+  — so `validateTimeline` now rejects unknown keyframe properties with a
+  clear error ("not supported … set rotation/volume on the clip itself").
+  The editor never offers rotation/volume keyframes (its keyframe tab
+  lists x/y/scale/opacity only), so the rejection cannot break the UI.
+
+**Tests (gap round):** 13 new tests in `tests/home-flow-240.test.js`
+(26 total in the file) — dashboard durations, the Effects/Transitions
+split, Collaboration view + API, template categories, sticker acceptance
+on a video track, MOV end-to-end (render → download → ffprobe container
+check, plus 400 on an unknown format), animate-API preset apply, the
+no-"Export Ready" static check, the bottom-sheet CSS static check, home
+search/quick-nav/durations, editor ratio/drag-drop/format code, the
+render watchdog (corrupt image fails honestly, queue recovers), and the
+mobile-width check (viewport, drawer, bottom sheet, 44px touch targets,
+ruler alignment, pointer-event drag, one-column grids).
+Plus 9 tests in `tests/rotation-fix-240.test.js` (port 4849) — validate
+rejects rotation/volume keyframes and still accepts normal ones, and
+real renders (ffprobe-validated) for 90° alone, 270° alone, 90° + fade
+transition, 180° alone (still works), 90° + keyframes, and a rotated
+overlay clip — all at the 1280×720 project size.
+The quiz aspect/fps is deliberately NOT offered (fixed preset) and the
+"Invalid Date" update-history display bug is still pending for a later
+round.
+
 ## 2. Key modules (from the master prompt)
 
 | Module | Status |
@@ -425,7 +621,7 @@ video search (Openverse has none; honest `NO_VIDEO_SEARCH` 400).
 | Magic Switch (v2.2.4) | Implemented: reflow between the 12 size presets + LLM translate (14 languages incl. Urdu + Roman Urdu); always creates a new project; no key → 402 `PROVIDER_KEY_NEEDED` |
 | Stock Assets (v2.2.4) | Implemented: Openverse images + audio (key-free), save to Media Library with attribution; no video search (Openverse has none) |
 | AI Assistant (v2.2.4) | Implemented: summarise, suggest, make-professional (design + deck), five-versions (design); new projects only, never edits in place; needs an LLM key |
-| Collaboration (v2.2.4) | Implemented: read-only share link + per-user share + comments (replies, resolve). No live co-editing (out of scope by design) |
+| Collaboration (v2.2.4) | Implemented: read-only share link + per-user share + comments (replies, resolve). No live co-editing (out of scope by design). v2.4.0: a real Collaboration view reachable from Home quick-nav (shared-with-me list + how-to-share). |
 | Updater overlay (v2.2.4) | Implemented: verified `node_modules` overlay in update packages (SHA-256 per file, backup + rollback cover it, native modules refused) — new production dependencies no longer need fullReinstall. Design: `docs/UPDATER.md` |
 | Docs & Slides (v2.2.3) | Implemented (AI deck generation needs an LLM key; CMYK print Pending) |
 | Bulk Video Studio + Dynamic Background Engine | Implemented (AI/prompt backgrounds need an image key; A vs B quiz Pending) |
@@ -433,7 +629,7 @@ video search (Openverse has none; honest `NO_VIDEO_SEARCH` 400).
 | Long Video to Shorts | Implemented (face tracking Pending; 60-min end-to-end render not run) |
 | AI Captions (Urdu/Roman Urdu/Arabic RTL/Hindi) | Implemented (auto-transcription needs an STT key) |
 | AI Image/Video generation | Needs credentials (image / video provider key) |
-| Effects & asset library | Implemented (Effects list is honest about what is not built; Stock Assets live in v2.2.4) |
+| Effects & asset library | Implemented (Effects and Transitions are separate views since v2.4.0 — never mixed; Stock Assets live in v2.2.4) |
 | Brand Kit | Implemented |
 | Social Media Studio | Implemented (publishing needs a connected platform; TikTok upload Pending) |
 | Export Center | Implemented (WebP/SVG/MOV/WebM/4K Pending) |
@@ -602,8 +798,13 @@ blurb corrections above. All fixes were re-verified by the full suite.
 2. **Fix round — v2.3.1 — DONE.** All 27 gaps from the full v2.3.0
    verification audit (C-01–C-27) fixed in one release, one regression
    test per gap — see §1e. Suite is now 249/249.
-2. Provider keys (Settings → AI Providers, secure entry — never in chat)
+3. **CapCut Home & Flow — v2.4.0 — DONE.** Home screen as the landing
+   after login (hero + New Project, real recent projects, real
+   templates, quick-access cards for all 35 features) and the New
+   Project chooser that creates a real project and lands inside its
+   editor — see §1f.
+4. Provider keys (Settings → AI Providers, secure entry — never in chat)
    to make AI modes, AI backgrounds, TTS/cloning, and STT run for real.
    (Gemini free key is already configured on the user's PC and tested OK.)
-3. Platform connections (Settings → Connections) to publish for real.
-4. Google OAuth credentials for Sheets import (Settings → Google Sheets).
+5. Platform connections (Settings → Connections) to publish for real.
+6. Google OAuth credentials for Sheets import (Settings → Google Sheets).
