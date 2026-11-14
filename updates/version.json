@@ -1,8 +1,8 @@
 {
  "app": "CreativeStudio AI Pro",
- "version": "2.7.0",
- "notes": "CapCut Desktop Exact: Home + Video Editor shells rebuilt to match real CapCut desktop (sidebar, cyan Create project banner, 5 tool cards, suite carousel; top bar, icon rail, Media panel, Details panel, timeline toolbar), plus the light mobile shell (Edit / Templates / AI Lab / Inbox / Me, bottom nav + floating + button, All Tools sheet) matching the real CapCut mobile screenshots. All features wired to real local features; CapCut-cloud data is never faked.",
- "package": "update-2.7.0.json",
- "packageSha256": "a56a6f6b1c58688d6a567466a535adf827341e2cc24149ef72cb6ef8703e7848",
- "publishedAt": "2026-11-14T14:30:46.791Z"
+ "version": "2.7.1",
+ "notes": "Updater Fix: stale restart warning now clears on boot; desktop in-app update relaunches the app (no more crash dialog); Last applied update only shown when it matches the running version; no-update apply shows 'You are up to date.' instead of a failure.",
+ "package": "update-2.7.1.json",
+ "packageSha256": "b81ff064f3816103556d0652c3da22f963995a10707b45f9cb39214bd2081f91",
+ "publishedAt": "2026-11-14T16:05:01.332Z"
 }
