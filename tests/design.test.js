@@ -127,7 +127,7 @@ test('health reports Phase 9', async () => {
   const r = await req('/api/health');
   assert.equal(r.status, 200);
   assert.equal(r.json.phase, 9);
-  assert.equal(r.json.version, '2.3.1');
+  assert.equal(r.json.version, '2.4.0');
 });
 
 test('design endpoints require login', async () => {
@@ -337,9 +337,9 @@ test('v2.3.0 sidebar: CapCut grouping — every feature under its proper heading
     groupOf[n.id] = current;
   }
   const expected = {
-    dashboard: 'Create', 'ai-design': 'Create', 'graphic-editor': 'Create', presentations: 'Create', documents: 'Create', charts: 'Create',
+    home: 'Create', dashboard: 'Create', 'ai-design': 'Create', 'graphic-editor': 'Create', presentations: 'Create', documents: 'Create', charts: 'Create',
     'ai-studio': 'AI Studio', 'ai-video': 'AI Studio', 'ai-image': 'AI Studio', assistant: 'AI Studio',
-    'video-editor': 'Edit', effects: 'Edit', animation: 'Edit', 'bg-remover': 'Edit', captions: 'Edit',
+    'video-editor': 'Edit', effects: 'Edit', transitions: 'Edit', animation: 'Edit', 'bg-remover': 'Edit', captions: 'Edit',
     'bulk-design': 'Bulk & Automation', 'bulk-video': 'Bulk & Automation', 'template-builder': 'Bulk & Automation',
     shorts: 'Bulk & Automation', music: 'Bulk & Automation', voices: 'Bulk & Automation',
     media: 'Library', stock: 'Library', marketplace: 'Library', projects: 'Library', 'brand-kit': 'Library',
@@ -347,7 +347,7 @@ test('v2.3.0 sidebar: CapCut grouping — every feature under its proper heading
     export: 'Publish & Grow', analytics: 'Publish & Grow',
     admin: 'Account', settings: 'Account', subscription: 'Account',
   };
-  assert.equal(Object.keys(groupOf).length, 35, 'sidebar must list all 35 features');
+  assert.equal(Object.keys(groupOf).length, 37, 'sidebar must list all 36 features + Home');
   for (const [id, section] of Object.entries(expected)) {
     assert.equal(groupOf[id], section, `${id} must sit under "${section}", not "${groupOf[id]}"`);
   }
@@ -366,7 +366,8 @@ test('v2.3.0 video editor: CapCut left tabs, magnetic timeline, Export top-right
   assert.ok(js.text.includes('id="ve-goto-export"'), 'Export button must keep its id');
   assert.ok(js.text.includes("data-seek-clip"), 'Captions tab must let the user jump to a text clip');
   assert.ok(js.text.includes("tab === 'audio'"), 'Audio tab must list audio files separately from video');
-  assert.ok(js.text.includes("Stickers are not in this editor yet"), 'Stickers tab must be honest that stickers are not built');
+  assert.ok(js.text.includes("data-add-sticker"), 'Stickers tab places real stickers on the timeline (v2.4.0 — no longer an empty state)');
+  assert.ok(js.text.includes('function addSticker'), 'sticker placement builds an overlay-track image clip');
   const css = await req('/video-editor.css');
   assert.equal(css.status, 200);
   assert.ok(css.text.includes('.ve-left-rail'), 'left panel must be a rail + panel layout');
