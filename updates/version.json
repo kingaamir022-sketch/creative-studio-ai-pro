@@ -1,8 +1,8 @@
 {
  "app": "CreativeStudio AI Pro",
- "version": "2.2.3",
- "notes": "Docs & Slides: presentations (decks), documents, charts, website publish, print-ready PDF. New deck/doc project types with boot migration; AI deck generation; fixed the Phase 4 design renderer so designs with image layers render (was: FFmpeg refused the whole render).",
- "package": "update-2.2.3.json",
- "packageSha256": "8f6541ad2e5916ad5eedfec4786c4994281f74e7d397fbb5ef6db9fc4a7712d1",
- "publishedAt": "2026-11-14T01:46:58.946Z"
+ "version": "2.2.4",
+ "notes": "Library & Assistant: Stock Assets via Openverse (images + audio), template library 8 to 26, Magic Switch with translate, AI Assistant, share + comments collaboration, updater node_modules overlay (new pure-JS dependencies now install in-app), LLM active-provider UI fix, Gemini default model gemini-3.8-flash, automatic retry + model fallback + friendly provider errors.",
+ "package": "update-2.2.4.json",
+ "packageSha256": "17317d1de8d148360aec05a8ebcb152ce8674e5c5ae3e455f28e32728f9a7c30",
+ "publishedAt": "2026-11-14T03:18:19.988Z"
 }
