@@ -1,8 +1,8 @@
 {
  "app": "CreativeStudio AI Pro",
- "version": "2.2.4",
- "notes": "Library & Assistant: Stock Assets via Openverse (images + audio), template library 8 to 26, Magic Switch with translate, AI Assistant, share + comments collaboration, updater node_modules overlay (new pure-JS dependencies now install in-app), LLM active-provider UI fix, Gemini default model gemini-3.8-flash, automatic retry + model fallback + friendly provider errors.",
- "package": "update-2.2.4.json",
- "packageSha256": "17317d1de8d148360aec05a8ebcb152ce8674e5c5ae3e455f28e32728f9a7c30",
- "publishedAt": "2026-11-14T03:18:19.988Z"
+ "version": "2.3.0",
+ "notes": "CapCut design pass: sidebar regrouped into Create / AI Studio / Edit / Bulk & Automation / Library / Publish & Grow / Account; Video Editor four-pane layout with Media/Audio/Text/Stickers/Effects/Transitions/Captions/Filters rail, magnetic timeline with Magnet toggle, Export top-right; Graphic Editor vertical icon rail; one design system on every view with full light-theme parity; no behaviour changes, no new dependencies.",
+ "package": "update-2.3.0.json",
+ "packageSha256": "43fb61c36491139650503bbbb83bf1d270aa7190d2550ee11ea634daecf025b0",
+ "publishedAt": "2026-11-14T04:14:59.551Z"
 }
