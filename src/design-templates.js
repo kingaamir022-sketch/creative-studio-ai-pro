@@ -440,6 +440,100 @@ function presentationSlide() {
   return d;
 }
 
+// --- v2.5.0: résumé / logo / certificate / menu / invitation / presentation set ---
+// Each is a REAL editable design/deck like the ones above: layers, not a
+// flattened image. Text is sized to fit its box (the never-overflow rule).
+
+function resumeTemplate() {
+  const d = blankDesign(1240, 1754);
+  d.background = { type: 'color', color: '#ffffff', gradient: { from: '#7c5cff', to: '#3b82f6', angle: 135 } };
+  const side = defaultShapeLayer('rect', 0, 0, 380, 1754, { fill: '#111832', radius: 0, name: 'Side bar' });
+  const name = defaultTextLayer(60, 140, 'Your Name', { w: 300, h: 70, fontSize: 44, fontWeight: 800, color: '#ffffff', align: 'left' });
+  const role = defaultTextLayer(60, 220, 'Your Title', { w: 300, h: 44, fontSize: 26, fontWeight: 500, color: '#22d3ee', align: 'left' });
+  const contact = defaultTextLayer(60, 300, 'hello@you.com\n+92 300 0000000\nCity, Pakistan', { w: 300, h: 130, fontSize: 24, fontWeight: 400, color: '#c7d2fe', align: 'left', lineHeight: 1.5 });
+  const skillsHead = defaultTextLayer(60, 480, 'SKILLS', { w: 300, h: 40, fontSize: 26, fontWeight: 800, color: '#f59e0b', align: 'left', letterSpacing: 3 });
+  const skills = defaultTextLayer(60, 530, 'Design · Video editing\nSocial media · Canva', { w: 300, h: 110, fontSize: 24, fontWeight: 400, color: '#e8ecf8', align: 'left', lineHeight: 1.5 });
+  const expHead = defaultTextLayer(440, 140, 'EXPERIENCE', { w: 740, h: 44, fontSize: 28, fontWeight: 800, color: '#7c5cff', align: 'left', letterSpacing: 3 });
+  const job1 = defaultTextLayer(440, 200, 'Creative Designer — Studio X', { w: 740, h: 44, fontSize: 30, fontWeight: 700, color: '#111832', align: 'left' });
+  const job1Body = defaultTextLayer(440, 250, '2023 — now · Designed social posts,\nbrand kits and launch videos.', { w: 740, h: 90, fontSize: 24, fontWeight: 400, color: '#475569', align: 'left', lineHeight: 1.4 });
+  const eduHead = defaultTextLayer(440, 400, 'EDUCATION', { w: 740, h: 44, fontSize: 28, fontWeight: 800, color: '#7c5cff', align: 'left', letterSpacing: 3 });
+  const edu = defaultTextLayer(440, 460, 'BBA — University Name, 2022', { w: 740, h: 44, fontSize: 26, fontWeight: 400, color: '#334155', align: 'left' });
+  d.layers = [side, name, role, contact, skillsHead, skills, expHead, job1, job1Body, eduHead, edu];
+  return d;
+}
+
+function logoTemplate() {
+  const d = blankDesign(1080, 1080);
+  d.background = { type: 'color', color: '#ffffff', gradient: { from: '#7c5cff', to: '#3b82f6', angle: 135 } };
+  const mark = defaultShapeLayer('ellipse', 340, 280, 400, 400, { fill: '#7c5cff', name: 'Logo mark' });
+  const markText = defaultTextLayer(340, 380, 'YB', { w: 400, h: 200, fontSize: 150, fontWeight: 800, color: '#ffffff' });
+  const wordmark = defaultTextLayer(140, 740, 'Your Business', { w: 800, h: 80, fontSize: 64, fontWeight: 800, color: '#111832' });
+  const tagline = defaultTextLayer(140, 830, 'Your tagline goes here', { w: 800, h: 44, fontSize: 30, fontWeight: 400, color: '#64748b' });
+  d.layers = [mark, markText, wordmark, tagline];
+  return d;
+}
+
+function certificateTemplate() {
+  const d = blankDesign(1600, 1200);
+  d.background = { type: 'color', color: '#fdf6ec', gradient: { from: '#7c5cff', to: '#3b82f6', angle: 135 } };
+  const frame = defaultShapeLayer('rect', 50, 50, 1500, 1100, { fill: '#ffffff', stroke: '#d4af37', strokeWidth: 4, radius: 8, name: 'Frame' });
+  const inner = defaultShapeLayer('rect', 70, 70, 1460, 1060, { fill: '#ffffff', stroke: '#d4af37', strokeWidth: 1, radius: 4, name: 'Inner frame' });
+  const kicker = defaultTextLayer(200, 170, 'CERTIFICATE OF ACHIEVEMENT', { w: 1200, h: 60, fontSize: 48, fontWeight: 800, color: '#7c5cff', letterSpacing: 4 });
+  const presented = defaultTextLayer(200, 270, 'This certificate is proudly presented to', { w: 1200, h: 44, fontSize: 28, fontWeight: 400, color: '#57534e' });
+  const recipient = defaultTextLayer(200, 340, 'Your Name', { w: 1200, h: 110, fontSize: 84, fontWeight: 700, color: '#111832', fontFamily: 'Playfair Display' });
+  const rule = defaultShapeLayer('rect', 700, 480, 200, 4, { fill: '#d4af37', radius: 2, name: 'Rule' });
+  const body = defaultTextLayer(200, 530, 'for successfully completing the\nCreative Design Course 2026', { w: 1200, h: 110, fontSize: 32, fontWeight: 400, color: '#57534e', lineHeight: 1.4 });
+  const date = defaultTextLayer(200, 780, '14 November 2026', { w: 500, h: 44, fontSize: 28, fontWeight: 500, color: '#111832', align: 'left' });
+  const sign = defaultTextLayer(900, 780, 'Course Director', { w: 500, h: 44, fontSize: 28, fontWeight: 500, color: '#111832', align: 'right' });
+  d.layers = [frame, inner, kicker, presented, recipient, rule, body, date, sign];
+  return d;
+}
+
+function menuTemplate() {
+  const d = blankDesign(1080, 1350);
+  d.background = { type: 'color', color: '#1c1917', gradient: { from: '#7c5cff', to: '#3b82f6', angle: 135 } };
+  const header = defaultTextLayer(90, 90, 'CAFÉ MENU', { w: 900, h: 80, fontSize: 64, fontWeight: 800, color: '#fbbf24', letterSpacing: 4 });
+  const sub = defaultTextLayer(90, 180, 'Fresh · Local · Made to order', { w: 900, h: 44, fontSize: 28, fontWeight: 400, color: '#d6d3d1' });
+  const starters = defaultTextLayer(90, 280, 'STARTERS', { w: 900, h: 44, fontSize: 28, fontWeight: 800, color: '#fbbf24', align: 'left', letterSpacing: 3 });
+  const starterRows = defaultTextLayer(90, 340, 'Soup of the Day — Rs. 350\nGarlic Bread (4 pc) — Rs. 300', { w: 900, h: 100, fontSize: 30, fontWeight: 400, color: '#ffffff', align: 'left', lineHeight: 1.5 });
+  const mains = defaultTextLayer(90, 500, 'MAINS', { w: 900, h: 44, fontSize: 28, fontWeight: 800, color: '#fbbf24', align: 'left', letterSpacing: 3 });
+  const mainRows = defaultTextLayer(90, 560, 'Chicken Karahi (Half) — Rs. 850\nBeef Biryani — Rs. 450\nZinger Burger + Fries — Rs. 550', { w: 900, h: 150, fontSize: 30, fontWeight: 400, color: '#ffffff', align: 'left', lineHeight: 1.5 });
+  const drinks = defaultTextLayer(90, 760, 'DRINKS', { w: 900, h: 44, fontSize: 28, fontWeight: 800, color: '#fbbf24', align: 'left', letterSpacing: 3 });
+  const drinkRows = defaultTextLayer(90, 820, 'Fresh Lime Soda — Rs. 150\nMint Margarita — Rs. 250\nChai (Doodh Patti) — Rs. 120', { w: 900, h: 150, fontSize: 30, fontWeight: 400, color: '#ffffff', align: 'left', lineHeight: 1.5 });
+  const foot = defaultTextLayer(90, 1120, 'Open daily 12 PM – 12 AM · 0300 0000000', { w: 900, h: 44, fontSize: 26, fontWeight: 400, color: '#a8a29e' });
+  d.layers = [header, sub, starters, starterRows, mains, mainRows, drinks, drinkRows, foot];
+  return d;
+}
+
+function birthdayInvite() {
+  const d = blankDesign(1080, 1350);
+  d.background = { type: 'gradient', color: '#7c5cff', gradient: { from: '#ec4899', to: '#7c5cff', angle: 140 } };
+  const pill = defaultShapeLayer('rect', 340, 140, 400, 70, { fill: '#ffffff', radius: 35, name: 'Pill' });
+  const pillText = defaultTextLayer(340, 150, "YOU'RE INVITED", { w: 400, h: 50, fontSize: 30, fontWeight: 800, color: '#7c5cff' });
+  const headline = defaultTextLayer(90, 280, "It's a\nBirthday!", { w: 900, h: 300, fontSize: 130, fontWeight: 800, color: '#ffffff', lineHeight: 1.05 });
+  const name = defaultTextLayer(90, 620, 'Your Name turns 25', { w: 900, h: 70, fontSize: 52, fontWeight: 700, color: '#fde68a' });
+  const detail = defaultTextLayer(90, 720, 'Saturday · 22 November 2026\n6:00 PM onwards', { w: 900, h: 110, fontSize: 34, fontWeight: 400, color: '#e8ecf8', lineHeight: 1.4 });
+  const venue = defaultTextLayer(90, 860, 'Your Home · Lahore', { w: 900, h: 50, fontSize: 32, fontWeight: 400, color: '#e8ecf8' });
+  const cta = defaultShapeLayer('rect', 290, 1000, 500, 96, { fill: '#ffffff', radius: 48, name: 'CTA button' });
+  const ctaText = defaultTextLayer(290, 1020, 'RSVP: 0300 0000000', { w: 500, h: 56, fontSize: 32, fontWeight: 800, color: '#7c5cff' });
+  d.layers = [pill, pillText, headline, name, detail, venue, cta, ctaText];
+  return d;
+}
+
+function deckPresentationSet() {
+  const deck = ds.blankDeck({ title: 'Presentation Set' });
+  const title = ds.blankSlide('title');
+  setSlideText(title, 'title', 'Presentation Set');
+  setSlideText(title, 'subtitle', 'A ready-made set: title, agenda, content and closing');
+  deck.slides = [
+    title,
+    textSlide('Agenda', '•  Welcome & goals\n•  What we built\n•  Results so far\n•  Next steps'),
+    textSlide('What We Built', '•  One slide set for every meeting\n•  Same look on every slide\n•  Edit the text, keep the design'),
+    textSlide('Thank You', '•  Questions?\n•  hello@studio.com'),
+  ];
+  return finishDeck(deck);
+}
+
 const BUILTIN_TEMPLATES = [
   { id: 'builtin-promo-post', name: 'Instagram Promo Post', category: 'Social', size: 'Instagram Post', kind: 'design', builtin: true, build: promoPost },
   { id: 'builtin-sale-poster', name: 'Sale Poster', category: 'Promo', size: 'Poster', kind: 'design', builtin: true, build: salePoster },
@@ -470,6 +564,13 @@ const BUILTIN_TEMPLATES = [
   { id: 'builtin-deck-pitch', name: 'Startup Pitch Deck', category: 'Business', size: 'Presentation', kind: 'deck', builtin: true, build: deckPitch },
   { id: 'builtin-deck-quiz', name: 'General Knowledge Quiz Deck', category: 'Education', size: 'Presentation', kind: 'deck', builtin: true, build: deckQuiz },
   { id: 'builtin-deck-portfolio', name: 'Portfolio Deck', category: 'Business', size: 'Presentation', kind: 'deck', builtin: true, build: deckPortfolio },
+  // v2.5.0 — résumé / logo / certificate / menu / invitation / presentation set
+  { id: 'builtin-resume', name: 'Modern Résumé', category: 'Résumé', size: 'A4 Portrait', kind: 'design', builtin: true, build: resumeTemplate },
+  { id: 'builtin-logo', name: 'Logo Starter', category: 'Logo', size: 'Square 1080×1080', kind: 'design', builtin: true, build: logoTemplate },
+  { id: 'builtin-certificate', name: 'Certificate of Achievement', category: 'Certificate', size: 'Landscape 1600×1200', kind: 'design', builtin: true, build: certificateTemplate },
+  { id: 'builtin-menu', name: 'Café Menu', category: 'Menu', size: 'Poster', kind: 'design', builtin: true, build: menuTemplate },
+  { id: 'builtin-birthday-invite', name: 'Birthday Invitation', category: 'Invitation', size: 'Poster', kind: 'design', builtin: true, build: birthdayInvite },
+  { id: 'builtin-deck-presentation-set', name: 'Presentation Set (4 slides)', category: 'Presentation Set', size: 'Presentation', kind: 'deck', builtin: true, build: deckPresentationSet },
 ];
 
 function builtinTemplate(id) {

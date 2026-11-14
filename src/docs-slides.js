@@ -19,11 +19,19 @@ const { spawn } = require('child_process');
 const { validateDesign, blankDesign, uid } = require('./design-model');
 const { fitText, uniformFont } = require('./quiz-model');
 const { validateChart, normalizeChart, renderChartPng, chartToSvg } = require('./chart');
-const { writeImagePdf, pngToJpeg } = require('./pdf-writer');
+const { writeImagePdf, pngToJpeg, pngToCmykJpeg } = require('./pdf-writer');
 const { renderDesign } = require('./design-render');
 const { probeMedia } = require('./ffmpeg');
 
 const DECK_LAYOUTS = ['title', 'text', 'text-image', 'chart', 'quiz', 'blank'];
+// Per-slide transitions (v2.5.0, item #19): Fade / Slide / Wipe / Zoom
+// (+ 'none'), each with a duration in seconds. Per-element entrance
+// animations live on elements as `entrance: { type: 'fade'|'slide'|
+// 'zoom'|'wipe'|'none', duration, delay }` — present mode plays them
+// (CSS) and the deck MP4 export maps transitions to FFmpeg xfade.
+const DECK_TRANSITIONS = ['none', 'fade', 'slide', 'wipe', 'zoom'];
+const DECK_TRANSITION_XFADE = { fade: 'fade', slide: 'slideleft', wipe: 'wipeleft', zoom: 'circleopen' };
+const DECK_ENTRANCES = ['none', 'fade', 'slide', 'zoom', 'wipe'];
 const DOC_BLOCK_TYPES = ['heading', 'paragraph', 'list', 'quote', 'table', 'image', 'divider', 'chart'];
 
 function isHexColor(v) { return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v); }
@@ -56,7 +64,7 @@ function shapeLayer(x, y, w, h, fill, opts = {}) {
 function blankSlide(layout = 'blank', { width = 1920, height = 1080 } = {}) {
   if (!DECK_LAYOUTS.includes(layout)) throw new Error(`Unknown slide layout: ${layout}. Use one of: ${DECK_LAYOUTS.join(', ')}.`);
   const bg = { type: 'color', color: '#151d3a', gradient: { from: '#7c5cff', to: '#3b82f6', angle: 135 } };
-  const slide = { id: uid('slide'), layout, background: bg, notes: '', duration: 5, elements: [] };
+  const slide = { id: uid('slide'), layout, background: bg, notes: '', duration: 5, transition: { type: 'fade', duration: 0.5 }, elements: [] };
   const cx = (w) => Math.round((width - w) / 2);
   if (layout === 'title') {
     slide.elements.push(shapeLayer(0, 0, width, height, '#151d3a', { name: 'Background' }));
@@ -117,6 +125,13 @@ function validateDeck(deck) {
       else ids.add(s.id);
       if (!DECK_LAYOUTS.includes(s.layout)) errors.push(`${where}: layout must be one of: ${DECK_LAYOUTS.join(', ')}.`);
       if (s.duration !== undefined && (!isNumber(s.duration) || s.duration < 1 || s.duration > 60)) errors.push(`${where}: duration must be 1–60 seconds.`);
+      if (s.transition !== undefined && s.transition !== null) {
+        if (typeof s.transition !== 'object' || Array.isArray(s.transition)) errors.push(`${where}: transition must be an object { type, duration }.`);
+        else {
+          if (!DECK_TRANSITIONS.includes(s.transition.type)) errors.push(`${where}: transition type must be one of: ${DECK_TRANSITIONS.join(', ')}.`);
+          if (s.transition.duration !== undefined && (!isNumber(s.transition.duration) || s.transition.duration < 0.2 || s.transition.duration > 5)) errors.push(`${where}: transition duration must be 0.2–5 seconds.`);
+        }
+      }
       if (s.background) {
         if (!['color', 'gradient'].includes(s.background.type)) errors.push(`${where}: background type must be color or gradient.`);
         if (s.background.type === 'color' && !isHexColor(s.background.color)) errors.push(`${where}: background color must be a #rrggbb hex color.`);
@@ -127,6 +142,14 @@ function validateDeck(deck) {
         const check = validateDesign(design);
         if (!check.ok) errors.push(`${where}: ${check.errors.join(' ')}`);
         s.elements.forEach((e, j) => {
+          if (e.entrance !== undefined && e.entrance !== null) {
+            if (typeof e.entrance !== 'object' || Array.isArray(e.entrance)) errors.push(`${where}, element ${j + 1}: entrance must be an object { type, duration, delay }.`);
+            else {
+              if (!DECK_ENTRANCES.includes(e.entrance.type)) errors.push(`${where}, element ${j + 1}: entrance type must be one of: ${DECK_ENTRANCES.join(', ')}.`);
+              if (e.entrance.duration !== undefined && (!isNumber(e.entrance.duration) || e.entrance.duration < 0.1 || e.entrance.duration > 5)) errors.push(`${where}, element ${j + 1}: entrance duration must be 0.1–5 seconds.`);
+              if (e.entrance.delay !== undefined && (!isNumber(e.entrance.delay) || e.entrance.delay < 0 || e.entrance.delay > 10)) errors.push(`${where}, element ${j + 1}: entrance delay must be 0–10 seconds.`);
+            }
+          }
           if (e.type === 'chart') {
             if (!e.chart) errors.push(`${where}, element ${j + 1}: chart settings are required.`);
             else {
@@ -322,8 +345,13 @@ function validateDoc(doc) {
       }
       if (b.type === 'list') {
         if (!['bullet', 'number'].includes(b.style)) errors.push(`${where}: list style must be bullet or number.`);
+        if (b.numbering !== undefined && !['restart', 'continue'].includes(b.numbering)) errors.push(`${where}: list numbering must be 'restart' or 'continue'.`);
         if (!Array.isArray(b.items) || !b.items.length) errors.push(`${where}: list needs at least one item.`);
-        else b.items.forEach((it, j) => { if (typeof it !== 'string') errors.push(`${where}, item ${j + 1}: must be a string.`); });
+        else b.items.forEach((it, j) => {
+          if (typeof it === 'string') return;
+          if (it && typeof it === 'object' && typeof it.text === 'string' && (it.level === undefined || (Number.isInteger(it.level) && it.level >= 0 && it.level <= 8))) return;
+          errors.push(`${where}, item ${j + 1}: must be a string or { text, level 0–8 }.`);
+        });
       }
       if (b.type === 'table') {
         if (!Array.isArray(b.headers) || !b.headers.length) errors.push(`${where}: table needs at least one header.`);
@@ -363,7 +391,8 @@ function docToHtml(doc, { fullPage = true } = {}) {
     else if (b.type === 'quote') body.push(`<blockquote>${escHtml(b.text)}</blockquote>`);
     else if (b.type === 'list') {
       const tag = b.style === 'number' ? 'ol' : 'ul';
-      body.push(`<${tag}>${b.items.map((it) => `<li>${escHtml(it)}</li>`).join('')}</${tag}>`);
+      const items = b.items.map((it) => (typeof it === 'string' ? { text: it, level: 0 } : { text: it.text, level: it.level || 0 }));
+      body.push(`<${tag}>${items.map((it) => `<li style="margin-left:${it.level * 24}px">${escHtml(it.text)}</li>`).join('')}</${tag}>`);
     } else if (b.type === 'table') {
       body.push(`<table><thead><tr>${b.headers.map((h) => `<th>${escHtml(h)}</th>`).join('')}</tr></thead><tbody>${b.rows.map((r) => `<tr>${r.map((c) => `<td>${escHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
     } else if (b.type === 'image') {
@@ -412,9 +441,10 @@ async function docToDocx(doc, { mediaById = {}, outPath } = {}) {
     rels.push({ id: `rId${mediaIdx}`, type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image', target: `media/${name}` });
     return `<w:p><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="${emu(wPx)}" cy="${emu(hPx)}"/><wp:docPr id="${mediaIdx}" name="${escXml(label)}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${mediaIdx}" name="${escXml(label)}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId${mediaIdx}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(wPx)}" cy="${emu(hPx)}"/></a:xfrm><a:prstGeom prst="rect"/></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
   };
-  const para = (text, { style = null, bold = false, size = null } = {}) => {
+  const para = (text, { style = null, bold = false, size = null, numPr = null } = {}) => {
     const pPr = [
       style ? `<w:pStyle w:val="${style}"/>` : '',
+      numPr ? `<w:numPr><w:ilvl w:val="${numPr.ilvl}"/><w:numId w:val="${numPr.numId}"/></w:numPr>` : '',
       `<w:spacing w:after="160" w:line="276" w:lineRule="auto"/>`,
     ].join('');
     const rPr = [
@@ -427,13 +457,37 @@ async function docToDocx(doc, { mediaById = {}, outPath } = {}) {
     return `<w:p><w:pPr>${pPr}</w:pPr>${runs}</w:p>`;
   };
   const body = [];
+  // Numbering state for numbering.xml (see below): one numId per list
+  // block (restart) or shared across blocks (continue).
+  let numIdCounter = 0;
+  let lastNumberNumId = null;
+  const numberingNums = []; // { numId, abstractId, restart }
   for (const b of doc.blocks) {
     if (b.type === 'heading') {
       body.push(para(b.text, { style: `Heading${b.level}`, bold: true, size: b.level === 1 ? 32 : b.level === 2 ? 28 : 24 }));
     } else if (b.type === 'paragraph') body.push(para(b.text));
     else if (b.type === 'quote') body.push(para(b.text, { style: 'IntenseQuote' }));
     else if (b.type === 'list') {
-      b.items.forEach((it, i) => body.push(para(b.style === 'number' ? `${i + 1}. ${it}` : `•  ${it}`)));
+      // Real Word numbering (numbering.xml): numbered lists use a numId
+      // whose abstract definition is multi-level decimal; bullet lists
+      // use a bullet abstract. `numbering: 'continue'` reuses the previous
+      // numbered list's numId so numbering continues across blocks;
+      // the default 'restart' starts a fresh numId (startOverride 1).
+      // Items may be strings (level 0) or { text, level } for multi-level.
+      const isNumber = b.style === 'number';
+      let numId;
+      if (isNumber && b.numbering === 'continue' && lastNumberNumId) numId = lastNumberNumId;
+      else {
+        numIdCounter += 1;
+        numId = numIdCounter;
+        numberingNums.push({ numId, abstractId: isNumber ? 0 : 1, restart: !isNumber || b.numbering !== 'continue' });
+        if (isNumber) lastNumberNumId = numId;
+      }
+      b.items.forEach((it) => {
+        const text = typeof it === 'string' ? it : it.text;
+        const level = typeof it === 'string' ? 0 : Math.min(8, Math.max(0, it.level || 0));
+        body.push(para(text, { numPr: { ilvl: level, numId } }));
+      });
     } else if (b.type === 'table') {
       const cols = b.headers.length;
       const grid = `<w:tblGrid>${b.headers.map(() => '<w:gridCol w:w="2400"/>').join('')}</w:tblGrid>`;
@@ -467,14 +521,31 @@ async function docToDocx(doc, { mediaById = {}, outPath } = {}) {
       }
     }
   }
+  // --- DOCX internals (v2.5.0, item #23) -------------------------------------
+  // styles.xml defines the styles the body actually uses (Heading1/2/3,
+  // IntenseQuote, Normal, Title) instead of relying on Word's defaults.
+  // numbering.xml holds two multi-level abstract definitions (0 = decimal
+  // 1./1.1./1.1.1., 1 = bullets) and one <w:num> per list block, with a
+  // startOverride of 1 on restart lists. Headers/footers carry the doc
+  // title + a real PAGE field; sectPr sets A4 page size + margins.
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="160" w:line="276" w:lineRule="auto"/></w:pPr></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="240" w:line="276" w:lineRule="auto"/></w:pPr><w:rPr><w:b/><w:sz w:val="52"/><w:color w:val="111827"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="480" w:after="160"/></w:pPr><w:rPr><w:b/><w:sz w:val="32"/><w:color w:val="111827"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="400" w:after="140"/></w:pPr><w:rPr><w:b/><w:sz w:val="28"/><w:color w:val="111827"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="320" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="24"/><w:color w:val="111827"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="IntenseQuote"><w:name w:val="Intense Quote"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:ind w:left="720"/><w:spacing w:after="160"/></w:pPr><w:rPr><w:i/><w:color w:val="374151"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Header"><w:name w:val="header"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:color w:val="6B7280"/><w:sz w:val="18"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:color w:val="6B7280"/><w:sz w:val="18"/></w:rPr></w:style></w:styles>`;
+  const lvl = (ilvl, { numFmt, lvlText, indent }) => `<w:lvl w:ilvl="${ilvl}"><w:start w:val="1"/><w:numFmt w:val="${numFmt}"/><w:lvlText w:val="${lvlText}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="${indent}" w:hanging="360"/></w:pPr></w:lvl>`;
+  const numberingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>${[0, 1, 2].map((i) => lvl(i, { numFmt: 'decimal', lvlText: i === 0 ? '%1.' : i === 1 ? '%1.%2.' : '%1.%2.%3.', indent: 720 + i * 720 })).join('')}</w:abstractNum><w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>${[0, 1, 2].map((i) => lvl(i, { numFmt: 'bullet', lvlText: i === 0 ? '•' : i === 1 ? '–' : '·', indent: 720 + i * 720 })).join('')}</w:abstractNum>${numberingNums.map((n) => `<w:num w:numId="${n.numId}"><w:abstractNumId w:val="${n.abstractId}"/>${n.restart ? '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride>' : ''}</w:num>`).join('')}</w:numbering>`;
+  const headerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:pStyle w:val="Header"/><w:jc w:val="center"/></w:pPr><w:r><w:t xml:space="preserve">${escXml(doc.title)}</w:t></w:r></w:p></w:hdr>`;
+  const footerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:pStyle w:val="Footer"/><w:jc w:val="center"/></w:pPr><w:r><w:t xml:space="preserve">Page </w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`;
+  const sectPr = `<w:sectPr><w:headerReference w:type="default" r:id="rIdHeader1"/><w:footerReference w:type="default" r:id="rIdFooter1"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>`;
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>${body.join('')}</w:body></w:document>`;
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>${body.join('')}${sectPr}</w:body></w:document>`;
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="jpg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="jpg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>`;
   const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId0" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>${rels.map((r) => `<Relationship Id="${r.id}" Type="${r.type}" Target="${r.target}"/>`).join('')}</Relationships>`;
   const docRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.map((r) => `<Relationship Id="${r.id}" Type="${r.type}" Target="${r.target}"/>`).join('')}</Relationships>`;
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.map((r) => `<Relationship Id="${r.id}" Type="${r.type}" Target="${r.target}"/>`).join('')}<Relationship Id="rIdHeader1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/><Relationship Id="rIdFooter1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/><Relationship Id="rIdStyles1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdNumbering1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`;
   try {
     await new Promise((resolve, reject) => {
       const output = fs.createWriteStream(outPath);
@@ -486,6 +557,10 @@ async function docToDocx(doc, { mediaById = {}, outPath } = {}) {
       archive.append(relsXml, { name: '_rels/.rels' });
       archive.append(docRelsXml, { name: 'word/_rels/document.xml.rels' });
       archive.append(documentXml, { name: 'word/document.xml' });
+      archive.append(stylesXml, { name: 'word/styles.xml' });
+      archive.append(numberingXml, { name: 'word/numbering.xml' });
+      archive.append(headerXml, { name: 'word/header1.xml' });
+      archive.append(footerXml, { name: 'word/footer1.xml' });
       for (const mf of mediaFiles) archive.file(mf.filePath, { name: `word/media/${mf.name}` });
       archive.finalize();
     });
@@ -493,7 +568,7 @@ async function docToDocx(doc, { mediaById = {}, outPath } = {}) {
     // C-10: chart PNGs were copied into the archive; remove the temp dir.
     try { fs.rmSync(chartTmpDir, { recursive: true, force: true }); } catch { /* temp cleanup is best-effort */ }
   }
-  return { blocks: doc.blocks.length, images: mediaFiles.length };
+  return { blocks: doc.blocks.length, images: mediaFiles.length, numbering: numberingNums.length };
 }
 
 // Paginate a document into A4 designs (1240x1754) for the PDF renderer.
@@ -693,7 +768,7 @@ function scaleDesign(design, s) {
 // Render designs to a print-ready PDF: full-bleed pages (trim size + bleed),
 // crop marks at the trim corners and a safe-zone rectangle (vector lines).
 // Returns { outPath, pages, sizePt: {w, h}, bleedPt, marginPt }.
-async function designsToPrintPdf(designs, { sizeId = 'a4', bleedMm = 3, marginMm = 10, mediaById = {}, chartFiles = {}, workDir, outPath } = {}) {
+async function designsToPrintPdf(designs, { sizeId = 'a4', bleedMm = 3, marginMm = 10, mediaById = {}, chartFiles = {}, workDir, outPath, colorSpace = 'rgb' } = {}) {
   const size = PRINT_SIZES[sizeId];
   if (!size) throw new Error(`Unknown print size: ${sizeId}. Use one of: ${Object.keys(PRINT_SIZES).join(', ')}.`);
   if (!Array.isArray(designs) || !designs.length) throw new Error('At least one design is required for a print PDF.');
@@ -725,7 +800,11 @@ async function designsToPrintPdf(designs, { sizeId = 'a4', bleedMm = 3, marginMm
     const pngPath = path.join(workDir, `page-${i + 1}.png`);
     await renderDesign({ design: scaled, mediaById: mb, outPath: pngPath });
     const jpegPath = path.join(workDir, `page-${i + 1}.jpg`);
-    const { width: iw, height: ih } = await pngToJpeg(pngPath, jpegPath, 2);
+    // v2.5.0, item #22: CMYK print — a real DeviceCMYK JPEG (Pillow)
+    // instead of the RGB one when colorSpace is 'cmyk'.
+    const { width: iw, height: ih } = colorSpace === 'cmyk'
+      ? await pngToCmykJpeg(pngPath, jpegPath, 92)
+      : await pngToJpeg(pngPath, jpegPath, 2);
     // Crop marks: 12pt lines at each trim corner, pointing outward.
     const tx0 = bleedPt, ty0 = bleedPt, tx1 = bleedPt + size.ptW, ty1 = bleedPt + size.ptH;
     const m = 12;
@@ -742,8 +821,8 @@ async function designsToPrintPdf(designs, { sizeId = 'a4', bleedMm = 3, marginMm
     const rects = marginPt > 0 ? [{ x: tx0 + marginPt, y: ty0 + marginPt, w: size.ptW - marginPt * 2, h: size.ptH - marginPt * 2, color: '#7c5cff', width: 0.75 }] : [];
     pages.push({ jpegPath, imgWidth: iw, imgHeight: ih, widthPt: pagePtW, heightPt: pagePtH, vector: { lines, rects } });
   }
-  const result = writeImagePdf(pages, outPath);
-  return { outPath, pages: result.pages, bytes: result.bytes, sizePt: { w: pagePtW, h: pagePtH }, bleedPt, marginPt, size: size.name };
+  const result = writeImagePdf(pages, outPath, { colorSpace });
+  return { outPath, pages: result.pages, bytes: result.bytes, colorSpace, sizePt: { w: pagePtW, h: pagePtH }, bleedPt, marginPt, size: size.name };
 }
 
 // --- Websites -----------------------------------------------------------------
@@ -788,7 +867,7 @@ function designToHtmlPage(design, { title, assetUrl }) {
 // Returns { files: [relative paths], index: 'index.html' }.
 // Images are copied into assets/ and referenced relatively — the folder is
 // a complete shareable site (open index.html anywhere).
-function buildWebsite({ kind, title, design, deck, doc, mediaById = {}, chartFiles = {}, outDir }) {
+function buildWebsite({ kind, title, design, deck, doc, mediaById = {}, chartFiles = {}, outDir, seo = {} }) {
   if (!['design', 'deck', 'doc'].includes(kind)) throw new Error(`Website source must be design, deck or doc (got "${kind}").`);
   fs.mkdirSync(path.join(outDir, 'assets'), { recursive: true });
   const assets = [];
@@ -863,8 +942,22 @@ document.addEventListener('keydown',function(e){if(e.key==='ArrowRight')show(i+1
     body = `<article class="doc">${docHtml}</article>`;
     extraCss = '.doc{max-width:800px;margin:0 auto;background:#fff;padding:40px 32px;box-shadow:0 10px 40px rgba(0,0,0,.1)}.doc h1{font-size:32px}.doc h2{font-size:26px}.doc h3{font-size:21px}.doc table{border-collapse:collapse;width:100%}.doc th,.doc td{border:1px solid #d1d5db;padding:8px 10px;text-align:left}.doc th{background:#f3f4f6}.doc blockquote{border-left:4px solid #7c5cff;margin:14px 0;padding:4px 16px;color:#374151}.doc img{max-width:100%}.doc figure{text-align:center}';
   }
+  // v2.5.0, item #30: SEO/meta editing — the caller passes seo
+  // { title, description, keywords, ogImage } and it lands in <head>.
+  const seoTitle = String(seo.title || title || '').slice(0, 120);
+  const seoDesc = String(seo.description || '').slice(0, 300);
+  const seoKeywords = String(seo.keywords || '').slice(0, 300);
+  const seoMeta = [
+    seoDesc ? `<meta name="description" content="${escHtml(seoDesc)}">` : '',
+    seoKeywords ? `<meta name="keywords" content="${escHtml(seoKeywords)}">` : '',
+    `<meta property="og:title" content="${escHtml(seoTitle)}">`,
+    seoDesc ? `<meta property="og:description" content="${escHtml(seoDesc)}">` : '',
+    `<meta property="og:type" content="website">`,
+    seo.ogImage ? `<meta property="og:image" content="${escHtml(String(seo.ogImage).slice(0, 500))}">` : '',
+  ].filter(Boolean).join('\n');
   const html = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escHtml(title)}</title>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escHtml(seoTitle)}</title>
+${seoMeta}
 <style>body{margin:0;font-family:Inter,Arial,sans-serif;background:#f3f4f6;color:#111827;line-height:1.6;padding:24px}header{text-align:center;margin-bottom:20px}header h1{font-size:22px;margin:0}header p{color:#6b7280;margin:4px 0 0}${extraCss}</style></head>
 <body><header><h1>${escHtml(title)}</h1><p>Published with CreativeStudio AI Pro</p></header>${body}</body></html>`;
   fs.writeFileSync(path.join(outDir, 'index.html'), html);
@@ -935,15 +1028,64 @@ async function processDeckJob(job, payload, { dir, logPath }) {
   }
   const slides = await renderDeckImages(deck, { workDir: tmpDir, chartFiles, mediaById });
   const warnings = slides.flatMap((s) => s.warnings || []);
-  // Per-slide "-loop 1 -t <secondsPerSlide>" inputs joined by the concat
-  // filter: each slide is exactly secondsPerSlide long. (The concat
-  // demuxer recipe — durations + a repeated last file — adds a phantom
-  // extra slide-length to the output, so it is not used here.)
-  const totalDuration = slides.length * secondsPerSlide;
+  // Per-slide durations (slide.duration wins over the job default) and
+  // per-slide transitions (v2.5.0, item #19). When the incoming slide has
+  // a transition other than 'none', the join is a real FFmpeg xfade
+  // (Fade→fade, Slide→slideleft, Wipe→wipeleft, Zoom→circleopen — the
+  // closest xfade to a zoom); otherwise slides are concatenated cleanly.
+  // xfade offsets: the i-th xfade starts at (sum of the durations of the
+  // slides before it) minus (transition durations already overlapped)
+  // minus THIS transition's duration — xfade's offset is where the
+  // transition starts inside the first input, so the overlap is the
+  // transition's own duration. (Without that last subtraction the offset
+  // lands at the very end of the first slide and FFmpeg clips the output.)
+  const durations = slides.map((_, i) => {
+    const s = (deck.slides || [])[i] || {};
+    return Math.max(1, Math.min(60, Number(s.duration) || secondsPerSlide));
+  });
+  const transitions = slides.map((_, i) => {
+    if (i === 0) return null;
+    const t = ((deck.slides || [])[i] || {}).transition || {};
+    const type = DECK_TRANSITIONS.includes(t.type) ? t.type : 'none';
+    if (type === 'none') return null;
+    return { type, duration: Math.max(0.2, Math.min(5, Number(t.duration) || 0.5)) };
+  });
+  const totalDuration = durations.reduce((s, d) => s + d, 0)
+    - transitions.reduce((s, t) => s + (t ? t.duration : 0), 0);
   const args = ['-y', '-v', 'error'];
-  for (const s of slides) args.push('-loop', '1', '-t', String(secondsPerSlide), '-i', s.pngPath);
-  const inputs = slides.map((_, i) => `[${i}:v]`).join('');
-  args.push('-filter_complex', `${inputs}concat=n=${slides.length}:v=1:a=0,fps=${fps},format=yuv420p[vout]`,
+  for (let i = 0; i < slides.length; i++) args.push('-loop', '1', '-t', String(durations[i]), '-i', slides[i].pngPath);
+  let filter;
+  if (transitions.some(Boolean)) {
+    const parts = [];
+    let cur = '[0:v]';
+    let offsetBase = durations[0];
+    let transSoFar = 0;
+    for (let i = 1; i < slides.length; i++) {
+      const t = transitions[i];
+      if (!t) {
+        // No transition into this slide: a hard cut. xfade has no
+        // zero-duration mode, so use a 1-frame fade (0.04s at 30fps) —
+        // visually a cut.
+        const cutDur = 0.04;
+        const offset = Math.max(0, offsetBase - transSoFar - cutDur);
+        parts.push(`${cur}[${i}:v]xfade=transition=fade:duration=${cutDur}:offset=${offset.toFixed(3)}[x${i}]`);
+        cur = `[x${i}]`;
+        offsetBase += durations[i];
+        transSoFar += cutDur;
+        continue;
+      }
+      const offset = Math.max(0, offsetBase - transSoFar - t.duration);
+      parts.push(`${cur}[${i}:v]xfade=transition=${DECK_TRANSITION_XFADE[t.type]}:duration=${t.duration}:offset=${offset.toFixed(3)}[x${i}]`);
+      cur = `[x${i}]`;
+      offsetBase += durations[i];
+      transSoFar += t.duration;
+    }
+    filter = `${parts.join(';')};${cur}fps=${fps},format=yuv420p[vout]`;
+  } else {
+    const inputs = slides.map((_, i) => `[${i}:v]`).join('');
+    filter = `${inputs}concat=n=${slides.length}:v=1:a=0,fps=${fps},format=yuv420p[vout]`;
+  }
+  args.push('-filter_complex', filter,
     '-map', '[vout]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', String(fps),
     '-movflags', '+faststart', outPath);
   await new Promise((resolve, reject) => {
@@ -965,7 +1107,7 @@ async function processDeckJob(job, payload, { dir, logPath }) {
 }
 
 module.exports = {
-  DECK_LAYOUTS, DOC_BLOCK_TYPES,
+  DECK_LAYOUTS, DECK_TRANSITIONS, DECK_TRANSITION_XFADE, DECK_ENTRANCES, DOC_BLOCK_TYPES,
   blankSlide, blankDeck, validateDeck, addSlide, moveSlide, duplicateSlide, deleteSlide,
   slideFitCheck, deckFitCheck, applyDeckUniformFonts, slideToDesign, deckToDesigns,
   textLayer, shapeLayer,

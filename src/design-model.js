@@ -172,6 +172,11 @@ function validateDesign(d) {
           if (t.stroke && (!isHexColor(t.stroke.color) || !isNumber(t.stroke.width) || t.stroke.width < 0 || t.stroke.width > 50)) errors.push(`${where}: text outline needs a #rrggbb color and width 0–50.`);
           if (t.letterSpacing !== undefined && (!isNumber(t.letterSpacing) || t.letterSpacing < -20 || t.letterSpacing > 100)) errors.push(`${where}: letter spacing must be -20–100.`);
           if (t.lineHeight !== undefined && (!isNumber(t.lineHeight) || t.lineHeight < 0.5 || t.lineHeight > 3)) errors.push(`${where}: line height must be 0.5–3.`);
+          // v2.5.0: curved text — arc angle in degrees (-180..180, 0 = flat).
+          if (t.curve !== undefined && t.curve !== null) {
+            if (typeof t.curve !== 'object' || Array.isArray(t.curve)) errors.push(`${where}: text curve must be an object { angle }.`);
+            else if (t.curve.angle !== undefined && (!isNumber(t.curve.angle) || t.curve.angle < -180 || t.curve.angle > 180)) errors.push(`${where}: text curve angle must be -180–180 degrees.`);
+          }
         }
       }
       if (l.type === 'shape') {

@@ -356,9 +356,79 @@ async function foregroundBBox(maskPath) {
   return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1, width, height };
 }
 
+// --- Per-object segmentation (v2.5.0, item #29) ------------------------------
+// Magic Grab used to crop the WHOLE foreground bounding box — clicking a
+// small object in front of a big one grabbed both. This finds the single
+// connected component that contains the click point (4-connected flood
+// fill over mask pixels > 128) and returns a mask containing ONLY that
+// component. No prior Background-Remover run is needed: callers segment
+// the image first (segmentImageFile) and pass the mask in. A click on
+// background (mask <= 128) fails honestly with NO_OBJECT_AT_POINT —
+// never a cropped empty image.
+async function connectedComponentAt(maskPath, x, y) {
+  const { width, height } = await probeImageSize(maskPath);
+  const px = Math.max(0, Math.min(width - 1, Math.round(x)));
+  const py = Math.max(0, Math.min(height - 1, Math.round(y)));
+  const buf = await ffmpegRawIn(['-y', '-v', 'error', '-i', maskPath,
+    '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], null);
+  if (buf.length < width * height) throw new Error('Could not read the mask.');
+  const at = (xx, yy) => buf[yy * width + xx];
+  if (at(px, py) <= 128) {
+    const err = new Error(`No object at that point (${px}, ${py}) — the segmentation mask says background there. Click on the subject itself.`);
+    err.code = 'NO_OBJECT_AT_POINT';
+    throw err;
+  }
+  // Iterative flood fill (stack-based; a recursive fill would blow the
+  // stack on a large object).
+  const seen = new Uint8Array(width * height);
+  const stack = [py * width + px];
+  seen[py * width + px] = 1;
+  let minX = px, maxX = px, minY = py, maxY = py, count = 0;
+  while (stack.length) {
+    const idx = stack.pop();
+    const xx = idx % width, yy = Math.floor(idx / width);
+    count += 1;
+    if (xx < minX) minX = xx;
+    if (xx > maxX) maxX = xx;
+    if (yy < minY) minY = yy;
+    if (yy > maxY) maxY = yy;
+    if (xx > 0 && !seen[idx - 1] && at(xx - 1, yy) > 128) { seen[idx - 1] = 1; stack.push(idx - 1); }
+    if (xx < width - 1 && !seen[idx + 1] && at(xx + 1, yy) > 128) { seen[idx + 1] = 1; stack.push(idx + 1); }
+    if (yy > 0 && !seen[idx - width] && at(xx, yy - 1) > 128) { seen[idx - width] = 1; stack.push(idx - width); }
+    if (yy < height - 1 && !seen[idx + width] && at(xx, yy + 1) > 128) { seen[idx + width] = 1; stack.push(idx + width); }
+  }
+  return {
+    bbox: { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1, width, height },
+    pixels: count, clicked: { x: px, y: py },
+    // Keep the membership set for extractObjectMask without re-reading.
+    _seen: seen, _maskBuf: buf,
+  };
+}
+
+// Build a mask PNG containing ONLY the clicked component (everything else
+// black). Returns { maskPath, bbox, pixels }.
+async function extractObjectMask(maskPath, x, y, tmpDir) {
+  const comp = await connectedComponentAt(maskPath, x, y);
+  const { width, height } = comp.bbox;
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const raw = Buffer.alloc(width * height);
+  for (let yy = 0; yy < height; yy++) {
+    for (let xx = 0; xx < width; xx++) {
+      raw[yy * width + xx] = comp._seen[yy * width + xx] ? 255 : 0;
+    }
+  }
+  const rawPath = path.join(tmpDir, 'component.raw');
+  fs.writeFileSync(rawPath, raw);
+  const outPath = path.join(tmpDir, 'component-mask.png');
+  await ffmpegFile(['-y', '-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'gray',
+    '-s', `${width}x${height}`, '-i', rawPath, outPath]);
+  return { maskPath: outPath, bbox: comp.bbox, pixels: comp.pixels, clicked: comp.clicked };
+}
+
 module.exports = {
   MODEL_ID, MODEL_FILE, MODEL_URL, MODEL_BYTES, MODEL_SHA256, MODEL_LICENSE,
   modelsDir, modelPath, modelStatus, ensureModel, getSession,
   segmentImageFile, applyMaskAsAlpha, maskValueAt, foregroundBBox,
+  connectedComponentAt, extractObjectMask,
   isMock, _state: state,
 };

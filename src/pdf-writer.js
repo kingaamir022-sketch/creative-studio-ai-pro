@@ -23,6 +23,19 @@ function colorOps(hex) {
   const b = parseInt(h.slice(4, 6), 16) / 255;
   return `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)}`;
 }
+// Approximate RGB → CMYK (naive, for vector strokes/marks only — the page
+// images themselves are converted properly by Pillow).
+function cmykOps(hex) {
+  const h = String(hex || '#000000').replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  const k = 1 - Math.max(r, g, b);
+  const c = k === 1 ? 0 : (1 - r - k) / (1 - k);
+  const m = k === 1 ? 0 : (1 - g - k) / (1 - k);
+  const y = k === 1 ? 0 : (1 - b - k) / (1 - k);
+  return `${c.toFixed(3)} ${m.toFixed(3)} ${y.toFixed(3)} ${k.toFixed(3)}`;
+}
 function fmt(n) { return String(Math.round(n * 1000) / 1000); }
 
 // Convert a PNG to a JPEG with FFmpeg (PDF embeds JPEGs directly).
@@ -42,10 +55,43 @@ async function pngToJpeg(pngPath, jpegPath, quality = 3) {
   return { width: info.width, height: info.height };
 }
 
-// pages: [{ jpegPath, widthPt, heightPt, title?, vector?: {
-//   lines: [{x1,y1,x2,y2,color,width}], rects: [{x,y,w,h,color,width}] } }]
-// Returns { pages, bytes }.
-function writeImagePdf(pages, outPath) {
+// Convert a PNG to a CMYK JPEG (real DeviceCMYK data, not an RGB JPEG
+// relabelled). Uses Python Pillow (PIL) — present in this environment —
+// which writes a proper CMYK JPEG with an Adobe APP14 marker, so PDF
+// readers interpret the channels correctly. Throws honestly when Pillow
+// is unavailable instead of writing a fake CMYK file.
+async function pngToCmykJpeg(pngPath, jpegPath, quality = 92) {
+  if (!fs.existsSync(pngPath)) throw new Error(`PNG not found: ${pngPath}`);
+  const script = [
+    'import sys',
+    'from PIL import Image',
+    'im = Image.open(sys.argv[1]).convert("RGB")',
+    'im.convert("CMYK").save(sys.argv[2], "JPEG", quality=int(sys.argv[3]))',
+  ].join('\n');
+  await new Promise((resolve, reject) => {
+    const child = spawn('python3', ['-c', script, pngPath, jpegPath, String(quality)],
+      { stdio: ['ignore', 'pipe', 'pipe'] });
+    let errText = '';
+    child.stderr.on('data', (d) => { errText += d.toString(); });
+    child.on('error', (err) => reject(new Error(`Could not start Python for CMYK conversion: ${err.message}`)));
+    child.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`PNG→CMYK JPEG failed (code ${code}): ${errText.slice(-400) || 'Pillow (PIL) may not be installed.'}`));
+    });
+  });
+  const info = await probeMedia(jpegPath);
+  if (!info || !info.width) throw new Error('CMYK JPEG conversion produced no readable image.');
+  return { width: info.width, height: info.height };
+}
+
+// pages: [{ jpegPath, widthPt, heightPt, title?, vector?: {...} }]
+// options: { colorSpace: 'rgb' (default) | 'cmyk' } — CMYK pages embed
+// DeviceCMYK JPEGs (see pngToCmykJpeg); the caller must pass CMYK JPEGs
+// when it asks for CMYK. Returns { pages, bytes, colorSpace }.
+function writeImagePdf(pages, outPath, { colorSpace = 'rgb' } = {}) {
+  if (!Array.isArray(pages) || !pages.length) throw new Error('At least one PDF page is required.');
+  if (!['rgb', 'cmyk'].includes(colorSpace)) throw new Error("PDF color space must be 'rgb' or 'cmyk'.");
+  const spaceName = colorSpace === 'cmyk' ? '/DeviceCMYK' : '/DeviceRGB';
   if (!Array.isArray(pages) || !pages.length) throw new Error('At least one PDF page is required.');
   const objects = []; // 1-based: objects[i] is the raw body of object (i+1)
   const add = (body) => { objects.push(body); return objects.length; };
@@ -66,11 +112,13 @@ function writeImagePdf(pages, outPath) {
     content.push(`${fmt(p.widthPt)} 0 0 ${fmt(p.heightPt)} 0 0 cm /Im${imgId} Do`);
     content.push('Q');
     const vec = p.vector || {};
+    const strokeOp = colorSpace === 'cmyk' ? 'K' : 'RG';
+    const vecColor = (hex) => (colorSpace === 'cmyk' ? cmykOps(hex) : colorOps(hex));
     for (const ln of vec.lines || []) {
-      content.push(`${colorOps(ln.color)} RG ${fmt(ln.width || 0.5)} w ${fmt(ln.x1)} ${fmt(ln.y1)} m ${fmt(ln.x2)} ${fmt(ln.y2)} l S`);
+      content.push(`${vecColor(ln.color)} ${strokeOp} ${fmt(ln.width || 0.5)} w ${fmt(ln.x1)} ${fmt(ln.y1)} m ${fmt(ln.x2)} ${fmt(ln.y2)} l S`);
     }
     for (const rc of vec.rects || []) {
-      content.push(`${colorOps(rc.color)} RG ${fmt(rc.width || 0.75)} w ${fmt(rc.x)} ${fmt(rc.y)} ${fmt(rc.w)} ${fmt(rc.h)} re S`);
+      content.push(`${vecColor(rc.color)} ${strokeOp} ${fmt(rc.width || 0.75)} w ${fmt(rc.x)} ${fmt(rc.y)} ${fmt(rc.w)} ${fmt(rc.h)} re S`);
     }
     const streamText = content.join('\n');
     const contentId = add(`<< /Length ${Buffer.byteLength(streamText)} >>\nstream\n${streamText}\nendstream`);
@@ -78,7 +126,7 @@ function writeImagePdf(pages, outPath) {
     pageIds.push(pageId);
     // Attach the JPEG bytes to the image object (binary-safe).
     objects[imgId - 1] = {
-      header: `<< /Type /XObject /Subtype /Image /Width ${Math.round(p.imgWidth || 0)} /Height ${Math.round(p.imgHeight || 0)} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`,
+      header: `<< /Type /XObject /Subtype /Image /Width ${Math.round(p.imgWidth || 0)} /Height ${Math.round(p.imgHeight || 0)} /ColorSpace ${spaceName} /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`,
       binary: jpeg,
       footer: '\nendstream',
     };
@@ -111,7 +159,7 @@ function writeImagePdf(pages, outPath) {
   push(Buffer.from(xref, 'latin1'));
   const pdf = Buffer.concat(chunks);
   fs.writeFileSync(outPath, pdf);
-  return { pages: pages.length, bytes: pdf.length };
+  return { pages: pages.length, bytes: pdf.length, colorSpace };
 }
 
-module.exports = { writeImagePdf, pngToJpeg, pdfEscape };
+module.exports = { writeImagePdf, pngToJpeg, pngToCmykJpeg, pdfEscape };

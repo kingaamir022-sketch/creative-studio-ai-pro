@@ -184,23 +184,88 @@ async function publishToPlatform(platform, { text, title, media = [], connection
   }
   if (platform === 'tiktok') {
     const video = media.find((m) => m.kind === 'video');
+    if (!video || !video.filePath) {
+      const err = new Error('TikTok needs a video file to upload.');
+      err.code = 'NEEDS_VIDEO';
+      throw err;
+    }
+    const fs = require('fs');
+    if (!fs.existsSync(video.filePath)) {
+      const err = new Error('TikTok video file is missing on disk.');
+      err.code = 'NEEDS_VIDEO';
+      throw err;
+    }
+    const buf = fs.readFileSync(video.filePath);
+    const size = buf.length;
+    // TikTok Content Posting API: chunk size must be a multiple of 1024
+    // and at least 1 MB (except the final chunk); 10 MB is a good default.
+    const chunkSize = Math.max(1024 * 1024, Math.min(10 * 1024 * 1024, Math.floor(size / 1024) * 1024 || 1024 * 1024));
+    const totalChunks = Math.max(1, Math.ceil(size / chunkSize));
     const init = await postJson(`${base}/post/publish/video/init/`, {
       token,
       body: {
         post_info: { title: text || title || '', privacy_level: 'SELF_ONLY', disable_duet: false, disable_comment: false, disable_stitch: false, video_cover_timestamp_ms: 1000 },
-        source_info: { source: 'FILE_UPLOAD', video_size: video.sizeBytes || 0, chunk_size: video.sizeBytes || 0, total_chunk_count: 1 },
+        source_info: { source: 'FILE_UPLOAD', video_size: size, chunk_size: chunkSize, total_chunk_count: totalChunks },
       },
     });
     const publishId = init?.data?.publish_id;
+    const uploadUrl = init?.data?.upload_url;
     if (!publishId) throw new Error('TikTok accepted the upload init but returned no publish id.');
-    // NOTE: the chunk upload + final publish call need the video bytes
-    // streamed to TikTok's upload URL; in this build the flow stops after
-    // init and the post is marked failed with a clear reason rather than
-    // faked as published. Full chunk upload is a known gap (README).
-    const err = new Error('TikTok video upload is not finished in this build: the upload was initialised (publish id received) but chunk upload is not implemented yet. The post is NOT published.');
-    err.code = 'NOT_IMPLEMENTED';
-    err.providerPostId = publishId;
-    throw err;
+    if (!uploadUrl) throw new Error('TikTok accepted the upload init but returned no upload URL — the video was not uploaded.');
+    // Chunk upload: PUT each chunk to the upload URL with a Content-Range
+    // header (TikTok's documented FILE_UPLOAD flow). A failed chunk aborts
+    // the publish honestly — the post is never marked published.
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * chunkSize;
+      const end = Math.min(size, start + chunkSize);
+      const chunk = buf.subarray(start, end);
+      const res = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'video/mp4',
+          'Content-Range': `bytes ${start}-${end - 1}/${size}`,
+          'Content-Length': String(chunk.length),
+        },
+        body: chunk,
+        signal: AbortSignal.timeout(120000),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        const err = new Error(`TikTok rejected video chunk ${i + 1}/${totalChunks} (${res.status}): ${detail.slice(0, 300) || 'no detail'}. The video was NOT published.`);
+        err.code = 'PROVIDER_ERROR';
+        err.status = res.status;
+        err.providerPostId = publishId;
+        throw err;
+      }
+    }
+    // After the last chunk TikTok processes the publish; poll the status
+    // endpoint until it reports PUBLISH_COMPLETE (with a real video id)
+    // or an error. Polls up to ~2 minutes.
+    const deadline = Date.now() + 120000;
+    for (;;) {
+      const status = await postJson(`${base}/post/publish/status/fetch/`, {
+        token, body: { publish_id: publishId },
+      }).catch(() => null);
+      const data = status && status.data;
+      const st = data && String(data.status || '').toUpperCase();
+      if (st === 'PUBLISH_COMPLETE') {
+        const videoId = data.video_id || data.videoId || null;
+        return { providerPostId: videoId || publishId, response: { publishId, videoId, status: data } };
+      }
+      if (st === 'FAILED' || st === 'PUBLISH_FAILED') {
+        const err = new Error(`TikTok failed to publish the video: ${String(data.fail_reason || data.error || 'no detail').slice(0, 300)}`);
+        err.code = 'PROVIDER_ERROR';
+        err.providerPostId = publishId;
+        throw err;
+      }
+      if (Date.now() > deadline) {
+        const err = new Error('TikTok accepted the video upload but the publish status never confirmed within 2 minutes — the post status is unknown, so it is NOT marked published. Check TikTok and retry if needed.');
+        err.code = 'PROVIDER_ERROR';
+        err.providerPostId = publishId;
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 5000));
+    }
   }
   if (platform === 'youtube') {
     const video = media.find((m) => m.kind === 'video');

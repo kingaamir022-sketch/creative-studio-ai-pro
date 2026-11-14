@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  type TEXT NOT NULL DEFAULT 'design' CHECK (type IN ('design','video','bulk','shorts','social','deck','doc')),
+  type TEXT NOT NULL DEFAULT 'design' CHECK (type IN ('design','video','bulk','shorts','social','deck','doc','sheet')),
   folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
   content TEXT NOT NULL DEFAULT '{}',
   thumbnail TEXT,
@@ -393,12 +393,13 @@ CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id);
 `);
 
 // v2.2.3 — Docs & Slides: projects gained the 'deck' and 'doc' types.
+// v2.5.0 — Sheets: projects gained the 'sheet' type (item #21).
 // SQLite cannot ALTER a CHECK constraint, so an existing projects table is
 // rebuilt (rename → create → copy → drop). Idempotent: skipped when the
-// stored CREATE TABLE already mentions 'deck'. Runs on every boot.
+// stored CREATE TABLE already mentions 'deck' and 'sheet'. Runs on every boot.
 (function migrateProjectTypes() {
   const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='projects'").get();
-  if (!row || !row.sql || row.sql.includes("'deck'")) return;
+  if (!row || !row.sql || (row.sql.includes("'deck'") && row.sql.includes("'sheet'"))) return;
   db.exec(`PRAGMA foreign_keys=OFF;
     BEGIN TRANSACTION;
     ALTER TABLE projects RENAME TO projects_old_v223;
@@ -406,7 +407,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id);
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
-      type TEXT NOT NULL DEFAULT 'design' CHECK (type IN ('design','video','bulk','shorts','social','deck','doc')),
+      type TEXT NOT NULL DEFAULT 'design' CHECK (type IN ('design','video','bulk','shorts','social','deck','doc','sheet')),
       folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
       content TEXT NOT NULL DEFAULT '{}',
       thumbnail TEXT,

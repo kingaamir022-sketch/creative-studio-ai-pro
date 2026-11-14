@@ -129,10 +129,60 @@ async function renderDesign({ design, mediaById, outPath }) {
       if (fit.status === 'attention') {
         warnings.push(`Layer "${layer.name}": text does not fit its box even at the smallest readable size — shorten it (suggested: "${(fit.suggestedText || '').slice(0, 80)}").`);
       }
+      const fsPx = Math.max(6, Math.round(fit.fontSize));
+      // v2.5.0: curved text — text.curve.angle (degrees, -180..180).
+      // Each glyph is rendered to its own transparent PNG, rotated to the
+      // arc tangent, and overlaid along the arc. Multi-line text is
+      // flattened to one line for the arc (warned).
+      const curveAngle = num(t.curve && t.curve.angle, 0);
+      if (curveAngle) {
+        const line = fit.lines.join(' ');
+        if (fit.lines.length > 1) warnings.push(`Layer "${layer.name}": curved text is drawn on a single arc — ${fit.lines.length} lines were joined into one.`);
+        const chars = [...line];
+        if (chars.length > 120) { warnings.push(`Layer "${layer.name}": curved text is limited to 120 characters — the rest was not drawn.`); chars.length = 120; }
+        const charW = (ch) => (ch === ' ' ? fsPx * 0.3 : fsPx * 0.6);
+        const totalW = chars.reduce((s, ch) => s + charW(ch), 0) || 1;
+        const theta = (curveAngle * Math.PI) / 180;
+        const R = Math.abs(theta) > 0.05 ? totalW / (2 * Math.sin(Math.abs(theta) / 2)) : Infinity;
+        const cx = x + w / 2;
+        const y0 = y + h / 2;
+        const dir = theta > 0 ? 1 : -1; // +angle = arch up (rainbow), -angle = smile
+        let cum = 0;
+        for (let ci = 0; ci < chars.length; ci++) {
+          const ch = chars[ci];
+          const cw = charW(ch);
+          const frac = (cum + cw / 2) / totalW;
+          cum += cw;
+          if (ch === ' ') continue;
+          const phi = -theta / 2 + frac * theta;
+          const px = cx + R * Math.sin(phi) - cw / 2;
+          const py = y0 + dir * (R - R * Math.cos(phi)) - fsPx / 2;
+          const charPath = path.join(tmpDir, `curve${layerIdx}_${ci}.png`);
+          const safeCh = ch.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/:/g, '\\:');
+          await new Promise((resolve, reject) => {
+            const child = spawn('ffmpeg', ['-y', '-v', 'error', '-f', 'lavfi', '-i', `color=c=0x00000000:s=${Math.ceil(fsPx)}x${Math.ceil(fsPx * 1.4)}:d=1`,
+              '-vf', `format=rgba,drawtext=fontfile=${font}:text='${safeCh}':fontsize=${fsPx}:fontcolor=${escColor(t.color)}:x=0:y=0`,
+              '-frames:v', '1', charPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+            let errText = '';
+            child.stderr.on('data', (d) => { errText += d.toString(); });
+            child.on('error', (err) => reject(new Error(`Could not start FFmpeg: ${err.message}`)));
+            child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`Curved-text glyph render failed (code ${code}): ${errText.slice(-300)}`))));
+          });
+          const ii = inputs.length;
+          inputs.push({ args: ['-i', charPath] });
+          const rotLabel = `rot${layerIdx}_${ci}`;
+          const ovOut = `l${layerIdx++}`;
+          filterParts.push(`[${ii}:v]rotate=${fmt(phi)}:c=none:ow=rotw(iw):oh=roth(ih)[${rotLabel}]`);
+          filterParts.push(`[${cur}][${rotLabel}]overlay=x=${Math.round(px)}:y=${Math.round(py)}[${ovOut}]`);
+          cur = ovOut;
+        }
+        if (opacity < 1) warnings.push(`Layer "${layer.name}": opacity is not applied to curved text in this build.`);
+        if (t.underline) warnings.push(`Layer "${layer.name}": underline is not rendered by the server renderer.`);
+        continue;
+      }
       const filePath = path.join(tmpDir, `text${layerIdx}.txt`);
       fs.writeFileSync(filePath, fit.lines.join('\n'));
       textFiles.push(filePath);
-      const fsPx = Math.max(6, Math.round(fit.fontSize));
       let xExpr;
       if (t.align === 'center') xExpr = `${x}+(${w}-text_w)/2`;
       else if (t.align === 'right') xExpr = `${x}+${w}-text_w`;

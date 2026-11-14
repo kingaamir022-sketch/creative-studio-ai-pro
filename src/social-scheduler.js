@@ -20,11 +20,60 @@ const config = require('./config');
 
 let timer = null;
 
+// Local DB timestamp ('YYYY-MM-DD HH:MM:SS') — the format scheduled_at is
+// stored in, so string comparison in listDueSocialPosts works.
 function nowIso() {
-  return new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const d = new Date();
+  const p2 = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+}
+
+// --- v2.5.0 planner tables (created here, in this module — no db.js edit) ---
+// social_planner: one row per social post carrying the planner state that
+// the base social_posts CHECK constraint cannot hold (approval workflow
+// statuses) plus campaign / series / recurrence data.
+// social_campaigns: named campaigns a post can belong to.
+db.db.exec(`CREATE TABLE IF NOT EXISTS social_campaigns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  color TEXT NOT NULL DEFAULT '#7c5cff',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS social_planner (
+  post_id INTEGER PRIMARY KEY REFERENCES social_posts(id) ON DELETE CASCADE,
+  approval_status TEXT NOT NULL DEFAULT 'draft' CHECK (approval_status IN ('draft','pending_approval','approved','rejected')),
+  campaign_id INTEGER REFERENCES social_campaigns(id) ON DELETE SET NULL,
+  series_id TEXT,
+  recurrence TEXT NOT NULL DEFAULT '',
+  best_time TEXT,
+  decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  decided_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_social_planner_campaign ON social_planner(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_social_planner_series ON social_planner(series_id);
+CREATE INDEX IF NOT EXISTS idx_social_planner_approval ON social_planner(approval_status);`);
+
+// Approval gate (v2.5.0): a post that carries a planner row may only be
+// published once its approval_status is 'approved'. Posts with no planner
+// row (created before v2.5.0, or created without the workflow) keep the
+// old behaviour and publish normally. A pending/rejected post is SKIPPED,
+// never marked failed — failing it would destroy the draft.
+function plannerRow(postId) {
+  return db.db.prepare('SELECT * FROM social_planner WHERE post_id = ?').get(postId) || null;
+}
+function approvalBlocked(postId) {
+  const row = plannerRow(postId);
+  return Boolean(row && row.approval_status !== 'approved');
 }
 
 async function publishOne(post) {
+  if (approvalBlocked(post.id)) {
+    return { id: post.id, status: 'awaiting_approval', error: 'This post is waiting for approval and will not publish until it is approved.' };
+  }
   const conn = db.getSocialConnection(post.user_id, post.platform);
   if (!conn) {
     db.updateSocialPost(post.id, { status: 'failed', error: `Platform "${post.platform}" is not connected. Connect it in Social Studio → Connections first.` });
@@ -74,6 +123,9 @@ async function runDuePosts(now) {
     // have been edited/cancelled between listing and publishing.
     const fresh = db.getSocialPostAny(post.id);
     if (!fresh || fresh.status !== 'scheduled') continue;
+    // v2.5.0 approval gate: due posts still waiting for approval are
+    // skipped (left scheduled) — never published, never failed.
+    if (approvalBlocked(fresh.id)) continue;
     results.push(await publishOne(fresh));
   }
   return results;

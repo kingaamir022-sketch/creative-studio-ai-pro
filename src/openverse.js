@@ -56,7 +56,7 @@ async function fetchJson(url, timeoutMs) {
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let res;
   try {
-    res = await fetch(url, { headers: { 'User-Agent': 'CreativeStudio-AI-Pro/2.4.0 (stock-assets)' }, signal: ctrl.signal });
+    res = await fetch(url, { headers: { 'User-Agent': 'CreativeStudio-AI-Pro/2.5.0 (stock-assets)' }, signal: ctrl.signal });
   } catch (e) {
     throw openverseError(0, e.name === 'AbortError' ? 'request timed out' : (e.message || e));
   } finally {
@@ -165,7 +165,7 @@ async function saveToLibrary(userId, type, id) {
   const timer = setTimeout(() => ctrl.abort(), DOWNLOAD_TIMEOUT_MS);
   let res;
   try {
-    res = await fetch(item.url, { headers: { 'User-Agent': 'CreativeStudio-AI-Pro/2.4.0 (stock-assets)' }, signal: ctrl.signal });
+    res = await fetch(item.url, { headers: { 'User-Agent': 'CreativeStudio-AI-Pro/2.5.0 (stock-assets)' }, signal: ctrl.signal });
   } catch (e) {
     throw openverseError(0, e.name === 'AbortError' ? 'download timed out' : (e.message || e));
   } finally {
@@ -215,4 +215,162 @@ async function saveToLibrary(userId, type, id) {
   return { media: saved, item, duplicate: false, attribution };
 }
 
-module.exports = { searchOpenverse, getOpenverseItem, saveToLibrary, normalizeItem, BASE, PAGE_SIZE };
+module.exports = { searchOpenverse, getOpenverseItem, saveToLibrary, normalizeItem, BASE, PAGE_SIZE,
+  // Pexels video search (v2.5.0, item #24) — see below.
+  // NOTE: PEXELS_BASE is internal-only (declared below); it is intentionally
+  // NOT exported here — exporting it from this block would hit the TDZ
+  // (const declared at line ~238) and crash the server at boot.
+  searchPexelsVideos, savePexelsVideoToLibrary, getPexelsVideo, pexelsConfigured };
+
+// --- Pexels video search (v2.5.0, item #24) -----------------------------------
+// Openverse has NO video endpoint, so stock video comes from Pexels
+// (api.pexels.com, free API key, user-supplied). The key lives in the
+// same encrypted provider_settings store as every other provider key
+// (provider id 'pexels', env PEXELS_API_KEY as a fallback) — it is never
+// in code, never in chat, and never sent to the frontend. Without a key
+// the stock route keeps the honest NO_VIDEO_SEARCH refusal.
+//
+// Addendum contract: GET /api/stock/search?type=video returns
+// { results: [{ id, title, url, thumbUrl, durationSeconds, source:
+// 'pexels' }], total } — the same result shape as image/audio search.
+// POST /api/stock/save { type: 'video', id } downloads the chosen video
+// into the Media Library, like image/audio save. Pexels requires the
+// `video_files` link (a direct .mp4 URL) for download; the id is the
+// Pexels video id, and the download re-fetches the video record first so
+// the saved file is the real Pexels file, not a cached guess.
+const PEXELS_BASE = process.env.PEXELS_BASE_URL || 'https://api.pexels.com';
+const { decrypt: _decryptPexels } = require('./crypto-util');
+
+function pexelsKey() {
+  try {
+    const row = (db.getProviderSettings() || []).find((r) => r.provider === 'pexels');
+    if (row && row.api_key_encrypted) {
+      try { return _decryptPexels(row.api_key_encrypted); } catch { return null; }
+    }
+  } catch { /* DB not ready in unit use */ }
+  return process.env.PEXELS_API_KEY || null;
+}
+function pexelsConfigured() { return Boolean(pexelsKey()); }
+
+function pexelsNoKeyError() {
+  const err = new Error("Stock video search needs a Pexels API key (free at pexels.com/api — add it in AI Studio → Stock Video (Pexels), or set PEXELS_API_KEY). Openverse has no video search, so without a key there is honestly no video search.");
+  err.code = 'NO_VIDEO_SEARCH';
+  return err;
+}
+
+async function pexelsFetch(path, { timeoutMs = 30000 } = {}) {
+  const key = pexelsKey();
+  if (!key) throw pexelsNoKeyError();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let res;
+  try {
+    res = await fetch(`${PEXELS_BASE}${path}`, { headers: { Authorization: key, 'User-Agent': 'CreativeStudio-AI-Pro/2.5.0 (stock-video)' }, signal: ctrl.signal });
+  } catch (e) {
+    throw openverseError(0, e.name === 'AbortError' ? 'Pexels request timed out' : (e.message || e));
+  } finally { clearTimeout(timer); }
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      const err = new Error('Pexels rejected the API key (401/403). Check the key in AI Studio → Stock Video (Pexels).');
+      err.code = 'PEXELS_KEY_INVALID';
+      throw err;
+    }
+    throw openverseError(res.status, `Pexels HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+function normalizePexelsVideo(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const files = Array.isArray(raw.video_files) ? raw.video_files : [];
+  // Prefer an HD mp4 file; fall back to any mp4 link.
+  const file = files.find((f) => f && f.link && /\.mp4/i.test(f.link) && f.quality === 'hd')
+    || files.find((f) => f && f.link && /\.mp4/i.test(f.link))
+    || files.find((f) => f && f.link);
+  return {
+    id: String(raw.id || ''),
+    type: 'video',
+    title: String((raw.user && raw.user.name ? `${raw.user.name} — ` : '') + (raw.url ? 'Pexels video' : 'Pexels video')).slice(0, 200),
+    creator: raw.user ? String(raw.user.name || '').slice(0, 120) : null,
+    creatorUrl: raw.user ? (raw.user.url || null) : null,
+    license: 'Pexels License',
+    licenseUrl: 'https://www.pexels.com/license/',
+    attribution: raw.user ? `Video by ${raw.user.name} on Pexels` : 'Video from Pexels',
+    url: file ? file.link : null,
+    landingUrl: raw.url || null,
+    thumbnail: (raw.image || raw.video_pictures && raw.video_pictures[0] && raw.video_pictures[0].picture) || null,
+    thumbUrl: (raw.image || (raw.video_pictures && raw.video_pictures[0] && raw.video_pictures[0].picture)) || null,
+    width: Number.isFinite(Number(raw.width)) ? Number(raw.width) : null,
+    height: Number.isFinite(Number(raw.height)) ? Number(raw.height) : null,
+    durationSeconds: Number.isFinite(Number(raw.duration)) ? Number(raw.duration) : null,
+    provider: 'Pexels',
+    source: 'pexels',
+  };
+}
+
+async function searchPexelsVideos({ q, page = 1, perPage = 15 } = {}) {
+  const query = String(q || '').trim();
+  if (!query) throw new Error('A search term is required.');
+  if (query.length > 200) throw new Error('Search term is too long (max 200 characters).');
+  const p = Math.max(1, Math.min(500, parseInt(page, 10) || 1));
+  const pp = Math.max(1, Math.min(80, parseInt(perPage, 10) || 15));
+  const params = new URLSearchParams({ query, page: String(p), per_page: String(pp) });
+  const json = await pexelsFetch(`/videos/search?${params.toString()}`);
+  const results = Array.isArray(json.videos) ? json.videos.map(normalizePexelsVideo).filter((v) => v && v.url) : [];
+  return {
+    type: 'video', query, page: p, pageSize: pp,
+    resultCount: Number(json.total_results) || results.length,
+    total: Number(json.total_results) || results.length,
+    pageCount: Math.max(1, Math.ceil((Number(json.total_results) || results.length) / pp)),
+    results,
+    note: 'Pexels video search (free Pexels API key required — add it in AI Studio → Stock Video (Pexels)). Videos are free to use under the Pexels License.',
+  };
+}
+
+async function getPexelsVideo(id) {
+  const cleanId = String(id || '').trim();
+  if (!cleanId || cleanId.length > 50) throw new Error('A valid Pexels video id is required.');
+  const json = await pexelsFetch(`/videos/videos/${encodeURIComponent(cleanId)}`);
+  const item = normalizePexelsVideo(json);
+  if (!item || !item.url) throw openverseError(404, 'Pexels video has no downloadable file');
+  return item;
+}
+
+async function savePexelsVideoToLibrary(userId, id) {
+  const item = await getPexelsVideo(id);
+  const dir = path.join(config.uploadsDir, String(userId));
+  fs.mkdirSync(dir, { recursive: true });
+  const storedName = `stock-video-pexels-${item.id}.mp4`;
+  const existing = db.listMedia(userId, { tag: 'pexels' }).find((m) => m.stored_name === storedName);
+  if (existing) return { media: existing, item, duplicate: true, attribution: existing.license_note || item.attribution };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), DOWNLOAD_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(item.url, { headers: { 'User-Agent': 'CreativeStudio-AI-Pro/2.5.0 (stock-video)' }, signal: ctrl.signal });
+  } catch (e) {
+    throw openverseError(0, e.name === 'AbortError' ? 'Pexels download timed out' : (e.message || e));
+  } finally { clearTimeout(timer); }
+  if (!res.ok) throw openverseError(res.status, `Pexels download failed with HTTP ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const maxBytes = config.maxUploadMB * 1024 * 1024;
+  if (buf.length > maxBytes) throw new Error(`Stock video is larger than the ${config.maxUploadMB} MB upload limit — not saved.`);
+  if (buf.length < 10) throw new Error('Pexels returned an empty file — nothing was saved.');
+  const filePath = path.join(dir, storedName);
+  fs.writeFileSync(filePath, buf);
+  let probe = null;
+  try { probe = await probeMedia(filePath); } catch { probe = null; }
+  const media = db.createMedia(userId, {
+    originalName: `pexels-video-${item.id}.mp4`, storedName,
+    mimeType: 'video/mp4', kind: 'video',
+    sizeBytes: buf.length,
+    width: probe && probe.width ? probe.width : item.width,
+    height: probe && probe.height ? probe.height : item.height,
+    durationSeconds: probe && probe.durationSeconds ? probe.durationSeconds : item.durationSeconds,
+    tags: 'stock,pexels',
+  });
+  if (item.attribution) db.updateMedia(userId, media.id, { licenseNote: item.attribution });
+  const saved = db.getMedia(userId, media.id);
+  db.audit(userId, 'stock_save', 'media', saved.id, `Saved stock video "${item.title}" from Pexels`);
+  return { media: saved, item, duplicate: false, attribution: item.attribution };
+}
