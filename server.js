@@ -53,7 +53,7 @@ app.use('/api', require('./src/routes/system'));
 
 // Health check (no auth) — used by tests and the dashboard status.
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, version: '2.3.0', phase: 9, db: 'ok' });
+  res.json({ ok: true, version: '2.3.1', phase: 9, db: 'ok' });
 });
 
 // Public published websites (no auth) — /sites/:slug/...
@@ -67,7 +67,13 @@ app.use((req, res) => {
 });
 
 // Error handler — always JSON, never a stack leak to the client.
+// C-20: a malformed JSON body is a client error (400), not a server
+// error — body-parser raises SyntaxError with status 400, which the old
+// handler flattened into a 500.
 app.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.parse.failed' || (err instanceof SyntaxError && err.status === 400))) {
+    return res.status(400).json({ error: 'Request body is not valid JSON. Check for a missing comma, quote or bracket and try again.' });
+  }
   console.error(err);
   res.status(500).json({ error: 'Server error. Please try again.' });
 });
@@ -83,7 +89,7 @@ if (require.main === module) {
   // auto-apply is off, applies when it is on).
   require('./src/routes/updates').startUpdateChecker();
   app.listen(config.port, config.host, () => {
-    console.log(`CreativeStudio AI Pro (v2.3.0 — CapCut Design Pass) running at http://${config.host}:${config.port}`);
+    console.log(`CreativeStudio AI Pro (v2.3.1 — Fix Round: audit gaps C-01–C-27) running at http://${config.host}:${config.port}`);
     console.log(`DB: ${config.dbPath}`);
     console.log(`Uploads: ${config.uploadsDir}`);
   });
