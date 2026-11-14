@@ -356,7 +356,7 @@ function renderAuth() {
   root.innerHTML = `
   <div class="auth-wrap"><div class="auth-card">
     <div class="logo"><div class="logo-mark">C</div><div class="logo-name">Creative<span>Studio</span> AI Pro</div></div>
-    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.5.0 — CapCut Parity Round</p>
+    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.6.0 — Desktop App</p>
     <div class="auth-toggle">
       <button id="tab-login" class="active">Log in</button>
       <button id="tab-signup">Sign up</button>
