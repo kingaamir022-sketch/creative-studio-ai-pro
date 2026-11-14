@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  type TEXT NOT NULL DEFAULT 'design' CHECK (type IN ('design','video','bulk','shorts','social')),
+  type TEXT NOT NULL DEFAULT 'design' CHECK (type IN ('design','video','bulk','shorts','social','deck','doc')),
   folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
   content TEXT NOT NULL DEFAULT '{}',
   thumbnail TEXT,
@@ -333,6 +333,18 @@ CREATE TABLE IF NOT EXISTS oauth_configs (
   redirect_uri TEXT,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS websites (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  project_id INTEGER,
+  slug TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  dir TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_websites_user ON websites(user_id);
 CREATE INDEX IF NOT EXISTS idx_social_posts_user ON social_posts(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_social_posts_due ON social_posts(status, scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_social_conn_user ON social_connections(user_id);
@@ -347,6 +359,36 @@ CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, trashed);
 CREATE INDEX IF NOT EXISTS idx_media_user ON media(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id);
 `);
+
+// v2.2.3 — Docs & Slides: projects gained the 'deck' and 'doc' types.
+// SQLite cannot ALTER a CHECK constraint, so an existing projects table is
+// rebuilt (rename → create → copy → drop). Idempotent: skipped when the
+// stored CREATE TABLE already mentions 'deck'. Runs on every boot.
+(function migrateProjectTypes() {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='projects'").get();
+  if (!row || !row.sql || row.sql.includes("'deck'")) return;
+  db.exec(`PRAGMA foreign_keys=OFF;
+    BEGIN TRANSACTION;
+    ALTER TABLE projects RENAME TO projects_old_v223;
+    CREATE TABLE projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'design' CHECK (type IN ('design','video','bulk','shorts','social','deck','doc')),
+      folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+      content TEXT NOT NULL DEFAULT '{}',
+      thumbnail TEXT,
+      trashed INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT INTO projects (id, user_id, name, type, folder_id, content, thumbnail, trashed, created_at, updated_at)
+      SELECT id, user_id, name, type, folder_id, content, thumbnail, trashed, created_at, updated_at FROM projects_old_v223;
+    DROP TABLE projects_old_v223;
+    COMMIT;
+    PRAGMA foreign_keys=ON;`);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, trashed)');
+})();
 
 // Phase 3 columns (added idempotently so existing installs migrate on boot).
 function ensureColumn(table, column, ddl) {
@@ -954,6 +996,25 @@ function updateShortsJob(id, fields) {
 function deleteShortsJob(userId, id) {
   return db.prepare('DELETE FROM shorts_jobs WHERE id = ? AND user_id = ?').run(id, userId).changes > 0;
 }
+
+// --- Websites (v2.2.3) ---------------------------------------------------------
+function createWebsite(userId, { projectId, slug, kind, title, dir }) {
+  const info = db.prepare(`INSERT INTO websites (user_id, project_id, slug, kind, title, dir)
+    VALUES (?,?,?,?,?,?)`).run(userId, projectId || null, slug, kind, title, dir);
+  return db.prepare('SELECT * FROM websites WHERE id = ?').get(info.lastInsertRowid);
+}
+function getWebsite(userId, slug) {
+  return db.prepare('SELECT * FROM websites WHERE slug = ? AND user_id = ?').get(slug, userId);
+}
+function getWebsiteBySlug(slug) {
+  return db.prepare('SELECT * FROM websites WHERE slug = ?').get(slug);
+}
+function listWebsites(userId) {
+  return db.prepare('SELECT * FROM websites WHERE user_id = ? ORDER BY created_at DESC').all(userId);
+}
+function deleteWebsite(userId, slug) {
+  return db.prepare('DELETE FROM websites WHERE slug = ? AND user_id = ?').run(slug, userId).changes > 0;
+}
 function createShortsClips(jobId, clips) {
   const insert = db.prepare(`INSERT INTO shorts_clips
     (job_id, start_s, end_s, score, breakdown, motion_x) VALUES (?,?,?,?,?,?)`);
@@ -1287,6 +1348,7 @@ module.exports = {
   updateVoiceProfile, deleteVoiceProfile, setDefaultVoiceProfile, getDefaultVoiceProfile,
   createShortsJob, getShortsJob, getShortsJobAny, listShortsJobs, updateShortsJob,
   deleteShortsJob, createShortsClips, replaceShortsClips, listShortsClips,
+  createWebsite, getWebsite, getWebsiteBySlug, listWebsites, deleteWebsite,
   getShortsClip, getShortsClipAny, updateShortsClip,
   createSocialConnection, getSocialConnection, listSocialConnections,
   updateSocialConnection, deleteSocialConnection, publicSocialConnection,

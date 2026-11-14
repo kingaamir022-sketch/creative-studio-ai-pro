@@ -584,6 +584,15 @@ async function processJob(job) {
       bulkFinished('done', { outputPath: res.outPath, warnings: res.warnings });
       return;
     }
+    // v2.2.3: deck slideshows render each slide to a still, then a video.
+    if (payload.deck) {
+      const res = await require('./docs-slides').processDeckJob(job, payload, { dir, logPath });
+      db.updateJob(job.id, { status: 'done', progress: 100 });
+      credits.chargeCredits(userId, 'render', `Rendered deck video ${res.width}x${res.height}, ${res.duration}s`);
+      db.audit(userId, 'render_done', 'job', job.id, `Rendered deck video ${res.width}x${res.height}, ${res.duration}s`);
+      bulkFinished('done', { outputPath: res.outPath, warnings: res.warnings });
+      return;
+    }
     if (!timeline) throw new Error('Job has no timeline snapshot.');
     // Resolve media files (ownership-checked: only this user's media).
     const mediaIds = new Set();

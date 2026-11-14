@@ -28,7 +28,7 @@ const credits = require('./credits');
 const { probeMedia, run } = require('./ffmpeg');
 const { normaliseCues } = require('./captions');
 
-const AI_MODES = ['image', 'image-edit', 'video', 'video-image', 'voice', 'quiz', 'design', 'transcribe', 'music-mood', 'music-generate', 'write'];
+const AI_MODES = ['image', 'image-edit', 'video', 'video-image', 'voice', 'quiz', 'design', 'transcribe', 'music-mood', 'music-generate', 'write', 'deck'];
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -428,6 +428,102 @@ async function generateWriting(userId, { prompt, task = 'post', tone = '', lengt
   return { text, alternatives, task: t };
 }
 
+// --- AI Presentations (v2.2.3) -------------------------------------------------
+// The LLM writes a slide outline; the deck is built from the app's own slide
+// templates (never a flattened image), then auto-fitted: every text layer is
+// checked with the project's fitText and shrunk to fit, or shortened with
+// the suggested text. Anything that still does not fit is reported honestly
+// in result.needsAttention — never rendered broken. Without an LLM key the
+// job fails key_needed (chatJson refuses) and creates no project.
+async function generateDeck(userId, { topic, slideCount = 6, style = 'professional', audience = '' } = {}, signal) {
+  const clean = String(topic || '').trim();
+  if (!clean) throw new Error('A topic is required for AI deck generation.');
+  const count = Math.max(2, Math.min(20, parseInt(slideCount, 10) || 6));
+  const ds = require('./docs-slides');
+  const out = await chatJson(userId, {
+    system: 'You are a professional presentation designer. Reply with valid JSON only, no other text.',
+    user: `Create a ${count}-slide presentation outline about: "${clean}". Style: ${String(style).slice(0, 40)}. Audience: ${String(audience).slice(0, 120) || 'general'}. Reply as a JSON object {"title":"deck title, max 10 words","slides":[{"layout":"title","heading":"slide title","bullets":[],"notes":"speaker notes, 1-2 sentences"},{"layout":"text","heading":"slide title","bullets":["up to 5 short bullet points, each max 12 words"],"notes":"..."}]}. Rules: first slide layout "title", the rest "text" (use "quiz" for at most one slide with "question", "options" (4 strings) and "correctIndex" 0-3, or "chart" for at most one slide with "chart":{"type":"bar","labels":[...],"datasets":[{"label":"...","values":[...]}]}). Every heading max 10 words, every bullet max 12 words, no placeholders.`,
+  }, signal);
+  const title = String(out.title || clean).trim().slice(0, 100) || clean;
+  const outlines = Array.isArray(out.slides) ? out.slides.slice(0, count) : [];
+  if (!outlines.length) throw new Error('The LLM provider returned no slide outline.');
+  const deck = ds.blankDeck({ title });
+  deck.slides = [];
+  outlines.forEach((o, i) => {
+    const layout = ['title', 'text', 'text-image', 'chart', 'quiz'].includes(o.layout) ? o.layout : 'text';
+    const slide = ds.blankSlide(layout, { width: deck.width, height: deck.height });
+    slide.notes = String(o.notes || '').slice(0, 500);
+    const byRole = (role) => slide.elements.find((e) => e.type === 'text' && e.role === role);
+    const byName = (name) => slide.elements.find((e) => e.name === name);
+    const heading = String(o.heading || '').trim().slice(0, 120);
+    if (layout === 'title') {
+      const t = byRole('title'); if (t && heading) t.text.text = heading;
+      const sub = byRole('subtitle'); if (sub) sub.text.text = String(o.bullets && o.bullets[0] ? o.bullets[0] : clean).slice(0, 120);
+    } else if (layout === 'text') {
+      const t = byRole('title'); if (t && heading) t.text.text = heading;
+      const body = byRole('body');
+      if (body) {
+        const bullets = Array.isArray(o.bullets) ? o.bullets.slice(0, 5).map((b) => String(b).slice(0, 140)) : [];
+        body.text.text = bullets.length ? bullets.map((b) => `•  ${b}`).join('\n') : '';
+      }
+    } else if (layout === 'quiz') {
+      const q = byRole('question'); if (q && o.question) q.text.text = String(o.question).slice(0, 160);
+      const options = Array.isArray(o.options) ? o.options.slice(0, 4).map((x) => String(x).slice(0, 90)) : [];
+      const correct = Number.isInteger(o.correctIndex) ? o.correctIndex : 0;
+      slide.elements.forEach((e) => {
+        if (e.type === 'text' && e.role === 'option') {
+          const idx = ['Option A', 'Option B', 'Option C', 'Option D'].indexOf(e.name);
+          if (idx >= 0 && options[idx]) e.text.text = `${String.fromCharCode(65 + idx)}. ${options[idx]}`;
+        }
+        if (e.type === 'shape' && e.name && e.name.startsWith('Option ')) {
+          const idx = ['Option A box', 'Option B box', 'Option C box', 'Option D box'].indexOf(e.name);
+          e.shape.fill = idx === correct ? '#16a34a' : '#24304f';
+        }
+      });
+    } else if (layout === 'chart') {
+      const t = byRole('title'); if (t && heading) t.text.text = heading;
+      const chartEl = slide.elements.find((e) => e.type === 'chart');
+      if (chartEl && o.chart && typeof o.chart === 'object') {
+        const { validateChart } = require('./chart');
+        const cand = {
+          type: ['bar', 'line', 'pie', 'doughnut'].includes(o.chart.type) ? o.chart.type : 'bar',
+          title: '',
+          labels: Array.isArray(o.chart.labels) ? o.chart.labels.slice(0, 12).map((l) => String(l).slice(0, 30)) : [],
+          datasets: Array.isArray(o.chart.datasets) ? o.chart.datasets.slice(0, 3).map((d, di) => ({
+            label: String(d.label || `Series ${di + 1}`).slice(0, 40),
+            values: Array.isArray(d.values) ? d.values.slice(0, 12).map((v) => Number(v) || 0) : [],
+          })) : [],
+        };
+        if (validateChart(cand).ok) chartEl.chart = cand;
+      }
+    }
+    deck.slides.push(slide);
+  });
+  // Auto-fit: shrink any overflowing text to its fitted size, or shorten it
+  // with the suggested text. What still does not fit is reported, not hidden.
+  let needsAttention = [];
+  for (let pass = 0; pass < 2; pass++) {
+    const check = ds.deckFitCheck(deck);
+    if (!check.ok) throw new Error('Generated deck is invalid: ' + check.errors.join(' '));
+    needsAttention = check.needsAttention;
+    if (!needsAttention.length) break;
+    for (const n of needsAttention) {
+      for (const s of deck.slides) {
+        const el = (s.elements || []).find((e) => e.id === n.layerId);
+        if (!el || el.type !== 'text') continue;
+        if (n.fittedFont && n.fittedFont >= 12) el.text.fontSize = n.fittedFont;
+        else if (n.suggestedText) el.text.text = n.suggestedText;
+      }
+    }
+  }
+  const finalCheck = ds.deckFitCheck(deck);
+  if (!finalCheck.ok) throw new Error('Generated deck is invalid: ' + finalCheck.errors.join(' '));
+  const applied = ds.applyDeckUniformFonts(deck);
+  const project = db.createProject(userId, { name: `${title} (AI deck)`, type: 'deck', content: applied.deck });
+  credits.chargeCredits(userId, 'ai_deck', `AI deck: "${clean.slice(0, 80)}" → project ${project.id} (${applied.deck.slides.length} slides)`);
+  return { deck: applied.deck, project: { id: project.id, name: project.name, type: project.type }, needsAttention: finalCheck.needsAttention };
+}
+
 // --- Speech-to-text (Whisper) -------------------------------------------------
 async function transcribeAudio(userId, mediaId, { language } = {}, signal) {
   const media = db.getMedia(userId, mediaId);
@@ -685,6 +781,11 @@ async function runAiJob(jobRow) {
         result = { text: w.text, alternatives: w.alternatives, task: w.task };
         break;
       }
+      case 'deck': {
+        const d = await generateDeck(userId, params, ctrl.signal);
+        result = { deck: d.deck, projectId: d.project.id, projectName: d.project.name, slideCount: d.deck.slides.length, needsAttention: d.needsAttention };
+        break;
+      }
       default:
         throw new Error(`Unknown AI mode: ${job.mode}`);
     }
@@ -746,7 +847,7 @@ module.exports = {
   AI_MODES,
   generateImage, generateAiBackground, generateVideo, chatJson,
   generateQuizQuestions, designAssist, buildDesignFromSuggestions,
-  generateWriting, WRITE_TASKS,
+  generateWriting, WRITE_TASKS, generateDeck,
   transcribeAudio, musicMood, generateMusic, synthesizeVoice,
   saveGeneratedBuffer, publicAiJob, createAiJobEntry, runAiJob,
   startAiQueue, cancelAiJob, retryAiJob, pumpAiQueue,

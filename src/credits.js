@@ -25,6 +25,7 @@ const CREDIT_COSTS = {
   ai_music_mood: 1,
   ai_music: 5,
   ai_write: 1,
+  ai_deck: 2,
   magic_bg_remove: 1,
   magic_grab: 1,
   magic_erase: 2,
@@ -49,6 +50,7 @@ const AI_MODE_COSTS = {
   'music-mood': 'ai_music_mood',
   'music-generate': 'ai_music',
   write: 'ai_write',
+  deck: 'ai_deck',
 };
 
 function costOf(action) {

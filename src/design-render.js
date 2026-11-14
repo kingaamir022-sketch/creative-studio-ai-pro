@@ -162,7 +162,10 @@ async function renderDesign({ design, mediaById, outPath }) {
       if (num(f.sepia)) parts.push('colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131');
       if (opacity < 1) parts.push(`format=rgba,colorchannelmixer=aa=${fmt(opacity)},format=${pixFmt}`);
       parts.push(`format=${pixFmt}[${imgLabel}]`);
-      filterParts.push(parts.join(','));
+      // parts[0] is the input link "[n:v]" — it joins to the first filter
+      // with NO comma (a comma after a link is an empty filter and FFmpeg
+      // refuses it with "No such filter: ''").
+      filterParts.push(parts[0] + parts.slice(1).join(','));
       const ovOut = `l${layerIdx++}`;
       filterParts.push(`[${cur}][${imgLabel}]overlay=x=${x}:y=${y}[${ovOut}]`);
       cur = ovOut;
