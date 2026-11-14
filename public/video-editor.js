@@ -7,6 +7,15 @@ window.VideoEditor = (function () {
   let ed = null;
   let keyHandler = null;
 
+  // v2.4.0 — aspect list mirrors src/video-model.js ASPECTS exactly (the
+  // editor is a static file; the /api/video/effects list is the same set).
+  const ASPECTS = [
+    { id: '16:9', name: 'Landscape 16:9', width: 1280, height: 720 },
+    { id: '9:16', name: 'Vertical 9:16', width: 720, height: 1280 },
+    { id: '1:1', name: 'Square 1:1', width: 720, height: 720 },
+    { id: '4:5', name: 'Portrait 4:5', width: 720, height: 900 },
+  ];
+
   function uid(p) { return `${p || 'clip'}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`; }
   function deep(o) { return JSON.parse(JSON.stringify(o)); }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -159,6 +168,25 @@ window.VideoEditor = (function () {
         audioEl.volume = ac.clip.volume;
         if (ed.playing) audioEl.play().catch(() => {}); else audioEl.pause();
       } else audioEl.pause();
+    }
+    // Sticker preview: an overlay-track image clip (sticker) renders as a
+    // picture-in-picture still — same 30% width and keyframe position as
+    // the FFmpeg render (default bottom-right 70/70).
+    const stImg = document.getElementById('ve-stickerov');
+    if (stImg) {
+      const ovTrack = tl.tracks.filter((x) => x.kind === 'video')[1] || null;
+      const stClip = ovTrack ? ovTrack.clips.find((x) => t >= x.start && t < x.start + x.duration) : null;
+      if (stClip && stClip.sticker) {
+        const stageW = stage.clientWidth || 640;
+        const stageH = stage.clientHeight || Math.round(stageW * tl.height / tl.width);
+        const w = Math.max(40, Math.round(stageW * 0.3 * (stClip.zoom || 1)));
+        const pos = stClip.keyframes && stClip.keyframes.length ? sampleKeyframe(stClip, 0) : { x: 70, y: 70 };
+        if (stImg.dataset.media !== String(stClip.mediaId)) { stImg.dataset.media = String(stClip.mediaId); stImg.src = `/api/media/${stClip.mediaId}/file`; }
+        stImg.style.display = 'block';
+        stImg.style.width = `${w}px`;
+        stImg.style.left = `${Math.round((stageW - w) * (pos.x / 100))}px`;
+        stImg.style.top = `${Math.round((stageH - Math.round(w * tl.height / tl.width)) * (pos.y / 100))}px`;
+      } else { stImg.style.display = 'none'; stImg.dataset.media = ''; }
     }
     // Text overlays.
     const ov = document.getElementById('ve-textov');
@@ -658,6 +686,8 @@ window.VideoEditor = (function () {
       <select id="ex-res"><option value="720p">720p HD</option><option value="1080p">1080p Full HD</option></select>
       <label>Frame rate</label>
       <select id="ex-fps"><option value="24">24 fps</option><option value="30" selected>30 fps</option><option value="60">60 fps</option></select>
+      <label>Format</label>
+      <select id="ex-format"><option value="mp4">MP4 — plays everywhere</option><option value="mov">MOV — same quality, QuickTime container</option></select>
       <p class="sub" style="margin-top:8px">Output: ${ed.timeline.width}×${ed.timeline.height} aspect · ${fmtT(totalDuration(ed.timeline))} long (transitions shorten it) · ${ed.timeline.fps}fps timeline</p>
       <div style="margin:12px 0"><button class="btn btn-primary" id="ex-render" style="width:100%;justify-content:center">▶ Render video</button></div>
       <div class="error" id="ex-error"></div>
@@ -674,6 +704,7 @@ window.VideoEditor = (function () {
             settings: {
               resolution: document.getElementById('ex-res').value,
               fps: parseInt(document.getElementById('ex-fps').value, 10),
+              format: document.getElementById('ex-format').value,
             },
           }),
         });
@@ -695,7 +726,7 @@ window.VideoEditor = (function () {
     return `<div class="ve-job">
       <div><b>Job #${job.id}</b> <span class="badge ${badge}">${job.status}</span> <span style="float:right">${job.progress}%</span></div>
       <div class="ve-progress"><div style="width:${job.progress}%"></div></div>
-      <div class="sub">${esc(job.settings.resolution || '')} · ${esc(String(job.settings.fps || ''))}fps</div>
+      <div class="sub">${esc(job.settings.resolution || '')} · ${esc(String(job.settings.fps || ''))}fps${job.settings.format ? ` · ${esc(job.settings.format.toUpperCase())}` : ''}</div>
       ${job.error ? `<div class="error" style="display:block">${esc(job.error)}</div>` : ''}
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
         ${job.status === 'done' && job.hasOutput ? `<a class="btn btn-sm btn-primary" href="/api/video/jobs/${job.id}/download">⬇ Download MP4</a>` : ''}
@@ -821,15 +852,27 @@ window.VideoEditor = (function () {
       let presets = { presets: [] };
       try { presets = await api('/api/magic/animate/presets'); } catch { /* ignore */ }
       const clipPresets = (presets.presets || []).filter((p) => (p.appliesTo || []).includes('clip'));
-      body = `<p class="sub">Motion effects for clips. Text clips also get fade/slide in &amp; out — set those per text clip in the right panel (Clip tab).</p>
+      body = `<p class="sub">Motion animations for one clip — click one to apply it to the selected clip (it expands into real keyframes). These are <b>not</b> transitions: a transition joins two clips and lives in the Transitions tab.</p>
         ${clipPresets.length ? clipPresets.map((p) => `
-          <div class="ve-media-item"><div><div class="nm">${esc(p.name)}</div>
+          <div class="ve-media-item" data-apply-preset="${esc(p.id)}" style="cursor:pointer"><div><div class="nm">${esc(p.name)}</div>
           <div class="mt">${esc(p.description || '')} · ${p.durationMs}ms${p.loop ? ' · loops' : ''}</div></div></div>`).join('')
         : '<p class="sub">No clip presets available.</p>'}
-        <p class="sub" style="margin-top:10px">Clip presets expand into real keyframes. Apply them from the Animation Studio, or add keyframes by hand in the right panel (Keyframes tab).</p>
+        <p class="sub" style="margin-top:10px">No clip selected? Select one on the timeline first — the effect lands on it. Or add keyframes by hand in the right panel (Keyframes tab).</p>
         <button class="btn btn-sm" id="ve-effects-open" style="margin-top:6px">Open Animation Studio →</button>`;
       host.innerHTML = body;
       document.getElementById('ve-effects-open').addEventListener('click', () => go('animation'));
+      host.querySelectorAll('[data-apply-preset]').forEach((el) => el.addEventListener('click', async () => {
+        const found = ed.selectedClipId ? findClip(ed.timeline, ed.selectedClipId) : null;
+        if (!found) { toast('Select a clip on the timeline first, then apply an effect.', true); return; }
+        const preset = clipPresets.find((p) => p.id === el.dataset.applyPreset);
+        try {
+          const r = await api('/api/magic/animate', { method: 'POST', body: JSON.stringify({ clip: found.clip, presetId: el.dataset.applyPreset }) });
+          pushHistory();
+          Object.assign(found.clip, r.clip);
+          saveSoon(); renderAll();
+          toast(`Applied "${preset ? preset.name : el.dataset.applyPreset}" — ${(r.keyframes || []).length} keyframes.`);
+        } catch (e) { toast(e.message, true); }
+      }));
     } else if (tab === 'captions') {
       const textClips = [];
       for (const tr of ed.timeline.tracks.filter((t) => t.kind === 'text')) {
@@ -861,12 +904,36 @@ window.VideoEditor = (function () {
         ${(fx.filters || []).map((f) => `<div class="ve-media-item"><div><div class="nm">${esc(f.name)}</div><div class="mt">${f.min} to ${f.max}</div></div></div>`).join('') || '<p class="sub">No filters available.</p>'}`;
       host.innerHTML = body;
     } else if (tab === 'stickers') {
-      body = `<div class="empty" style="margin-top:8px"><div class="big">🖼️</div>
-        <p><b>Stickers are not in this editor yet.</b></p>
-        <p style="margin-top:6px">Image overlays on video (stickers) are not built — the timeline takes video, audio and text clips. Add images, shapes and stickers to designs in the Graphic Editor instead.</p>
-        <button class="btn btn-primary" id="ve-stickers-editor" style="margin-top:12px">Open Graphic Editor →</button></div>`;
+      let images = { media: [] };
+      try { images = await api('/api/media?kind=image'); } catch { /* ignore */ }
+      const items = images.media;
+      body = `<p class="sub">Stickers are images placed on the timeline as a picture-in-picture overlay (bottom-right, 3s) — move them with keyframes in the right panel. Transparent PNGs work best; they render as a looped still in the export.</p>
+        <button class="btn btn-sm" id="ve-upload-sticker" style="margin-bottom:10px">⬆ Upload sticker image</button>
+        <input type="file" id="ve-sticker-file" accept="image/*" style="display:none">
+        ${items.length ? items.map((m) => `
+          <div class="ve-media-item" data-add-sticker="${m.id}">
+            ${m.thumbnailUrl ? `<img src="${m.thumbnailUrl}" alt="">` : `<span style="font-size:22px">🖼️</span>`}
+            <div><div class="nm">${esc(m.originalName)}</div>
+            <div class="mt">image${m.width ? ` · ${m.width}×${m.height}` : ''}</div></div>
+          </div>`).join('') : '<p class="sub">No images in your library yet. Upload a PNG sticker first.</p>'}`;
       host.innerHTML = body;
-      document.getElementById('ve-stickers-editor').addEventListener('click', () => go('graphic-editor'));
+      const sfi = document.getElementById('ve-sticker-file');
+      document.getElementById('ve-upload-sticker').addEventListener('click', () => sfi.click());
+      sfi.addEventListener('change', async () => {
+        if (!sfi.files.length) return;
+        const fd = new FormData();
+        fd.append('file', sfi.files[0]);
+        try {
+          await apiForm('/api/media/upload', fd);
+          toast('Uploaded.');
+          renderLeftPanel();
+        } catch (e) { toast(e.message, true); }
+      });
+      host.querySelectorAll('[data-add-sticker]').forEach((el) => el.addEventListener('click', () => {
+        const m = images.media.find((x) => String(x.id) === el.dataset.addSticker);
+        if (!m) return;
+        addSticker(m);
+      }));
     } else if (tab === 'text') {
       body = `<p class="sub">Add a text overlay at the playhead, then style it in the right panel (font, colour, position, fade/slide animation).</p>
         <button class="btn btn-primary" id="ve-add-text" style="width:100%;justify-content:center">＋ Add text clip (3s)</button>
@@ -888,6 +955,35 @@ window.VideoEditor = (function () {
         <p class="sub" style="margin-top:10px">Not in Phase 3: chroma key, stabilization, proxy editing — see Effects &amp; Transitions for the honest list.</p>`;
       host.innerHTML = body;
     }
+  }
+
+  // v2.4.0 — stickers: an image placed on the overlay (PiP) video track.
+  // The renderer draws it as a looped still at 30% width, bottom-right by
+  // default; keyframes move it. Creates the overlay track when missing.
+  function addSticker(m) {
+    const tl = ed.timeline;
+    const videoTracks = tl.tracks.filter((t) => t.kind === 'video');
+    let overlay = videoTracks[1] || null;
+    if (!overlay) {
+      if (videoTracks.length >= 2) { toast('Phase 3 supports at most 2 video tracks (main + one overlay/PiP).', true); return; }
+      pushHistory();
+      overlay = { id: uid('track'), kind: 'video', name: 'Overlay (PiP)', locked: false, muted: false, clips: [] };
+      tl.tracks.splice(1, 0, overlay);
+    }
+    if (overlay.locked) { toast('The overlay track is locked.', true); return; }
+    let start = ed.playhead;
+    const sorted = [...overlay.clips].sort((a, b) => a.start - b.start);
+    for (const c of sorted) {
+      if (start < c.start + c.duration && start + 3 > c.start) start = c.start + c.duration;
+    }
+    pushHistory();
+    const clip = defaultClip('video', m.id, start, 3);
+    clip.name = `Sticker: ${m.originalName}`;
+    clip.sticker = true;
+    overlay.clips.push(clip);
+    ed.selectedClipId = clip.id;
+    toast(`Sticker "${m.originalName}" placed at ${fmtT(start)} (bottom-right PiP).`);
+    saveSoon(); renderAll();
   }
 
   function addMediaClip(m) {
@@ -1015,7 +1111,8 @@ window.VideoEditor = (function () {
       <div class="ve-toolbar card" style="padding:10px 14px">
         <button class="btn" id="ve-back">← Projects</button>
         <b>${esc(project.name)}</b>
-        <span class="badge info">${ed.timeline.width}×${ed.timeline.height} @ ${ed.timeline.fps}fps</span>
+        <span class="badge info" id="ve-dims">${ed.timeline.width}×${ed.timeline.height} @ ${ed.timeline.fps}fps</span>
+        <label class="ve-ratio" title="Change the timeline aspect ratio (clip timing is unchanged; text positions are percentages)">Ratio <select id="ve-ratio">${['16:9', '9:16', '1:1', '4:5'].map((a) => `<option value="${a}" ${(ASPECTS.find((x) => x.width === ed.timeline.width && x.height === ed.timeline.height) || ASPECTS[0]).id === a ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
         <span class="badge" id="ve-save-state">Saved</span>
         ${timeline.musicSync ? `<span class="badge info" title="Synced to ${esc(timeline.musicSync.trackName || '')}">♪ ${timeline.musicSync.bpm} BPM · ${timeline.musicSync.beats.length} beats</span>` : ''}
         <span class="spacer"></span>
@@ -1042,6 +1139,7 @@ window.VideoEditor = (function () {
           <div class="ve-stage" id="ve-stage" style="aspect-ratio:${ed.timeline.width}/${ed.timeline.height};width:100%;max-width:760px;max-height:430px">
             <video id="ve-va" playsinline preload="auto" style="display:none"></video>
             <video id="ve-vb" playsinline preload="auto" style="display:none"></video>
+            <img id="ve-stickerov" alt="" style="position:absolute;display:none;pointer-events:none">
             <div id="ve-textov" style="position:absolute;inset:0;pointer-events:none"></div>
             <div class="ve-noclip" id="ve-noclip">No video clip under the playhead — add media from the left panel.</div>
             <audio id="ve-audio" preload="auto" style="display:none"></audio>
@@ -1088,6 +1186,16 @@ window.VideoEditor = (function () {
     document.getElementById('ve-redo').addEventListener('click', doRedo);
     document.getElementById('ve-save-ver').addEventListener('click', async () => { await saveTimeline(true); toast('Version saved.'); });
     document.getElementById('ve-goto-export').addEventListener('click', () => { ed.propsTab = 'export'; document.querySelectorAll('[data-ptab]').forEach((b) => b.classList.toggle('active', b.dataset.ptab === 'export')); renderProps(); });
+    document.getElementById('ve-ratio').addEventListener('change', (e) => {
+      const a = ASPECTS.find((x) => x.id === e.target.value) || ASPECTS[0];
+      pushHistory();
+      ed.timeline.width = a.width; ed.timeline.height = a.height;
+      document.getElementById('ve-dims').textContent = `${a.width}×${a.height} @ ${ed.timeline.fps}fps`;
+      const stage = document.getElementById('ve-stage');
+      if (stage) stage.style.aspectRatio = `${a.width}/${a.height}`;
+      saveSoon(); renderAll();
+      toast(`Aspect ratio changed to ${a.id} (${a.width}×${a.height}). Clip timing is unchanged; text positions are percentages.`);
+    });
     document.getElementById('ve-play').addEventListener('click', () => setPlaying(!ed.playing));
     document.getElementById('ve-prev-frame').addEventListener('click', () => { setPlaying(false); ed.playhead = Math.max(0, ed.playhead - 1 / ed.timeline.fps); updatePreview(); });
     document.getElementById('ve-next-frame').addEventListener('click', () => { setPlaying(false); ed.playhead = Math.min(totalDuration(ed.timeline), ed.playhead + 1 / ed.timeline.fps); updatePreview(); });
@@ -1135,6 +1243,26 @@ window.VideoEditor = (function () {
       container.querySelectorAll('[data-ltab]').forEach((x) => x.classList.toggle('active', x === b));
       renderLeftPanel();
     }));
+    // v2.4.0 — drag-drop import: drop video/audio files on the left panel.
+    const leftHost = document.getElementById('ve-left');
+    leftHost.addEventListener('dragover', (e) => {
+      if (!ed || (ed.leftTab !== 'media' && ed.leftTab !== 'audio')) return;
+      e.preventDefault(); leftHost.classList.add('ve-drop');
+    });
+    leftHost.addEventListener('dragleave', () => leftHost.classList.remove('ve-drop'));
+    leftHost.addEventListener('drop', async (e) => {
+      if (!ed || (ed.leftTab !== 'media' && ed.leftTab !== 'audio')) return;
+      e.preventDefault(); leftHost.classList.remove('ve-drop');
+      const want = ed.leftTab === 'media' ? 'video/' : 'audio/';
+      const files = [...(e.dataTransfer.files || [])].filter((f) => f.type.startsWith(want));
+      if (!files.length) { toast(`Drop ${ed.leftTab === 'media' ? 'video' : 'audio'} files here.`, true); return; }
+      for (const f of files) {
+        const fd = new FormData(); fd.append('file', f);
+        try { await apiForm('/api/media/upload', fd); }
+        catch (err) { toast(err.message, true); return; }
+      }
+      toast('Uploaded.'); renderLeftPanel();
+    });
     container.querySelectorAll('[data-ptab]').forEach((b) => b.addEventListener('click', () => {
       ed.propsTab = b.dataset.ptab;
       container.querySelectorAll('[data-ptab]').forEach((x) => x.classList.toggle('active', x === b));

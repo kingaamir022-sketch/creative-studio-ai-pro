@@ -89,7 +89,7 @@
   .ed-left, .ed-right { width: 100%; border-right: none; border-left: none; border-bottom: 1px solid var(--border); }
   .ed-left { flex-direction: column; }
   .ed-tabs { flex-direction: row; width: auto; border-right: none; border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; padding: 6px; }
-  .ed-tab { flex-direction: row; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+  .ed-tab { flex-direction: row; padding: 10px 12px; font-size: 12px; white-space: nowrap; min-height: 44px; }
   .ed-tab .ti { font-size: 15px; }
   .ed-panel { overflow-y: visible; }
   .ed-stage-scroll { padding: 12px; }

@@ -211,4 +211,22 @@ textarea.code { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; 
   .list-row { flex-wrap: wrap; }
   .modal { padding: 18px; }
   .toast { left: 16px; right: 16px; max-width: none; }
+  /* v2.4.0 — mobile is a first-class target: tappable controls are at
+     least 44px tall so fingers (not just mouse pointers) can hit them.
+     (The credits pill stays hidden here — its balance/plan are one tap
+     away in the profile menu, see app.js pm-head.) */
+  .btn { min-height: 44px; padding: 10px 16px; }
+  .btn-sm { min-height: 44px; padding: 10px 12px; }
+  .nav-item { min-height: 44px; padding: 10px; }
+  .icon-btn { min-width: 44px; min-height: 44px; }
+}
+
+/* v2.4.0 — mobile bottom sheet: dialogs and panels open as a bottom sheet
+   on narrow screens, never as a clipped centred box, and never disappear. */
+@media (max-width: 860px) {
+  .modal-back { align-items: flex-end; padding: 0; }
+  .modal {
+    width: 100%; max-width: none; max-height: 88vh; overflow-y: auto;
+    border-radius: 18px 18px 0 0; padding: 20px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+  }
 }

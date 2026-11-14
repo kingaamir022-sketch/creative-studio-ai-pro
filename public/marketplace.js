@@ -34,12 +34,8 @@ async function viewMarketplace(c) {
       </select>
       <button class="btn btn-primary" id="mk-bsearch">Search</button>
     </div>
-    ${builtins.templates.length ? `<div style="margin-top:12px">${builtins.templates.map((t) => `
-      <div class="list-row"><div class="grow">
-        <div class="t">${esc(t.name)} <span class="badge">${esc(t.kind)}</span></div>
-        <div class="m">${esc(t.category)} · ${t.width}×${t.height} · built-in</div>
-      </div>
-      <button class="btn btn-sm btn-primary" data-builtin-install="${esc(t.id)}">Install →</button></div>`).join('')}</div>` : '<p class="sub" style="margin-top:8px">No built-in templates match — try different words.</p>'}
+    <div id="mk-builtin-cats" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px"></div>
+    <div id="mk-builtin-list" style="margin-top:12px"></div>
   </div>
   <div class="grid grid-2" style="margin-top:16px">
     <div class="card"><h3>Browse (${list.templates.length})</h3>
@@ -79,18 +75,47 @@ async function viewMarketplace(c) {
     const sel = document.getElementById('mk-pub-src');
     sel.innerHTML = myProjects.filter((p) => p.type === kind).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('') || `<option value="">No ${kind} projects yet</option>`;
   };
+  // v2.4.0 — browse the built-ins by category (client-side filter of the
+  // already-fetched list; every one of the 26 stays one click away).
+  const builtinCats = [...new Set((builtins.templates || []).map((t) => t.category))].sort();
+  let activeCat = '';
+  const renderBuiltinList = () => {
+    const host = document.getElementById('mk-builtin-list');
+    const list = activeCat ? builtins.templates.filter((t) => t.category === activeCat) : builtins.templates;
+    host.innerHTML = list.length ? list.map((t) => `
+      <div class="list-row"><div class="grow">
+        <div class="t">${esc(t.name)} <span class="badge">${esc(t.kind)}</span></div>
+        <div class="m">${esc(t.category)} · ${t.width}×${t.height} · built-in</div>
+      </div>
+      <button class="btn btn-sm btn-primary" data-builtin-install="${esc(t.id)}">Install →</button></div>`).join('')
+      : '<p class="sub" style="margin-top:8px">No built-in templates match — try different words.</p>';
+    host.querySelectorAll('[data-builtin-install]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        const r = await api(`/api/marketplace/builtin/${encodeURIComponent(b.dataset.builtinInstall)}/install`, { method: 'POST' });
+        toast(`Installed as ${r.installed.kind} “${r.installed.name}”.`);
+        go('project', { id: r.installed.id });
+      } catch (e) { toast(e.message, true); }
+    }));
+  };
+  const renderBuiltinCats = () => {
+    const host = document.getElementById('mk-builtin-cats');
+    host.innerHTML = [`<button class="btn btn-sm ${activeCat === '' ? 'btn-primary' : ''}" data-cat="">All (${builtins.templates.length})</button>`]
+      .concat(builtinCats.map((cat) => {
+        const n = builtins.templates.filter((t) => t.category === cat).length;
+        return `<button class="btn btn-sm ${activeCat === cat ? 'btn-primary' : ''}" data-cat="${esc(cat)}">${esc(cat)} (${n})</button>`;
+      })).join('');
+    host.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => {
+      activeCat = b.dataset.cat;
+      renderBuiltinCats(); renderBuiltinList();
+    }));
+  };
+  renderBuiltinCats();
+  renderBuiltinList();
   document.getElementById('mk-pub-kind').addEventListener('change', fillSources);
   fillSources();
   document.getElementById('mk-search').addEventListener('click', () => go('marketplace', { q: document.getElementById('mk-q').value.trim() || undefined, kind: document.getElementById('mk-kind').value || undefined }));
   document.getElementById('mk-bsearch').addEventListener('click', () => go('marketplace', { bq: document.getElementById('mk-bq').value.trim() || undefined, bkind: document.getElementById('mk-bkind').value || undefined }));
   document.getElementById('mk-bq').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('mk-bsearch').click(); });
-  c.querySelectorAll('[data-builtin-install]').forEach((b) => b.addEventListener('click', async () => {
-    try {
-      const r = await api(`/api/marketplace/builtin/${encodeURIComponent(b.dataset.builtinInstall)}/install`, { method: 'POST' });
-      toast(`Installed as ${r.installed.kind} “${r.installed.name}”.`);
-      go('project', { id: r.installed.id });
-    } catch (e) { toast(e.message, true); }
-  }));
   document.getElementById('mk-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('mk-search').click(); });
   document.getElementById('mk-publish').addEventListener('click', async () => {
     const kind = document.getElementById('mk-pub-kind').value;

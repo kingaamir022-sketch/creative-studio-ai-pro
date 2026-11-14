@@ -78,9 +78,22 @@
   .ve-panel { min-height: 0; }
   .ve-left-rail { flex-direction: column; }
   .ve-tabs { flex-direction: row; width: auto; border-right: none; border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; padding: 6px; }
-  .ve-tabs button { flex-direction: row; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+  .ve-tabs button { flex-direction: row; padding: 10px 12px; font-size: 12px; white-space: nowrap; min-height: 44px; }
   .ve-tabs button .ti { font-size: 15px; }
   #ve-left { overflow-y: visible; }
-  .ve-ruler, .ve-beat-ruler { margin-left: 0; }
+  /* v2.4.0 — the ruler must line up with the lanes: the track head is
+     64px wide on mobile, so the ruler keeps a 64px left margin (was 0,
+     which shifted every tick 64px left of its clip). */
+  .ve-ruler, .ve-beat-ruler { margin-left: 64px; }
   .ve-track-head { width: 64px; }
+  /* v2.4.0 — touch targets in the editor. */
+  .ve-track-head .tb button { padding: 6px 8px; font-size: 11px; min-height: 32px; }
+  .ve-clip .handle { width: 14px; }
+  .ve-ratio select { padding: 8px 10px; font-size: 14px; min-height: 44px; }
+  .ve-export { min-height: 44px; }
 }
+
+/* v2.4.0 — drag-drop import highlight + ratio selector in the editor header. */
+.ve-drop { outline: 2px dashed var(--accent); outline-offset: -2px; }
+.ve-ratio { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); font-weight: 600; }
+.ve-ratio select { padding: 4px 6px; font-size: 12px; }

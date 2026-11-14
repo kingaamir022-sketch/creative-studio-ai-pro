@@ -67,6 +67,8 @@ const DocsSlides = (() => {
       openDeck(p.project.id, c);
     });
     c.querySelector('#ds-ai-deck').addEventListener('click', () => aiDeckDialog(c));
+    // v2.4.0 — New Project flow deep link: land straight inside the deck editor.
+    if (state.params.deckId) { const id = +state.params.deckId; state.params.deckId = null; openDeck(id, c); }
   }
 
   async function openDeck(id, c) {
@@ -313,6 +315,8 @@ const DocsSlides = (() => {
       docs = await loadProjects('doc');
       openDoc(p.project.id, c);
     });
+    // v2.4.0 — New Project flow deep link: land straight inside the document editor.
+    if (state.params.docId) { const id = +state.params.docId; state.params.docId = null; openDoc(id, c); }
   }
 
   async function openDoc(id, c) {

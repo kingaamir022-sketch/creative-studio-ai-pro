@@ -5,7 +5,8 @@
 
 const NAV = [
   { section: 'Create' },
-  { id: 'dashboard', label: 'Dashboard', icon: '🏠', phase: 1, live: true },
+  { id: 'home', label: 'Home', icon: '🏠', phase: 9, live: true },
+  { id: 'dashboard', label: 'Dashboard', icon: '📊', phase: 1, live: true },
   { id: 'ai-design', label: 'AI Design Studio', icon: '✨', phase: 7, live: true, blurb: 'Prompt-to-editable-design: AI picks layout, assets, typography and colours, then hands you a fully editable design (never a flattened image).' },
   { id: 'graphic-editor', label: 'Graphic Editor', icon: '🎨', phase: 2, live: true, blurb: 'Canvas editor with layers, shapes, text, filters, brand colours and transparent PNG export.' },
   { id: 'presentations', label: 'Presentations', icon: '📊', phase: 9, live: true, blurb: 'Multi-slide decks — layouts, presenter notes, present mode, export to images, PDF or video.' },
@@ -18,7 +19,8 @@ const NAV = [
   { id: 'assistant', label: 'AI Assistant', icon: '🤖', phase: 7, live: true, blurb: 'A project-aware assistant: summarise, suggest improvements, “make this more professional”, “create five versions” — new projects are created, the original is never changed.' },
   { section: 'Edit' },
   { id: 'video-editor', label: 'Video Editor', icon: '🎬', phase: 3, live: true, blurb: 'Multi-track timeline, trimming, transitions, keyframes, colour grading and the FFmpeg render engine.' },
-  { id: 'effects', label: 'Effects & Transitions', icon: '🌈', phase: 3, live: true, blurb: 'Searchable library of filters, transitions, motion effects and text animations.' },
+  { id: 'effects', label: 'Effects', icon: '✨', phase: 3, live: true, blurb: 'Motion effects and colour filters for clips — keyframe animations, never transitions.' },
+  { id: 'transitions', label: 'Transitions', icon: '🔀', phase: 3, live: true, blurb: 'Clip-to-clip transitions (Fade, Dissolve, Slide, Wipe) rendered with FFmpeg xfade.' },
   { id: 'animation', label: 'Animation Studio', icon: '🎞️', phase: 3, live: true, blurb: 'Keyframes with linear interpolation and text fade/slide animations. Motion paths and easing curves are not built yet.' },
   { id: 'bg-remover', label: 'Magic Tools', icon: '🪄', phase: 9, live: true, blurb: 'Magic Resize, Magic Switch (resize + translate), Animate presets, Eraser, Expand, Background Remover, Grab and Magic Write — the local tools need no key; Eraser, AI Expand and Switch translation need a provider key.' },
   { id: 'captions', label: 'Auto Captions', icon: '💬', phase: 6, live: true, blurb: 'Multilingual captions incl. Urdu, Roman Urdu and Arabic (RTL), word-by-word burn-in, SRT/VTT export. STT needs a provider key; manual transcripts work now.' },
@@ -48,7 +50,7 @@ const NAV = [
   { id: 'subscription', label: 'Subscription & Credits', icon: '💳', phase: 1, live: true },
 ];
 
-const state = { user: null, view: 'dashboard', params: {}, data: {}, searchTimer: null };
+const state = { user: null, view: 'home', params: {}, data: {}, searchTimer: null };
 const root = document.getElementById('root');
 
 // v2.2.0 — OWNER Lifetime Free: Lifetime / Enterprise plans and the OWNER
@@ -272,6 +274,7 @@ async function renderView() {
   <div class="skel-card" style="margin-top:16px" aria-hidden="true"><div class="skeleton" style="height:16px;width:30%"></div><div class="skeleton" style="height:12px;width:80%;margin-top:12px"></div><div class="skeleton" style="height:12px;width:65%;margin-top:8px"></div></div>`;
   const v = state.view;
   try {
+    if (v === 'home') return await viewHome(c);
     if (v === 'dashboard') return await viewDashboard(c);
     if (v === 'graphic-editor') return await viewGraphicEditor(c);
     if (v === 'design-editor') return await viewDesignEditor(c);
@@ -279,6 +282,8 @@ async function renderView() {
     if (v === 'video-timeline') return await viewVideoTimeline(c);
     if (v === 'export') return await viewExportCenter(c);
     if (v === 'effects') return await viewEffects(c);
+    if (v === 'transitions') return await viewTransitions(c);
+    if (v === 'collaboration') return await viewCollaboration(c);
     if (v === 'animation') return await viewAnimation(c);
     if (v === 'bg-remover') return await viewMagicTools(c);
     if (v === 'presentations') return await viewPresentations(c);
@@ -324,7 +329,7 @@ function renderAuth() {
   root.innerHTML = `
   <div class="auth-wrap"><div class="auth-card">
     <div class="logo"><div class="logo-mark">C</div><div class="logo-name">Creative<span>Studio</span> AI Pro</div></div>
-    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.3.0 — CapCut Design Pass</p>
+    <p class="auth-sub">All-in-one AI design, video & bulk content studio.<br>v2.4.0 — CapCut Home & Flow</p>
     <div class="auth-toggle">
       <button id="tab-login" class="active">Log in</button>
       <button id="tab-signup">Sign up</button>
@@ -429,7 +434,7 @@ async function viewDashboard(c) {
       <div class="body"><div class="nm">${esc(m.originalName)}</div><div class="mt">${esc(m.kind)}</div></div></div>`).join('')}</div>`
     : '<p class="sub" style="margin-top:8px">No media uploaded yet.</p>'}
   </div>`;
-  document.getElementById('qa-project').addEventListener('click', () => openProjectModal());
+  document.getElementById('qa-project').addEventListener('click', () => openNewProjectFlow());
   const dashUpdateNow = document.getElementById('dash-update-now');
   if (dashUpdateNow) dashUpdateNow.addEventListener('click', async () => {
     if (!confirm('Apply the available update now? The current version is backed up first.')) return;
@@ -448,11 +453,406 @@ async function viewDashboard(c) {
     renderView();
   });
   const dashCreate = document.getElementById('dash-create-project');
-  if (dashCreate) dashCreate.addEventListener('click', () => openProjectModal());
+  if (dashCreate) dashCreate.addEventListener('click', () => openNewProjectFlow());
   document.getElementById('qa-media').addEventListener('click', () => go('media'));
   document.getElementById('qa-bulk').addEventListener('click', () => go('bulk-video'));
   document.getElementById('dash-all-projects').addEventListener('click', () => go('projects'));
   c.querySelectorAll('[data-open-project]').forEach((el) => el.addEventListener('click', () => go('project', { id: el.dataset.openProject })));
+}
+
+/* ---------- Home (v2.4.0) — CapCut-style landing ---------- */
+const HOME_TYPE_ICON = { design: '🎨', video: '🎬', deck: '📊', doc: '📝', bulk: '📹', shorts: '✂️', social: '📣' };
+const HOME_GROUP_ICON = { Create: '🎨', 'AI Studio': '✨', Edit: '🎬', 'Bulk & Automation': '📹', Library: '📚', 'Publish & Grow': '📣', Account: '⚙️' };
+
+function openProjectInEditor(p) {
+  if (p.type === 'design') go('design-editor', { projectId: p.id });
+  else if (p.type === 'video') go('video-timeline', { projectId: p.id });
+  else if (p.type === 'deck') go('presentations', { deckId: p.id });
+  else if (p.type === 'doc') go('documents', { docId: p.id });
+  else go('project', { id: p.id });
+}
+
+async function viewHome(c) {
+  const [d, upd, tpl, shared] = await Promise.all([
+    api('/api/dashboard'),
+    api('/api/updates/status').catch(() => null),
+    api('/api/marketplace/builtin').catch(() => ({ templates: [] })),
+    api('/api/collab/shared-with-me').catch(() => ({ projects: [] })),
+  ]);
+  const firstName = (state.user.name || 'there').split(' ')[0];
+  const allTemplates = tpl.templates || [];
+  const recent = d.recentProjects || [];
+  const sharedCount = (shared.projects || []).length;
+  // Quick-access groups: the 7 CapCut sidebar groups, every feature one
+  // click away (Home itself excluded).
+  const groups = [];
+  let current = null;
+  for (const item of NAV) {
+    if (item.section) { current = { name: item.section, items: [] }; groups.push(current); continue; }
+    if (item.id === 'home' || !current) continue;
+    current.items.push(item);
+  }
+  const fmtDur = (s) => {
+    if (s === null || s === undefined) return '';
+    const m = Math.floor(s / 60), sec = Math.round(s % 60);
+    return `${m}:${String(sec).padStart(2, '0')}`;
+  };
+  const recentCard = (p) => `
+    <button class="home-project" data-open-project="${p.id}">
+      <div class="home-project-thumb">${HOME_TYPE_ICON[p.type] || '📁'}</div>
+      <div class="home-project-body">
+        <span class="home-project-type">${esc(p.type)}</span>
+        <div class="home-project-name" title="${esc(p.name)}">${esc(p.name)}</div>
+        <p class="home-project-meta">Updated ${fmtDate(p.updatedAt)}${p.durationSeconds ? ` · ⏱ ${fmtDur(p.durationSeconds)}` : ''}</p>
+      </div>
+    </button>`;
+  const templateCard = (t) => `
+    <button class="home-template" data-template="${esc(t.id)}" title="${esc(t.name)}">
+      <div class="home-template-thumb">${t.kind === 'video' ? '🎬' : t.kind === 'deck' ? '📊' : '🎨'}</div>
+      <span class="home-template-kind">${esc(t.kind)}</span>
+      <div class="home-template-name">${esc(t.name)}</div>
+      <p class="home-template-meta">${esc(t.category)} · ${t.width}×${t.height}</p>
+    </button>`;
+  c.innerHTML = `
+  <div class="home">
+  ${upd && upd.available && !upd.availableDismissed ? `<div class="card" style="border-color:var(--warning)"><h3>⬆ Update available: v${esc(upd.latest)}</h3>
+    <p class="sub">${esc(upd.available.notes || 'A new version is on the update feed.')}</p>
+    ${upd.available.fullReinstall ? '<p class="sub" style="color:var(--warning)">⚠ This update changes dependencies and needs a fresh download — download the new portable/source package from Drive instead of applying it here.</p>' : ''}
+    <div style="margin-top:10px">
+      ${!upd.available.fullReinstall ? '<button class="btn btn-primary" id="home-update-now">Update now</button> ' : ''}
+      <button class="btn" id="home-update-settings">Update settings</button>
+      <button class="btn btn-ghost" id="home-update-dismiss">Dismiss</button>
+    </div></div>` : ''}
+  ${upd && upd.pendingRestart ? `<div class="card" style="border-color:var(--warning)"><h3>✓ Update applied${upd.lastApplied ? ` — v${esc(upd.lastApplied.version)}` : ''}</h3>
+    <p class="sub">The new files are in place. Restart the server (close Start.bat / run npm start again) to finish the update.</p></div>` : ''}
+  <div class="home-hero">
+    <div><h1>Welcome back, ${esc(firstName)}</h1>
+    <p>${d.counts.projects} projects · ${d.counts.media} media files · ${esc(d.plan)} plan — ${esc(creditsLabel(state.user))}</p></div>
+    <div class="home-hero-actions">
+      <button class="home-new-btn" id="home-new-project">＋ New Project</button>
+      <button class="home-hero-secondary" id="home-browse-templates">Browse templates</button>
+    </div>
+  </div>
+  <div class="home-quicknav">
+    <button class="home-qn active">🏠 Home</button>
+    <button class="home-qn" id="home-qn-templates">🛍️ Templates</button>
+    <button class="home-qn" id="home-qn-spaces">📁 Spaces</button>
+    <button class="home-qn" id="home-qn-ai">✨ AI Studio</button>
+    <button class="home-qn" id="home-qn-collab">🤝 Collaboration${sharedCount ? ` (${sharedCount})` : ''}</button>
+  </div>
+  <div class="home-search"><input id="home-search" type="search" placeholder="Search your projects & templates…" autocomplete="off"></div>
+  <div>
+    <div class="home-section-head"><h2>🕒 Recent projects</h2><button class="link-btn" id="home-all-projects">View all →</button></div>
+    <div class="home-projects" id="home-recent-list" style="margin-top:12px"></div>
+  </div>
+  <div>
+    <div class="home-section-head"><h2>✨ Templates</h2><button class="link-btn" id="home-all-templates">All templates →</button></div>
+    <div class="home-templates" id="home-template-list" style="margin-top:12px"></div>
+  </div>
+  <div class="home-collab card"><div><h3>🤝 Collaboration</h3>
+    <p class="sub">${sharedCount ? `${sharedCount} project${sharedCount === 1 ? '' : 's'} shared with you — open, view and comment (read-only, no live co-editing).` : 'No projects shared with you yet. Share one of your own from any project → Share & comments.'}</p></div>
+    <button class="btn btn-primary" id="home-open-collab">Open Collaboration →</button></div>
+  <div>
+    <div class="home-section-head"><h2>🧭 More tools</h2></div>
+    <div class="home-groups" style="margin-top:12px">
+      ${groups.map((g) => `
+        <div class="home-group"><h3><span class="home-group-icon">${HOME_GROUP_ICON[g.name] || '📁'}</span>${esc(g.name)}</h3>
+        <div class="home-group-links">${g.items.map((it) => `<button class="home-group-link" data-goto="${esc(it.id)}" title="${esc(it.blurb || it.label)}">${esc(it.icon)} ${esc(it.label)}</button>`).join('')}</div></div>`).join('')}
+    </div>
+  </div>
+  </div>`;
+  const renderRecent = (list) => {
+    const host = document.getElementById('home-recent-list');
+    host.innerHTML = list.length ? list.map(recentCard).join('') : `
+      <div class="home-empty" style="grid-column:1/-1"><div class="big">📁</div>
+      <p>${recent.length ? 'No projects match that search.' : 'No projects yet — create your first one.'}</p>
+      ${recent.length ? '' : '<button class="btn btn-primary" id="home-empty-new">＋ New Project</button>'}</div>`;
+    const emptyNew = document.getElementById('home-empty-new');
+    if (emptyNew) emptyNew.addEventListener('click', () => openNewProjectFlow());
+    host.querySelectorAll('[data-open-project]').forEach((el) => el.addEventListener('click', () => {
+      const p = recent.find((x) => String(x.id) === String(el.dataset.openProject));
+      if (p) openProjectInEditor(p);
+    }));
+  };
+  const renderTemplates = (list) => {
+    const host = document.getElementById('home-template-list');
+    host.innerHTML = list.length ? list.slice(0, 12).map(templateCard).join('')
+      : '<div class="home-empty" style="flex:1"><p>No templates match that search.</p></div>';
+    host.querySelectorAll('[data-template]').forEach((el) => el.addEventListener('click', async () => {
+      const t = allTemplates.find((x) => String(x.id) === String(el.dataset.template));
+      if (!t) return;
+      try {
+        const r = await api(`/api/marketplace/builtin/${encodeURIComponent(t.id)}/install`, { method: 'POST' });
+        toast('Template installed.');
+        openProjectInEditor({ id: r.installed.id, type: r.installed.kind });
+      } catch (e) { toast(e.message, true); }
+    }));
+  };
+  renderRecent(recent);
+  renderTemplates(allTemplates);
+  document.getElementById('home-search').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    if (!q) { renderRecent(recent); renderTemplates(allTemplates); return; }
+    renderRecent(recent.filter((p) => `${p.name} ${p.type}`.toLowerCase().includes(q)));
+    renderTemplates(allTemplates.filter((t) => `${t.name} ${t.category} ${t.kind}`.toLowerCase().includes(q)));
+  });
+  document.getElementById('home-new-project').addEventListener('click', () => openNewProjectFlow());
+  document.getElementById('home-browse-templates').addEventListener('click', () => go('marketplace'));
+  document.getElementById('home-all-projects').addEventListener('click', () => go('projects'));
+  document.getElementById('home-all-templates').addEventListener('click', () => go('marketplace'));
+  document.getElementById('home-qn-templates').addEventListener('click', () => go('marketplace'));
+  document.getElementById('home-qn-spaces').addEventListener('click', () => go('projects'));
+  document.getElementById('home-qn-ai').addEventListener('click', () => go('ai-studio'));
+  document.getElementById('home-qn-collab').addEventListener('click', () => go('collaboration'));
+  document.getElementById('home-open-collab').addEventListener('click', () => go('collaboration'));
+  const homeUpdateNow = document.getElementById('home-update-now');
+  if (homeUpdateNow) homeUpdateNow.addEventListener('click', async () => {
+    if (!confirm('Apply the available update now? The current version is backed up first.')) return;
+    homeUpdateNow.textContent = 'Updating…'; homeUpdateNow.disabled = true;
+    try {
+      const r = await api('/api/updates/apply', { method: 'POST' });
+      toast(r.message || `Updated to ${r.to}.`);
+      setTimeout(() => { window.location.reload(); }, 3000);
+    } catch (e) { toast(e.message, true); renderView(); }
+  });
+  const homeUpdateSettings = document.getElementById('home-update-settings');
+  if (homeUpdateSettings) homeUpdateSettings.addEventListener('click', () => go('settings'));
+  const homeUpdateDismiss = document.getElementById('home-update-dismiss');
+  if (homeUpdateDismiss) homeUpdateDismiss.addEventListener('click', async () => {
+    try { await api('/api/updates/dismiss', { method: 'POST', body: JSON.stringify({ version: upd.latest }) }); } catch { /* ignore */ }
+    renderView();
+  });
+  c.querySelectorAll('[data-goto]').forEach((el) => el.addEventListener('click', () => go(el.dataset.goto)));
+}
+
+/* ---------- New Project flow (v2.4.0) — CapCut: choose a type, land inside the editor ---------- */
+const NEW_PROJECT_TYPES = [
+  { id: 'video', emoji: '🎬', label: 'Video', desc: 'Timeline editor — trim, text, transitions, real MP4 render.' },
+  { id: 'design', emoji: '🎨', label: 'Design', desc: 'Graphic editor — layers, shapes, text, PNG/JPG export.' },
+  { id: 'deck', emoji: '📊', label: 'Presentation', desc: 'Multi-slide deck — layouts, notes, video export.' },
+  { id: 'doc', emoji: '📝', label: 'Document', desc: 'Rich-text document — headings, lists, tables, charts.' },
+  { id: 'quiz', emoji: '🎯', label: 'Quiz video', desc: 'Quiz Video preset — one question per spreadsheet row.' },
+  { id: 'bulk-video', emoji: '📹', label: 'Bulk Video', desc: 'One template + spreadsheet = a video per row.' },
+  { id: 'bulk-design', emoji: '📄', label: 'Bulk Design', desc: 'One template + spreadsheet = a design per row.' },
+  { id: 'shorts', emoji: '✂️', label: 'Shorts', desc: 'Long video → best 9:16 moments, auto-cut.' },
+  { id: 'social', emoji: '📣', label: 'Social post', desc: 'AI post, caption and hashtags for your Pages.' },
+];
+const NEW_PROJECT_DEFAULT_NAME = { video: 'Untitled video', design: 'Untitled design', deck: 'Untitled Deck', doc: 'Untitled Document', quiz: 'Quiz batch', 'bulk-video': 'Bulk video batch', 'bulk-design': 'Bulk design batch', shorts: 'Untitled shorts', social: 'Untitled social post' };
+
+function deckSeed(name) {
+  const uid = (p) => `${p}_${Date.now().toString(36)}`;
+  return { version: 1, title: name, width: 1920, height: 1080, slides: [{ id: uid('slide'), layout: 'title', background: { type: 'color', color: '#151d3a' }, notes: '', duration: 5, elements: [
+    { id: uid('layer') + 'a', type: 'text', name: 'Title', x: 260, y: 380, w: 1400, h: 120, rotation: 0, opacity: 1, locked: false, hidden: false, groupId: null, role: 'title', text: { text: name, fontFamily: 'Poppins', fontSize: 96, fontWeight: 700, fontStyle: 'normal', underline: false, align: 'center', color: '#ffffff', letterSpacing: 0, lineHeight: 1.25, shadow: null, stroke: null, gradient: null } },
+    { id: uid('layer') + 'b', type: 'text', name: 'Subtitle', x: 460, y: 540, w: 1000, h: 60, rotation: 0, opacity: 1, locked: false, hidden: false, groupId: null, role: 'subtitle', text: { text: 'A short subtitle for your deck', fontFamily: 'Poppins', fontSize: 40, fontWeight: 400, fontStyle: 'normal', underline: false, align: 'center', color: '#c7d2fe', letterSpacing: 0, lineHeight: 1.25, shadow: null, stroke: null, gradient: null } },
+  ] }] };
+}
+
+function blankDesignContent(width, height) {
+  return { version: 1, width, height, background: { type: 'color', color: '#151d3a', gradient: { from: '#7c5cff', to: '#3b82f6', angle: 135 } }, layers: [] };
+}
+
+// Blank 16:9 timeline for a new bulk-video template, with one starter text
+// clip bound to {{TITLE}}. The clip is required: a clip-less timeline is
+// refused when the batch is created, and {{TITLE}} is the template's first
+// real bulk field (mapped from the spreadsheet in step 2).
+function starterBulkVideoTimeline(aspect = '16:9', fps = 30) {
+  const timeline = window.VideoEditor.blankTimeline(aspect, fps);
+  const clip = window.VideoEditor.defaultClip('text', null, 0, 3);
+  clip.text.text = '{{TITLE}}';
+  const textTrack = timeline.tracks.find((t) => t.kind === 'text');
+  if (textTrack) textTrack.clips.push(clip);
+  return timeline;
+}
+
+// Import-first (v2.4.0): place chosen library videos on a fresh timeline,
+// back-to-back from 0, exactly like the editor's "add at playhead" does.
+function timelineWithImportedMedia(aspect, fps, mediaList) {
+  const timeline = window.VideoEditor.blankTimeline(aspect, fps);
+  const track = timeline.tracks.find((t) => t.kind === 'video');
+  let start = 0;
+  for (const m of mediaList) {
+    const dur = m.durationSeconds ? Math.min(m.durationSeconds, 600) : 5;
+    const clip = window.VideoEditor.defaultClip('video', m.id, start, dur);
+    clip.name = m.originalName || 'Video clip';
+    track.clips.push(clip);
+    start += dur;
+  }
+  return timeline;
+}
+
+async function createNewProject(kind, opts) {
+  const name = (opts.name || '').trim() || NEW_PROJECT_DEFAULT_NAME[kind] || 'Untitled project';
+  if (kind === 'video') {
+    const timeline = (opts.media && opts.media.length)
+      ? timelineWithImportedMedia(opts.aspect || '16:9', opts.fps || 30, opts.media)
+      : window.VideoEditor.blankTimeline(opts.aspect || '16:9', opts.fps || 30);
+    const r = await api('/api/projects', { method: 'POST', body: JSON.stringify({ name, type: 'video', content: { timeline } }) });
+    return { goTo: 'video-timeline', params: { projectId: r.project.id } };
+  }
+  if (kind === 'design') {
+    const r = await api('/api/projects', { method: 'POST', body: JSON.stringify({ name, type: 'design', content: blankDesignContent(opts.width || 1080, opts.height || 1080) }) });
+    return { goTo: 'design-editor', params: { projectId: r.project.id } };
+  }
+  if (kind === 'deck') {
+    const r = await api('/api/projects', { method: 'POST', body: JSON.stringify({ name, type: 'deck', content: deckSeed(name) }) });
+    return { goTo: 'presentations', params: { deckId: r.project.id } };
+  }
+  if (kind === 'doc') {
+    const seed = { version: 1, title: name, blocks: [{ id: `block_${Date.now().toString(36)}`, type: 'heading', level: 1, text: name }, { id: `block_${Date.now().toString(36)}x`, type: 'paragraph', text: 'Start writing here.' }] };
+    const r = await api('/api/projects', { method: 'POST', body: JSON.stringify({ name, type: 'doc', content: seed }) });
+    return { goTo: 'documents', params: { docId: r.project.id } };
+  }
+  if (kind === 'quiz') {
+    const r = await api('/api/bulk', { method: 'POST', body: JSON.stringify({ name, kind: 'video', templateProjectId: 'quiz' }) });
+    return { goTo: 'bulk-video', params: { id: r.job.id } };
+  }
+  if (kind === 'bulk-video' || kind === 'bulk-design') {
+    const isVideo = kind === 'bulk-video';
+    // A batch needs a real template project — create a blank one first, so
+    // the batch opens at step 1 with a template the user can edit later.
+    // A video template must hold at least one clip or the batch is refused
+    // ("Timeline has no clips"), so the starter template carries one text
+    // clip bound to {{TITLE}} — a real, editable bulk field, not a dummy.
+    const tpl = isVideo
+      ? await api('/api/projects', { method: 'POST', body: JSON.stringify({ name: `${name} — template`, type: 'video', content: { timeline: starterBulkVideoTimeline(opts.aspect || '16:9', opts.fps || 30) } }) })
+      : await api('/api/projects', { method: 'POST', body: JSON.stringify({ name: `${name} — template`, type: 'design', content: blankDesignContent(1080, 1080) }) });
+    const r = await api('/api/bulk', { method: 'POST', body: JSON.stringify({ name, kind: isVideo ? 'video' : 'design', templateProjectId: tpl.project.id }) });
+    return { goTo: isVideo ? 'bulk-video' : 'bulk-design', params: { id: r.job.id } };
+  }
+  if (kind === 'shorts' || kind === 'social') {
+    const r = await api('/api/projects', { method: 'POST', body: JSON.stringify({ name, type: kind, content: { title: name, elements: [] } }) });
+    return { goTo: 'project', params: { id: r.project.id } };
+  }
+  throw new Error('Unknown project type.');
+}
+
+async function openNewProjectFlow() {
+  let sizes = [];
+  try { sizes = (await api('/api/design/sizes')).sizes || []; } catch { /* design form falls back to custom width/height */ }
+  let selected = null;
+  let libraryVideos = null; // fetched lazily when the Video tile is picked
+  let pickedMedia = new Set();
+  const back = openModal(`
+    <h2>＋ New Project</h2>
+    <p class="sub">Pick what to make — a blank project is created and you land straight inside its editor.</p>
+    <div class="np-grid">
+      ${NEW_PROJECT_TYPES.map((t) => `
+        <button class="np-tile" data-kind="${t.id}">
+          <span class="np-emoji">${t.emoji}</span>
+          <span class="np-label">${t.label}</span>
+          <span class="np-desc">${t.desc}</span>
+        </button>`).join('')}
+    </div>
+    <div id="np-form-slot"></div>
+    <div class="np-error" id="np-flow-error"></div>
+    <div class="np-actions"><button class="btn" id="np-flow-cancel">Cancel</button></div>`);
+  back.querySelector('#np-flow-cancel').addEventListener('click', () => back.remove());
+  const slot = back.querySelector('#np-form-slot');
+  const errBox = back.querySelector('#np-flow-error');
+  const showError = (msg) => { errBox.textContent = msg; errBox.style.display = 'block'; };
+  const aspectFpsRow = (defAspect = '16:9') => `<div class="row"><div><label>Aspect ratio</label><select id="np-aspect" class="input">
+      <option value="16:9" ${defAspect === '16:9' ? 'selected' : ''}>Landscape 16:9 (1280×720)</option><option value="9:16" ${defAspect === '9:16' ? 'selected' : ''}>Vertical 9:16 (720×1280)</option>
+      <option value="1:1" ${defAspect === '1:1' ? 'selected' : ''}>Square 1:1 (720×720)</option><option value="4:5" ${defAspect === '4:5' ? 'selected' : ''}>Portrait 4:5 (720×900)</option></select></div>
+    <div><label>Frame rate</label><select id="np-fps" class="input">
+      <option value="24">24 fps</option><option value="30" selected>30 fps</option><option value="60">60 fps</option></select></div></div>`;
+  const renderMediaPicker = () => {
+    const host = back.querySelector('#np-media-slot');
+    if (!host) return;
+    const list = libraryVideos || [];
+    host.innerHTML = `
+      <div><label>Add media first (optional) — picked videos land on the timeline in order</label>
+      <div class="np-dropzone" id="np-dropzone">Drop video files here, or <button type="button" class="btn btn-sm" id="np-upload-btn">⬆ Upload</button>
+        <input type="file" id="np-upload-file" accept="video/*" multiple style="display:none"></div>
+      <div class="np-media-grid">${list.length ? list.map((m) => `
+        <button type="button" class="np-media-item ${pickedMedia.has(m.id) ? 'selected' : ''}" data-mid="${m.id}" title="${esc(m.originalName)}">
+          🎬 ${esc(m.originalName)}${m.durationSeconds ? ` · ${m.durationSeconds.toFixed(1)}s` : ''}</button>`).join('')
+      : '<p class="np-hint">No video in your library yet — upload some first.</p>'}</div>
+      <p class="np-hint" id="np-media-count">${pickedMedia.size ? `${pickedMedia.size} video${pickedMedia.size === 1 ? '' : 's'} picked — they will be placed back-to-back from 0:00.` : 'Nothing picked — the timeline starts empty.'}</p></div>`;
+    host.querySelectorAll('[data-mid]').forEach((b) => b.addEventListener('click', () => {
+      const id = Number(b.dataset.mid);
+      if (pickedMedia.has(id)) pickedMedia.delete(id); else pickedMedia.add(id);
+      renderMediaPicker();
+    }));
+    const fi = host.querySelector('#np-upload-file');
+    host.querySelector('#np-upload-btn').addEventListener('click', () => fi.click());
+    const uploadFiles = async (files) => {
+      for (const f of files) {
+        const fd = new FormData();
+        fd.append('file', f);
+        try { await apiForm('/api/media/upload', fd); } catch (e) { showError(e.message); return; }
+      }
+      try { libraryVideos = (await api('/api/media?kind=video')).media || []; } catch { /* keep old list */ }
+      toast('Uploaded.');
+      renderMediaPicker();
+    };
+    fi.addEventListener('change', async () => { if (fi.files.length) await uploadFiles([...fi.files]); });
+    const dz = host.querySelector('#np-dropzone');
+    dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+    dz.addEventListener('drop', async (e) => {
+      e.preventDefault(); dz.classList.remove('drag');
+      const files = [...(e.dataTransfer.files || [])].filter((f) => f.type.startsWith('video/'));
+      if (!files.length) { showError('Drop video files — other file types go in the Media Library.'); return; }
+      await uploadFiles(files);
+    });
+  };
+  const renderForm = () => {
+    const t = NEW_PROJECT_TYPES.find((x) => x.id === selected);
+    if (!t) { slot.innerHTML = ''; return; }
+    const defName = NEW_PROJECT_DEFAULT_NAME[selected];
+    let extra = '';
+    if (selected === 'video') {
+      extra = aspectFpsRow('16:9') + '<div id="np-media-slot" style="margin-top:8px"></div>';
+    } else if (selected === 'design') {
+      extra = sizes.length
+        ? `<div><label>Size</label><select id="np-size" class="input">${sizes.map((s) => `<option value="${s.id}">${esc(s.name)} — ${s.width}×${s.height}</option>`).join('')}</select></div>`
+        : `<div class="row"><div><label>Width (px)</label><input id="np-width" class="input" type="number" value="1080" min="10" max="8000"></div>
+          <div><label>Height (px)</label><input id="np-height" class="input" type="number" value="1080" min="10" max="8000"></div></div>`;
+    } else if (selected === 'quiz') {
+      extra = `<p class="np-hint">🎯 Quiz Video preset — 9:16, one question per spreadsheet row, countdown + reveal with the correct option in green. Upload your questions spreadsheet in step 2.</p>`;
+    } else if (selected === 'bulk-video') {
+      extra = aspectFpsRow('16:9') + `<p class="np-hint">The starter template is built at this aspect ratio — the batch renders at the template's size.</p>`;
+    } else if (selected === 'bulk-design') {
+      extra = `<p class="np-hint">A blank template project is created first — the batch opens at step 1, where you upload your spreadsheet and map the fields.</p>`;
+    }
+    slot.innerHTML = `<div class="np-form">
+      <div><label>Project name</label><input id="np-flow-name" class="input" value="${esc(defName)}"></div>
+      ${extra}
+      <div><button class="btn btn-primary" id="np-flow-create" style="width:100%">Create &amp; open ${esc(t.label)}</button></div>
+    </div>`;
+    if (selected === 'video') renderMediaPicker();
+    back.querySelector('#np-flow-create').addEventListener('click', async () => {
+      const btn = back.querySelector('#np-flow-create');
+      const opts = { name: back.querySelector('#np-flow-name').value.trim() };
+      if (selected === 'video' || selected === 'bulk-video') { opts.aspect = back.querySelector('#np-aspect').value; opts.fps = parseInt(back.querySelector('#np-fps').value, 10); }
+      if (selected === 'video' && pickedMedia.size) {
+        opts.media = (libraryVideos || []).filter((m) => pickedMedia.has(m.id));
+      }
+      if (selected === 'design') {
+        const sizeSel = back.querySelector('#np-size');
+        if (sizeSel) { const s = sizes.find((x) => x.id === sizeSel.value); opts.width = s ? s.width : 1080; opts.height = s ? s.height : 1080; }
+        else { opts.width = Math.max(10, Math.min(8000, parseInt(back.querySelector('#np-width').value, 10) || 1080)); opts.height = Math.max(10, Math.min(8000, parseInt(back.querySelector('#np-height').value, 10) || 1080)); }
+      }
+      btn.textContent = 'Creating…'; btn.disabled = true;
+      try {
+        const dest = await createNewProject(selected, opts);
+        back.remove(); toast('Project created.');
+        go(dest.goTo, dest.params);
+      } catch (e) { showError(e.message); btn.textContent = `Create & open ${t.label}`; btn.disabled = false; }
+    });
+    back.querySelector('#np-flow-name').focus();
+    back.querySelector('#np-flow-name').select();
+  };
+  back.querySelectorAll('[data-kind]').forEach((tile) => tile.addEventListener('click', async () => {
+    back.querySelectorAll('[data-kind]').forEach((x) => x.classList.remove('selected'));
+    tile.classList.add('selected');
+    selected = tile.dataset.kind;
+    errBox.style.display = 'none';
+    if (selected === 'video' && libraryVideos === null) {
+      try { libraryVideos = (await api('/api/media?kind=video')).media || []; } catch { libraryVideos = []; }
+    }
+    renderForm();
+  }));
 }
 
 /* ---------- Projects ---------- */
@@ -498,7 +898,7 @@ async function viewProjects(c) {
       <button class="btn btn-sm btn-primary" data-open-shared="${p.id}">Open →</button>
       <button class="btn btn-sm btn-ghost" data-leave-shared="${p.id}">Leave</button></div>`).join('')}
   </div>` : ''}`;
-  document.getElementById('new-project-btn').addEventListener('click', () => openProjectModal());
+  document.getElementById('new-project-btn').addEventListener('click', () => openNewProjectFlow());
   document.getElementById('new-folder-btn').addEventListener('click', () => openFolderModal('project'));
   document.getElementById('trash-toggle').addEventListener('click', () => go('projects', { trash: !showTrash }));
   const search = document.getElementById('proj-search');
@@ -1387,7 +1787,7 @@ async function viewExportCenter(c) {
     <div style="margin-top:12px">${jobs.length ? jobs.map((j) => `
       <div class="ve-job">
         <div><b>Job #${j.id}</b> <span class="badge ${badge[j.status] || ''}">${j.status}</span> <span style="float:right">${j.progress}%</span>
-        <span class="sub" style="display:block;margin-top:4px">${esc(j.settings.resolution || '')} · ${esc(String(j.settings.fps || ''))}fps · ${fmtDate(j.createdAt)}</span></div>
+        <span class="sub" style="display:block;margin-top:4px">${esc(j.settings.resolution || '')} · ${esc(String(j.settings.fps || ''))}fps${j.settings.format ? ` · ${esc(j.settings.format.toUpperCase())}` : ''} · ${fmtDate(j.createdAt)}</span></div>
         <div class="ve-progress"><div style="width:${j.progress}%"></div></div>
         ${j.error ? `<div class="error" style="display:block">${esc(j.error)}</div>` : ''}
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
@@ -1438,16 +1838,22 @@ async function viewExportCenter(c) {
   }
 }
 
-/* ---------- Effects & Transitions (Phase 3 — only what is really supported) ---------- */
+/* ---------- Effects + Transitions (Phase 3 — two separate views, never mixed) ---------- */
+/* ---------- Effects (v2.4.0) — effects ONLY; transitions live under Transitions ---------- */
 async function viewEffects(c) {
-  const fx = await api('/api/video/effects').catch(() => ({ transitions: [], filters: [], notYet: [] }));
+  const [fx, presets] = await Promise.all([
+    api('/api/video/effects').catch(() => ({ filters: [], notYet: [] })),
+    api('/api/magic/animate/presets?target=clip').catch(() => ({ presets: [] })),
+  ]);
+  const clipPresets = (presets.presets || []).filter((p) => (p.appliesTo || []).includes('clip'));
   c.innerHTML = `
   <div class="grid grid-2">
-    <div class="card"><h3>Transitions — supported &amp; rendered</h3>
-      <p class="sub">Apply between adjacent clips on the same video track (right panel → Transition). Rendered with FFmpeg xfade.</p>
-      ${fx.transitions.map((t) => `
-        <div class="kv"><span><b>${esc(t.name)}</b><br><small style="color:var(--muted)">${esc(t.note)}</small></span>
-        <span class="badge">up to ${t.maxDuration}s</span></div>`).join('')}
+    <div class="card"><h3>Motion effects — keyframe animations</h3>
+      <p class="sub">Entrance animations for a single clip (they expand into real keyframes). These are <b>not</b> transitions — a transition joins two clips; that lives under Transitions.</p>
+      ${clipPresets.length ? clipPresets.map((p) => `
+        <div class="kv"><span><b>${esc(p.name)}</b><br><small style="color:var(--muted)">${esc(p.description || '')}</small></span>
+        <span class="badge">${p.durationMs}ms${p.loop ? ' · loops' : ''}</span></div>`).join('') : '<p class="sub">No clip presets available.</p>'}
+      <div style="margin-top:12px"><button class="btn btn-primary" id="fx-open-editor">Open Video Editor →</button></div>
     </div>
     <div class="card"><h3>Filters — per clip</h3>
       <p class="sub">Sliders in the Video Editor's right panel. They apply to the preview and to the FFmpeg render.</p>
@@ -1456,9 +1862,55 @@ async function viewEffects(c) {
   </div>
   <div class="card" style="margin-top:16px"><h3>Not in Phase 3 — honestly</h3>
     <p class="sub">${(fx.notYet || []).map((n) => `• ${esc(n)}`).join('<br>')}</p>
-    <div style="margin-top:12px"><button class="btn btn-primary" id="fx-open-editor">Open Video Editor →</button></div>
   </div>`;
   document.getElementById('fx-open-editor').addEventListener('click', () => go('video-editor'));
+}
+
+/* ---------- Transitions (v2.4.0) — transitions ONLY; effects live under Effects ---------- */
+async function viewTransitions(c) {
+  const fx = await api('/api/video/effects').catch(() => ({ transitions: [], notYet: [] }));
+  c.innerHTML = `
+  <div class="card"><h3>Transitions — supported &amp; rendered</h3>
+    <p class="sub">Transitions join two adjacent clips on the same video track — pick a clip in the Video Editor, then set its transition in the right panel. Rendered with FFmpeg xfade. Fade and Slide are transitions, not effects.</p>
+    ${fx.transitions.map((t) => `
+      <div class="kv"><span><b>${esc(t.name)}</b><br><small style="color:var(--muted)">${esc(t.note)}</small></span>
+      <span class="badge">up to ${t.maxDuration}s</span></div>`).join('')}
+    <div style="margin-top:12px"><button class="btn btn-primary" id="tr-open-editor">Open Video Editor →</button></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h3>Not in Phase 3 — honestly</h3>
+    <p class="sub">${(fx.notYet || []).map((n) => `• ${esc(n)}`).join('<br>')}</p>
+  </div>`;
+  document.getElementById('tr-open-editor').addEventListener('click', () => go('video-editor'));
+}
+
+/* ---------- Collaboration (v2.4.0) — home destination for sharing ---------- */
+async function viewCollaboration(c) {
+  const shared = await api('/api/collab/shared-with-me').catch(() => ({ projects: [] }));
+  const list = shared.projects || [];
+  c.innerHTML = `
+  <div class="page-head"><div><h2>🤝 Collaboration</h2>
+  <p class="muted">Share projects read-only and comment on them. There is no live co-editing — shared users can view and comment, never edit.</p></div></div>
+  <div class="card"><h3>Shared with you (${list.length})</h3>
+    ${list.length ? list.map((p) => `
+      <div class="list-row"><div class="grow" style="cursor:pointer" data-open-shared="${p.id}">
+        <div class="t">${esc(p.name)}</div>
+        <div class="m">${esc(p.type)} · shared by ${esc(p.ownerName || p.ownerEmail || 'user')} · ${fmtDate(p.sharedAt)}</div></div>
+        <span class="badge">view only</span>
+        <button class="btn btn-sm btn-primary" data-open-shared="${p.id}">Open →</button>
+        <button class="btn btn-sm btn-ghost" data-leave-shared="${p.id}">Leave</button></div>`).join('')
+    : '<p class="sub" style="margin-top:8px">Nothing shared with you yet. When someone shares a project with your email, it appears here.</p>'}
+  </div>
+  <div class="card" style="margin-top:16px"><h3>Share one of your own projects</h3>
+    <p class="sub">Open any project → Share &amp; comments → create a read-only link, or share with an email on this install. You can revoke access at any time.</p>
+    <div style="margin-top:12px"><button class="btn btn-primary" id="collab-go-projects">Open Projects →</button></div>
+  </div>`;
+  document.getElementById('collab-go-projects').addEventListener('click', () => go('projects'));
+  c.querySelectorAll('[data-open-shared]').forEach((b) => b.addEventListener('click', () => go('shared-project', { id: b.dataset.openShared })));
+  c.querySelectorAll('[data-leave-shared]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('Leave this shared project?')) return;
+    try { await api(`/api/collab/shared-with-me/${b.dataset.leaveShared}/leave`, { method: 'POST' }); toast('Left the shared project.'); renderView(); }
+    catch (e) { toast(e.message, true); }
+  }));
 }
 
 /* ---------- Animation Studio (Phase 3 — keyframes live in the Video Editor) ---------- */
