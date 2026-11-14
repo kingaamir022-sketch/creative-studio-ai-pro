@@ -149,6 +149,10 @@ async function ensureModel(onProgress) {
         throw downloadError('The downloaded background-removal model failed its integrity check (SHA-256 mismatch). The file was discarded — try again.');
       }
       fs.renameSync(tmpPath, modelPath());
+      // C-03: clear the in-flight promise on success too (it was only
+      // cleared on error), so modelStatus() reports 'ready' afterwards
+      // instead of 'downloading' forever.
+      downloadPromise = null;
       state.status = 'ready';
       state.downloadedBytes = MODEL_BYTES;
       state.error = null;

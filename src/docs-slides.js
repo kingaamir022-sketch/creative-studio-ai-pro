@@ -398,6 +398,20 @@ async function docToDocx(doc, { mediaById = {}, outPath } = {}) {
   const rels = [];
   const mediaFiles = []; // {name, filePath}
   let mediaIdx = 0;
+  // C-10: charts are real images in the .docx, not placeholder text.
+  // Chart PNGs are rendered into a temp dir next to the output and
+  // removed once the archive is written.
+  const chartTmpDir = path.join(path.dirname(outPath), `.docx-charts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const emu = (px) => Math.round(px * 9525);
+  // Register an image file in word/media and return its drawing paragraph.
+  const embedImage = (filePath, wPx, hPx, label) => {
+    mediaIdx += 1;
+    const ext = path.extname(filePath).replace('.', '').toLowerCase() || 'png';
+    const name = `image${mediaIdx}.${ext === 'jpg' ? 'jpeg' : ext}`;
+    mediaFiles.push({ name, filePath });
+    rels.push({ id: `rId${mediaIdx}`, type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image', target: `media/${name}` });
+    return `<w:p><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="${emu(wPx)}" cy="${emu(hPx)}"/><wp:docPr id="${mediaIdx}" name="${escXml(label)}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${mediaIdx}" name="${escXml(label)}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId${mediaIdx}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(wPx)}" cy="${emu(hPx)}"/></a:xfrm><a:prstGeom prst="rect"/></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  };
   const para = (text, { style = null, bold = false, size = null } = {}) => {
     const pPr = [
       style ? `<w:pStyle w:val="${style}"/>` : '',
@@ -429,22 +443,28 @@ async function docToDocx(doc, { mediaById = {}, outPath } = {}) {
     } else if (b.type === 'image') {
       const m = mediaById[b.mediaId];
       if (m && fs.existsSync(m.filePath)) {
-        mediaIdx += 1;
-        const ext = path.extname(m.filePath).replace('.', '').toLowerCase() || 'png';
-        const name = `image${mediaIdx}.${ext === 'jpg' ? 'jpeg' : ext}`;
-        mediaFiles.push({ name, filePath: m.filePath });
-        rels.push({ id: `rId${mediaIdx}`, type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image', target: `media/${name}` });
         const wPx = Math.min(600, m.width || 600);
         const hPx = Math.round(wPx * ((m.height || 400) / (m.width || 600)));
-        const emu = (px) => Math.round(px * 9525);
-        body.push(`<w:p><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="${emu(wPx)}" cy="${emu(hPx)}"/><wp:docPr id="${mediaIdx}" name="Image ${mediaIdx}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${mediaIdx}" name="Image ${mediaIdx}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rId${mediaIdx}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${emu(wPx)}" cy="${emu(hPx)}"/></a:xfrm><a:prstGeom prst="rect"/></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`);
+        body.push(embedImage(m.filePath, wPx, hPx, `Image ${mediaIdx + 1}`));
         if (b.caption) body.push(para(b.caption, { size: 20 }));
       } else {
         body.push(para('[Image missing from the Media Library]', { size: 20 }));
       }
     } else if (b.type === 'divider') body.push('<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:color="D1D5DB"/></w:pBdr></w:pPr><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p>');
     else if (b.type === 'chart') {
-      body.push(para(`[Chart: ${b.chart.title || b.chart.type} — see the chart image in the app]`, { size: 20 }));
+      // C-10: render the chart to a real PNG and embed it like any image —
+      // a .docx must never drop a chart to placeholder text.
+      try {
+        fs.mkdirSync(chartTmpDir, { recursive: true });
+        const chartPath = path.join(chartTmpDir, `chart-${b.id || mediaIdx + 1}.png`);
+        await renderChartPng(b.chart, chartPath, { width: 960, height: 540 });
+        const wPx = 600;
+        const hPx = Math.round(wPx * 540 / 960);
+        body.push(embedImage(chartPath, wPx, hPx, `Chart ${mediaIdx + 1}`));
+        if (b.chart && b.chart.title) body.push(para(b.chart.title, { size: 20 }));
+      } catch (e) {
+        body.push(para(`[Chart "${(b.chart && b.chart.title) || b.chart.type}" could not be rendered: ${e.message}]`, { size: 20 }));
+      }
     }
   }
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -455,19 +475,24 @@ async function docToDocx(doc, { mediaById = {}, outPath } = {}) {
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId0" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>${rels.map((r) => `<Relationship Id="${r.id}" Type="${r.type}" Target="${r.target}"/>`).join('')}</Relationships>`;
   const docRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.map((r) => `<Relationship Id="${r.id}" Type="${r.type}" Target="${r.target}"/>`).join('')}</Relationships>`;
-  await new Promise((resolve, reject) => {
-    const output = fs.createWriteStream(outPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
-    output.on('close', resolve);
-    archive.on('error', reject);
-    archive.pipe(output);
-    archive.append(contentTypes, { name: '[Content_Types].xml' });
-    archive.append(relsXml, { name: '_rels/.rels' });
-    archive.append(docRelsXml, { name: 'word/_rels/document.xml.rels' });
-    archive.append(documentXml, { name: 'word/document.xml' });
-    for (const mf of mediaFiles) archive.file(mf.filePath, { name: `word/media/${mf.name}` });
-    archive.finalize();
-  });
+  try {
+    await new Promise((resolve, reject) => {
+      const output = fs.createWriteStream(outPath);
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      output.on('close', resolve);
+      archive.on('error', reject);
+      archive.pipe(output);
+      archive.append(contentTypes, { name: '[Content_Types].xml' });
+      archive.append(relsXml, { name: '_rels/.rels' });
+      archive.append(docRelsXml, { name: 'word/_rels/document.xml.rels' });
+      archive.append(documentXml, { name: 'word/document.xml' });
+      for (const mf of mediaFiles) archive.file(mf.filePath, { name: `word/media/${mf.name}` });
+      archive.finalize();
+    });
+  } finally {
+    // C-10: chart PNGs were copied into the archive; remove the temp dir.
+    try { fs.rmSync(chartTmpDir, { recursive: true, force: true }); } catch { /* temp cleanup is best-effort */ }
+  }
   return { blocks: doc.blocks.length, images: mediaFiles.length };
 }
 
@@ -782,16 +807,40 @@ function buildWebsite({ kind, title, design, deck, doc, mediaById = {}, chartFil
   };
   let body = '';
   let extraCss = '';
+  // C-19: published design/deck pages are fixed-size (e.g. 1920×1080) —
+  // without scaling they overflow any narrower viewport (a phone shows a
+  // horizontal scrollbar and a cut-off page). The fitter below scales each
+  // .page to the viewport width and reserves its scaled height, so the
+  // page always fits and the content below sits right under it.
+  const fitScript = `<script>
+(function(){
+function fitPages(){
+  document.querySelectorAll('.page').forEach(function(p){
+    var w=p.offsetWidth,h=p.offsetHeight;
+    if(!w||!h)return;
+    var s=Math.min(1,(window.innerWidth-48)/w);
+    p.style.transformOrigin='top center';
+    p.style.transform='scale('+s+')';
+    if(p.parentElement) p.parentElement.style.height=Math.round(h*s)+'px';
+  });
+}
+window.__fitPages=fitPages;
+window.addEventListener('resize',fitPages);
+window.addEventListener('load',fitPages);
+fitPages();
+})();
+</script>`;
   if (kind === 'design') {
-    body = designToHtmlPage(design, { title, assetUrl });
+    body = `<div class="page-wrap">${designToHtmlPage(design, { title, assetUrl })}</div>${fitScript}`;
     extraCss = '.page{margin:0 auto;box-shadow:0 10px 40px rgba(0,0,0,.15)}';
   } else if (kind === 'deck') {
     const slides = deckToDesigns(deck).map((d) => designToHtmlPage(d, { title, assetUrl }));
     body = `<div class="deck">${slides.map((s, i) => `<section class="slide" data-slide="${i}" style="display:${i === 0 ? 'block' : 'none'}">${s}</section>`).join('\n')}</div>
 <div class="deck-nav"><button id="deck-prev" type="button">← Previous</button><span id="deck-pos">1 / ${slides.length}</span><button id="deck-next" type="button">Next →</button><button id="deck-present" type="button">⛶ Present</button></div>
+${fitScript}
 <script>
 (function(){var slides=[].slice.call(document.querySelectorAll('.slide'));var i=0;var pos=document.getElementById('deck-pos');
-function show(n){i=Math.max(0,Math.min(slides.length-1,n));slides.forEach(function(s,j){s.style.display=j===i?'block':'none';});pos.textContent=(i+1)+' / '+slides.length;}
+function show(n){i=Math.max(0,Math.min(slides.length-1,n));slides.forEach(function(s,j){s.style.display=j===i?'block':'none';});pos.textContent=(i+1)+' / '+slides.length;if(window.__fitPages)window.__fitPages();}
 document.getElementById('deck-prev').onclick=function(){show(i-1);};
 document.getElementById('deck-next').onclick=function(){show(i+1);};
 document.getElementById('deck-present').onclick=function(){if(document.documentElement.requestFullscreen)document.documentElement.requestFullscreen();};

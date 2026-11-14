@@ -553,6 +553,17 @@ async function assignBackgroundsForJob(bulkJob) {
   }
   const dataRows = active.map((r) => JSON.parse(r.data || '{}'));
   let opts = { mode, pool: validPool, categoryColumn: bg.categoryColumn, categoryMap: bg.categoryMap || {}, repeatRule: bg.repeatRule || 'no-repeat', repeatAfterN: bg.repeatAfterN || 5 };
+  // C-16: a quiz batch has a spec solid-navy background, so it never needs a
+  // pool. With no pool at all (and no manual assignments), leave rows
+  // unassigned — buildRowJobPayload renders them on solid navy with a
+  // warning — instead of refusing to run. (Non-quiz video batches still
+  // refuse: a template video needs a background.)
+  const manualAssigned = mode === 'manual' && bg.manual && Object.keys(bg.manual).length > 0;
+  if (settings.quiz && settings.quiz.enabled && !validPool.length && (mode === 'random' || mode === 'pool' || (mode === 'manual' && !manualAssigned))) {
+    for (const r of active) db.updateBulkRow(r.id, { background_media_id: null, background_source: null });
+    db.refreshBulkJobCounts(bulkJob.id);
+    return;
+  }
   if (mode === 'manual') {
     const manualPos = {};
     active.forEach((r, i) => { if (bg.manual && bg.manual[r.row_index]) manualPos[i] = bg.manual[r.row_index]; });
@@ -595,7 +606,11 @@ async function buildRowJobPayload(bulkJob, row) {
   // Quiz preset, single-question mode: one row = one 10s video (spec defaults).
   if (bulkJob.kind === 'video' && settings.quiz.enabled && settings.quiz.mode !== 'multi') {
     const q = await buildQuizQuestion(bulkJob, row, settings);
-    if (!q.backgroundMediaId) throw new Error('This row has no background assigned. Re-run background assignment before starting the batch.');
+    // C-16: no background assigned ⇒ solid spec background (navy #14213D).
+    // The quiz timeline renders a gap as the solid background colour, so a
+    // fresh batch works out of the box; the row is warned, not refused.
+    const fallbackWarnings = [];
+    if (!q.backgroundMediaId) fallbackWarnings.push('No background assigned — using the solid navy background (#14213D). Pick a background pool to use images or video instead.');
     const size = quizOutputSize(settings);
     const built = qm.buildQuizTimeline([q], {
       W: size.width, H: size.height, fps: [24, 30, 60].includes(settings.fps) ? settings.fps : 30,
@@ -616,7 +631,7 @@ async function buildRowJobPayload(bulkJob, row) {
       },
       outputName: bm.outputFileName(settings.outputNameTemplate, rowData, settings.fieldMapping, row.row_index, ext),
       backgroundMediaId: q.backgroundMediaId, backgroundSource: db.getBulkRowAny(row.id).background_source,
-      warnings: built.warnings, luminance: null,
+      warnings: [...fallbackWarnings, ...built.warnings], luminance: null,
       fitReport: built.fitReports[0] || null,
       fonts: built.fonts,
       voiceUsed: narration.voiceUsed,
@@ -679,7 +694,10 @@ async function buildRowJobPayload(bulkJob, row) {
     const m = db.getMedia(bulkJob.user_id, bgRow.background_media_id);
     if (m) background = { mediaId: m.id, kind: m.kind };
   }
-  if (!background) throw new Error('This row has no background assigned. Re-run background assignment before starting the batch.');
+  // C-16: no background assigned ⇒ fall back to the template's own
+  // background media (or a solid-colour gap when the template has none),
+  // with a warning — the batch refuses only when nothing can render.
+  if (!background) warnings.push('No background assigned — using the template\u2019s own background. Pick a background pool to give each row its own background.');
   const built = bm.buildRowTimeline(timeline, rowData, {
     fieldMapping: settings.fieldMapping, resolvedMedia, background,
     backgroundClipId: settings.backgroundClipId || scan.backgroundClipId,
@@ -690,7 +708,7 @@ async function buildRowJobPayload(bulkJob, row) {
   let overlayAlpha = settings.readability && settings.readability.enabled === false
     ? 0 : num(settings.readability ? settings.readability.overlayAlpha : 0.35, 0.35);
   let luminance = null;
-  if (background.kind === 'image' && settings.readability && settings.readability.enabled !== false) {
+  if (background && background.kind === 'image' && settings.readability && settings.readability.enabled !== false) {
     const fp = mediaFilePath(bulkJob.user_id, background.mediaId);
     if (fp) {
       const stats = await measureBackgroundStats(fp);
@@ -722,7 +740,7 @@ async function buildRowJobPayload(bulkJob, row) {
       settings: { resolution: settings.resolution === '1080p' ? '1080p' : '720p', fps, readabilityOverlay: overlayAlpha, readabilityColor },
     },
     outputName: bm.outputFileName(settings.outputNameTemplate, rowData, settings.fieldMapping, row.row_index, 'mp4'),
-    backgroundMediaId: background.mediaId, backgroundSource: bgRow.background_source,
+    backgroundMediaId: background ? background.mediaId : null, backgroundSource: bgRow.background_source,
     warnings, luminance,
     fitReport: built.fitReport,
   };
@@ -733,8 +751,12 @@ async function buildQuizGroupPayload(bulkJob, groupRows) {
   const settings = parseSettings(bulkJob);
   const questions = [];
   for (const r of groupRows) questions.push(await buildQuizQuestion(bulkJob, r, settings));
+  // C-16: questions without a background render on the solid navy
+  // background instead of refusing the whole group.
   const missing = questions.filter((q) => !q.backgroundMediaId);
-  if (missing.length) throw new Error(`${missing.length} question(s) in this group have no background assigned. Re-run background assignment before starting the batch.`);
+  const groupWarnings = missing.length
+    ? [`${missing.length} question(s) have no background assigned — using the solid navy background (#14213D). Pick a background pool to use images or video instead.`]
+    : [];
   const size = quizOutputSize(settings);
   const brand = bulkJob.brand_id ? db.getBrand(bulkJob.user_id, bulkJob.brand_id) : null;
   const built = qm.buildQuizTimeline(questions, {
@@ -757,7 +779,7 @@ async function buildQuizGroupPayload(bulkJob, groupRows) {
     outputName: bm.outputFileName(`Quiz ${groupRows[0].row_index + 1}-${groupRows[groupRows.length - 1].row_index + 1}`, firstData, {}, 0, 'mp4'),
     backgroundMediaId: questions[0].backgroundMediaId,
     backgroundSource: db.getBulkRowAny(groupRows[0].id).background_source,
-    warnings: built.warnings, luminance: null,
+    warnings: [...groupWarnings, ...built.warnings], luminance: null,
     // Fit reports keyed by the row's data index (rounds are sorted easiest-first).
     fitReports: built.rounds.map((r) => ({ rowIndex: r.questionIndex, fitReport: r.fitReport })),
     fonts: built.fonts,
@@ -852,6 +874,29 @@ async function startBulkJob(userId, bulkJobId) {
   const dataset = JSON.parse(job.dataset || '{"columns":[],"rows":[]}');
   if (!dataset.rows || !dataset.rows.length) throw new Error('No data rows yet. Import a spreadsheet (XLSX/CSV/JSON) or add rows manually first.');
   const settings = parseSettings(job);
+  // C-01 pre-flight: every template field must resolve to a spreadsheet
+  // column — via the explicit mapping or the same-name fallback. Refuse
+  // up front with the field names instead of rendering blank text.
+  if (!(job.kind === 'video' && settings.quiz.enabled)) {
+    const project = db.getProject(userId, job.template_project_id);
+    if (project) {
+      let fields = [];
+      try {
+        fields = job.kind === 'design'
+          ? bm.scanDesignTemplate(extractDesign(project)).fields
+          : bm.scanVideoTemplate(extractTimeline(project)).fields;
+      } catch { fields = []; }
+      const columns = dataset.columns || [];
+      const unresolved = fields.filter((f) => {
+        const mapped = settings.fieldMapping[f.name];
+        if (mapped && columns.includes(mapped)) return false;
+        return !columns.some((c) => bm.normField(c) === f.name);
+      }).map((f) => f.name);
+      if (unresolved.length) {
+        throw new Error(`Template fields with no spreadsheet column: ${unresolved.map((f) => `{{${f}}}`).join(', ')} — map them in Step 1 (Template & field mapping) or add a same-name column to the spreadsheet. Nothing was generated.`);
+      }
+    }
+  }
   const maxRows = Math.max(1, Math.min(MAX_ROWS_HARD, parseInt(settings.maxRows || '100', 10)));
   const selected = db.listBulkRows(bulkJobId).filter((r) => r.selected && r.status !== 'skipped');
   if (!selected.length) {

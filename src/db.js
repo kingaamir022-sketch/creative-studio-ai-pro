@@ -3,6 +3,7 @@
 // rest of the app never touches SQL directly.
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const Database = require('better-sqlite3');
 const config = require('./config');
 
@@ -590,7 +591,17 @@ function saveProjectVersion(projectId, content, note) {
     .run(projectId, projectId);
 }
 function listProjectVersions(projectId) {
-  return db.prepare('SELECT id, note, created_at FROM project_versions WHERE project_id = ? ORDER BY id DESC').all(projectId);
+  // C-26: each version carries a content fingerprint (SHA-256 of the stored
+  // JSON) + byte size, so the UI can tell identical autosaves apart and
+  // the user can see whether two versions actually differ.
+  return db.prepare('SELECT id, note, created_at, content FROM project_versions WHERE project_id = ? ORDER BY id DESC').all(projectId)
+    .map((v) => ({
+      id: v.id,
+      note: v.note,
+      created_at: v.created_at,
+      sha256: crypto.createHash('sha256').update(String(v.content || '')).digest('hex'),
+      bytes: Buffer.byteLength(String(v.content || ''), 'utf8'),
+    }));
 }
 function getProjectVersion(id) {
   return db.prepare('SELECT * FROM project_versions WHERE id = ?').get(id);
@@ -1082,6 +1093,15 @@ function getWebsite(userId, slug) {
 function getWebsiteBySlug(slug) {
   return db.prepare('SELECT * FROM websites WHERE slug = ?').get(slug);
 }
+// C-18: one live site per project — republishing must update the existing
+// site (same URL), not create a second one with a new random slug.
+function getWebsiteByProject(userId, projectId) {
+  return db.prepare('SELECT * FROM websites WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 1').get(userId, projectId);
+}
+function updateWebsite(userId, id, { kind, title, dir }) {
+  db.prepare('UPDATE websites SET kind = ?, title = ?, dir = ? WHERE id = ? AND user_id = ?').run(kind, title, dir, id, userId);
+  return db.prepare('SELECT * FROM websites WHERE id = ?').get(id);
+}
 function listWebsites(userId) {
   return db.prepare('SELECT * FROM websites WHERE user_id = ? ORDER BY created_at DESC').all(userId);
 }
@@ -1476,6 +1496,31 @@ function platformStats() {
     pendingPlanRequests: one("SELECT COUNT(*) AS c FROM plan_requests WHERE status = 'pending'"),
   };
 }
+function userStats(userId) {
+  // C-22: the same totals as platformStats, scoped to one user's own rows
+  // (a plain USER must never see platform-wide totals). marketplaceTemplates
+  // stays platform-wide: the marketplace is public by design.
+  const one = (sql, params = [userId]) => db.prepare(sql).get(...params).c;
+  return {
+    users: 1,
+    suspendedUsers: 0,
+    projects: one('SELECT COUNT(*) AS c FROM projects WHERE user_id = ?'),
+    media: one('SELECT COUNT(*) AS c FROM media WHERE user_id = ?'),
+    renderJobs: one('SELECT COUNT(*) AS c FROM jobs WHERE user_id = ?'),
+    rendersDone: one("SELECT COUNT(*) AS c FROM jobs WHERE user_id = ? AND status = 'done'"),
+    bulkJobs: one('SELECT COUNT(*) AS c FROM bulk_jobs WHERE user_id = ?'),
+    shortsJobs: one('SELECT COUNT(*) AS c FROM shorts_jobs WHERE user_id = ?'),
+    aiJobs: one('SELECT COUNT(*) AS c FROM ai_jobs WHERE user_id = ?'),
+    aiJobsDone: one("SELECT COUNT(*) AS c FROM ai_jobs WHERE user_id = ? AND status = 'done'"),
+    socialPosts: one('SELECT COUNT(*) AS c FROM social_posts WHERE user_id = ?'),
+    socialPublished: one("SELECT COUNT(*) AS c FROM social_posts WHERE user_id = ? AND status = 'published'"),
+    marketplaceTemplates: one("SELECT COUNT(*) AS c FROM marketplace_templates WHERE status = 'active'", []),
+    creditsOutstanding: one('SELECT COALESCE(SUM(credits_balance),0) AS c FROM users WHERE id = ?'),
+    creditsSpent: one('SELECT COALESCE(SUM(-credits),0) AS c FROM usage_log WHERE user_id = ? AND credits < 0'),
+    storageBytes: one('SELECT COALESCE(SUM(size_bytes),0) AS c FROM media WHERE user_id = ?'),
+    pendingPlanRequests: one("SELECT COUNT(*) AS c FROM plan_requests WHERE user_id = ? AND status = 'pending'"),
+  };
+}
 function userUsageSummary(userId) {
   const spent = db.prepare('SELECT COALESCE(SUM(-credits),0) AS c FROM usage_log WHERE user_id = ? AND credits < 0').get(userId).c;
   const byAction = db.prepare(`SELECT action, COUNT(*) AS n, COALESCE(SUM(-credits),0) AS spent
@@ -1513,7 +1558,7 @@ module.exports = {
   updateVoiceProfile, deleteVoiceProfile, setDefaultVoiceProfile, getDefaultVoiceProfile,
   createShortsJob, getShortsJob, getShortsJobAny, listShortsJobs, updateShortsJob,
   deleteShortsJob, createShortsClips, replaceShortsClips, listShortsClips,
-  createWebsite, getWebsite, getWebsiteBySlug, listWebsites, deleteWebsite,
+  createWebsite, getWebsite, getWebsiteBySlug, getWebsiteByProject, updateWebsite, listWebsites, deleteWebsite,
   getShortsClip, getShortsClipAny, updateShortsClip,
   createSocialConnection, getSocialConnection, listSocialConnections,
   updateSocialConnection, deleteSocialConnection, publicSocialConnection,
@@ -1528,7 +1573,7 @@ module.exports = {
   canViewProject, createProjectComment, getProjectComment, listProjectComments,
   resolveProjectComment, deleteProjectComment,
   getOAuthConfig, upsertOAuthConfig,
-  listUsersAdmin, listAuditAll, deleteUserById, platformStats, userUsageSummary,
+  listUsersAdmin, listAuditAll, deleteUserById, platformStats, userStats, userUsageSummary,
   getProviderSettings, upsertProvider,
   getProviderConfig, listProviderConfig, upsertProviderConfig,
   getAppSetting, setAppSetting,

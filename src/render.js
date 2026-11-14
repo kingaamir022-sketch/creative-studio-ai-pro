@@ -398,10 +398,24 @@ function buildRenderPlan({ timeline, mediaById, settings = {}, tmpDir }) {
       else xExpr = `${fmt(px)}`;
       let yExpr = `${fmt(py)}`;
       const slideK = `max(0,1-(t-${fmt(S)})/${fmt(animDur)})`;
-      if (animIn === 'slide' || animIn === 'slide-left') xExpr = `(${xExpr})-120*${slideK}`;
-      else if (animIn === 'slide-right') xExpr = `(${xExpr})+120*${slideK}`;
-      else if (animIn === 'slide-up') yExpr = `(${fmt(py)})-80*${slideK}`;
-      else if (animIn === 'slide-down') yExpr = `(${fmt(py)})+80*${slideK}`;
+      // C-07: the slide offset is ONE shared value, clamped so the clip's
+      // panel (when it has one) never leaves the frame, and applied
+      // identically to the text AND its panel. The old code shifted only
+      // the drawtext x/y by a fixed 120px/80px while the panel stayed
+      // put, so the text slid out of its panel and clipped at the frame
+      // edge. Clamp bounds come from the panel when present (its edges
+      // are the visual container), else from the text anchor.
+      let dxExpr = '0', dyExpr = '0';
+      const maxLeft = txt.panel ? num(txt.panel.x, 0) : px;
+      const maxRight = txt.panel ? W - (num(txt.panel.x, 0) + num(txt.panel.w, 100)) : W - px;
+      const maxUp = txt.panel ? num(txt.panel.y, 0) : py;
+      const maxDown = txt.panel ? H - (num(txt.panel.y, 0) + num(txt.panel.h, 40)) : H - py;
+      if (animIn === 'slide' || animIn === 'slide-left') dxExpr = `-${Math.max(0, Math.min(120, maxLeft))}*${slideK}`;
+      else if (animIn === 'slide-right') dxExpr = `${Math.max(0, Math.min(120, maxRight))}*${slideK}`;
+      else if (animIn === 'slide-up') dyExpr = `-${Math.max(0, Math.min(80, maxUp))}*${slideK}`;
+      else if (animIn === 'slide-down') dyExpr = `${Math.max(0, Math.min(80, maxDown))}*${slideK}`;
+      if (dxExpr !== '0') xExpr = `(${xExpr})+(${dxExpr})`;
+      if (dyExpr !== '0') yExpr = `(${yExpr})+(${dyExpr})`;
       // Phase 4: a text clip may carry a base alpha (reveal dimming) and an
       // option panel (drawbox behind the text — quiz option boxes, timer bar).
       const baseAlpha = Math.max(0, Math.min(1, num(txt.alpha, 1)));
@@ -416,14 +430,18 @@ function buildRenderPlan({ timeline, mediaById, settings = {}, tmpDir }) {
         const p = txt.panel;
         const pOut = `tx${segCounter++}`;
         const pAlpha = p.alpha !== undefined ? `@${fmt(Math.max(0, Math.min(1, num(p.alpha, 1))))}` : '';
+        // C-07: the panel slides with its text by the same clamped offset
+        // (dxExpr/dyExpr above), so text never leaves its panel.
+        const pX = dxExpr !== '0' ? `${fmt(num(p.x, 0))}+(${dxExpr})` : fmt(num(p.x, 0));
+        const pY = dyExpr !== '0' ? `${fmt(num(p.y, 0))}+(${dyExpr})` : fmt(num(p.y, 0));
         // The panel is time-gated like its text: without the enable the
         // panel would show for the whole video (e.g. a green reveal panel
         // visible during the question phase).
-        filterParts.push(`[${curLabel}]drawbox=x=${fmt(num(p.x, 0))}:y=${fmt(num(p.y, 0))}:w=${fmt(num(p.w, 100))}:h=${fmt(num(p.h, 40))}:color=${escColor(p.fill || '#1e293b')}${pAlpha}:t=fill:enable='between(t,${fmt(S)},${fmt(E)})'[${pOut}]`);
+        filterParts.push(`[${curLabel}]drawbox=x='${pX}':y='${pY}':w=${fmt(num(p.w, 100))}:h=${fmt(num(p.h, 40))}:color=${escColor(p.fill || '#1e293b')}${pAlpha}:t=fill:enable='between(t,${fmt(S)},${fmt(E)})'[${pOut}]`);
         curLabel = pOut;
         if (p.border && num(p.borderWidth) > 0) {
           const bOut = `tx${segCounter++}`;
-          filterParts.push(`[${curLabel}]drawbox=x=${fmt(num(p.x, 0))}:y=${fmt(num(p.y, 0))}:w=${fmt(num(p.w, 100))}:h=${fmt(num(p.h, 40))}:color=${escColor(p.border)}:t=${Math.round(num(p.borderWidth))}:enable='between(t,${fmt(S)},${fmt(E)})'[${bOut}]`);
+          filterParts.push(`[${curLabel}]drawbox=x='${pX}':y='${pY}':w=${fmt(num(p.w, 100))}:h=${fmt(num(p.h, 40))}:color=${escColor(p.border)}:t=${Math.round(num(p.borderWidth))}:enable='between(t,${fmt(S)},${fmt(E)})'[${bOut}]`);
           curLabel = bOut;
         }
       }
@@ -447,7 +465,12 @@ function buildRenderPlan({ timeline, mediaById, settings = {}, tmpDir }) {
       // Phase 5: a looped music clip repeats its source to fill the video
       // (stream_loop input); a plain clip plays once and then goes silent.
       const ii = inputForMedia(clip.mediaId, { loop: clip.loop });
-      const startOverride = useRenderStart ? renderStartByClip.get(clip.id) : undefined;
+      // C-09: audio-track clips have no renderStartByClip entry (that map
+      // only covers main-track video segments), so they used to keep their
+      // raw timeline start — after a transition the video renders earlier
+      // and the audio drifted late by the overlap (0.5s per transition).
+      // Shift-compensate with shiftAt, the same mechanism the video uses.
+      const startOverride = useRenderStart ? renderStartByClip.get(clip.id) : shiftAt(clip.start);
       const chain = audioChain(ii, clip, true, startOverride);
       if (chain) audioSources.push(chain);
     }

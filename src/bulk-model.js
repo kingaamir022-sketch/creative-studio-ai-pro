@@ -91,13 +91,22 @@ function scanDesignTemplate(design) {
 }
 
 // Substitute {{FIELD}} placeholders in a string using a row + mapping.
-// mapping: { FIELD: 'COLUMN' }. Returns { text, missing: [FIELD] }.
+// mapping: { FIELD: 'COLUMN' }. When a field has NO mapping entry, the
+// same-name dataset column is used (C-01: the default mapping is empty,
+// so skipping the mapping step used to blank every value silently).
+// Returns { text, missing: [FIELD] }.
 function substituteText(text, row, mapping) {
   const missing = [];
   if (typeof text !== 'string') return { text: text || '', missing };
   const out = text.replace(PLACEHOLDER_RE, (whole, name) => {
     const field = normField(name);
-    const col = mapping && mapping[field];
+    let col = mapping && mapping[field];
+    if (col === undefined && row) {
+      // Same-name fallback: a dataset column whose normalised name
+      // matches the field (case/space-insensitive).
+      const sameName = Object.keys(row).find((k) => normField(k) === field);
+      if (sameName !== undefined) col = sameName;
+    }
     const val = col !== undefined && row ? row[col] : undefined;
     if (val === undefined || val === null || String(val) === '') {
       if (!missing.includes(field)) missing.push(field);
@@ -186,7 +195,12 @@ function buildRowTimeline(template, row, opts = {}) {
           // A resolved image on a video track renders as a looped still
           // (render.js handles image media on video tracks).
         } else {
-          const col = mapping[field];
+          // Same-name column fallback (C-01), same as substituteText.
+          let col = mapping[field];
+          if (col === undefined && row) {
+            const sameName = Object.keys(row).find((k) => normField(k) === field);
+            if (sameName !== undefined) col = sameName;
+          }
           const val = col !== undefined && row ? row[col] : undefined;
           if (val === undefined || val === null || String(val) === '') {
             // Empty value: keep the template's default media, warn.

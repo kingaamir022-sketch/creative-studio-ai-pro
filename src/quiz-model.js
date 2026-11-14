@@ -874,14 +874,24 @@ function buildQuizTimeline(questions, opts = {}) {
   });
 
   // Score card at the very end (3s, centred in the safe box).
+  // C-02: the CTA + sub-line are fit-checked like every other quiz text —
+  // wrap to 2 lines or shrink, never drawn past the safe box.
   const ctaText = opts.ctaText || 'Kitne sahi hue? Comment mein score likho';
   const ctaSub = opts.ctaSub || 'Follow for more quizzes';
   const ctaStart = cursor;
-  const scoreY = safe.y + Math.round(safe.h / 2) - Math.round(80 * (H / 1920));
-  scoreTrack.clips.push(textClip('clip_cta', ctaText, ctaStart, ctaSeconds,
-    { fontSize: scaleFont(48), fontWeight: 800, color: '#ffffff', align: 'center', x: 50, y: pctY(scoreY), animIn: 'fade', animOut: 'fade' }));
-  scoreSubTrack.clips.push(textClip('clip_cta_sub', ctaSub, ctaStart, ctaSeconds,
-    { fontSize: scaleFont(28), fontWeight: 600, color: accent, align: 'center', x: 50, y: pctY(scoreY + Math.round(110 * (H / 1920))), animIn: 'fade', animOut: 'fade' }));
+  const ctaMaxFont = Math.max(8, Math.round(48 * (W / 1080)));
+  const ctaFit = fitText(ctaText, safe.w, { maxFont: ctaMaxFont, minFont: 20, maxLines: 2, lineHeight: 1.25 });
+  const ctaSubMaxFont = Math.max(8, Math.round(28 * (W / 1080)));
+  const ctaSubFit = fitText(ctaSub, safe.w, { maxFont: ctaSubMaxFont, minFont: 16, maxLines: 2, lineHeight: 1.25 });
+  if (ctaFit.status === 'attention') warnings.push(`Score-card text does not fit even at the smallest readable size — shorten it: "${(ctaFit.suggestedText || '').slice(0, 80)}".`);
+  if (ctaSubFit.status === 'attention') warnings.push(`Score-card sub-line does not fit even at the smallest readable size — shorten it: "${(ctaSubFit.suggestedText || '').slice(0, 80)}".`);
+  const ctaGapY = Math.round(24 * (H / 1920));
+  const ctaBlockH = ctaFit.heightPx + ctaGapY + ctaSubFit.heightPx;
+  const ctaBlockTop = safe.y + Math.round(safe.h / 2) - Math.round(ctaBlockH / 2);
+  scoreTrack.clips.push(textClip('clip_cta', ctaFit.lines.join('\n'), ctaStart, ctaSeconds,
+    { fontSize: scaleFont(ctaFit.fontSize), fontWeight: 800, color: '#ffffff', align: 'center', x: 50, y: pctY(ctaBlockTop), animIn: 'fade', animOut: 'fade' }));
+  scoreSubTrack.clips.push(textClip('clip_cta_sub', ctaSubFit.lines.join('\n'), ctaStart, ctaSeconds,
+    { fontSize: scaleFont(ctaSubFit.fontSize), fontWeight: 600, color: accent, align: 'center', x: 50, y: pctY(ctaBlockTop + ctaFit.heightPx + ctaGapY), animIn: 'fade', animOut: 'fade' }));
   cursor += ctaSeconds;
 
   return {

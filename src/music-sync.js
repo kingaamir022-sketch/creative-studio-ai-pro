@@ -208,13 +208,18 @@ function applyMusicSync(timeline, analysis, mediaId, trackName, rawOptions = {})
 
   // --- Music audio clip (one track + the video's own audio is out of scope
   // for multi-track mixing; the renderer's amix blends both).
-  let audioTrack = t.tracks.find((tr) => tr.kind === 'audio');
-  if (!audioTrack) {
-    audioTrack = { id: vm.uid('track'), kind: 'audio', name: 'Audio 1', locked: false, muted: false, clips: [] };
-    t.tracks.push(audioTrack);
-  }
+  // C-08: never push the music clip onto an occupied audio track — an
+  // existing clip there would overlap it and the timeline validation
+  // would refuse the whole sync (400). Use the first audio track whose
+  // clips do not overlap [0, audioClipDuration), else add a new track.
   const loop = options.fitMode === 'loop';
   const audioClipDuration = loop ? videoDuration : Math.min(audioRemaining, videoDuration);
+  let audioTrack = t.tracks.filter((tr) => tr.kind === 'audio').find((tr) => !tr.clips.some((c) => 0 < c.start + c.duration && c.start < audioClipDuration));
+  if (!audioTrack) {
+    const audioCount = t.tracks.filter((tr) => tr.kind === 'audio').length;
+    audioTrack = { id: vm.uid('track'), kind: 'audio', name: `Audio ${audioCount + 1}`, locked: false, muted: false, clips: [] };
+    t.tracks.push(audioTrack);
+  }
   const audioClip = vm.defaultClip('audio', mediaId, 0, round2(audioClipDuration));
   audioClip.name = `Music: ${trackName}`;
   audioClip.volume = options.volume;

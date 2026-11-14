@@ -27,6 +27,7 @@ const providers = require('./providers');
 const credits = require('./credits');
 const { probeMedia, run } = require('./ffmpeg');
 const { normaliseCues } = require('./captions');
+const { fitText } = require('./quiz-model');
 
 const AI_MODES = ['image', 'image-edit', 'video', 'video-image', 'voice', 'quiz', 'design', 'transcribe', 'music-mood', 'music-generate', 'write', 'deck'];
 
@@ -406,19 +407,34 @@ function buildDesignFromSuggestions(s, name) {
   const accent = HEX.test(pal.accent || '') ? pal.accent : '#3b82f6';
   const headingFont = DESIGN_FONTS.includes(s.fonts && s.fonts.heading) ? s.fonts.heading : 'Poppins';
   const bodyFont = DESIGN_FONTS.includes(s.fonts && s.fonts.body) ? s.fonts.body : 'Inter';
-  const words = headline.replace(/[“”"'.!?]/g, '').split(/\s+/).filter(Boolean);
+  // C-13: fit every AI-written text layer to its box (wrap, then shrink)
+  // BEFORE the design is saved — the old code put an up-to-8-word
+  // headline at 110px into a 2-line box and it overflowed every time.
+  // Returns the fitted {text, fontSize} plus a needsAttention note when
+  // even the smallest readable size cannot fit the box.
+  const needsAttention = [];
+  const fitLayer = (text, boxW, boxH, maxFont, lineHeight, label) => {
+    const maxLines = Math.max(1, Math.floor(boxH / (maxFont * lineHeight)));
+    const fit = fitText(text, boxW * 0.95, { maxFont, minFont: 12, maxLines, lineHeight });
+    if (fit.status === 'attention') needsAttention.push(`${label} does not fit its box even at the smallest readable size — shorten it (suggested: "${(fit.suggestedText || '').slice(0, 60)}")`);
+    return { text: fit.lines.join('\n'), fontSize: fit.fontSize };
+  };
+  const headFit = fitLayer(headline, 900, 260, 110, 1.05, 'Headline');
+  const subFit = fitLayer(sub, 800, 90, 36, 1.3, 'Subheading');
+  const ctaFit = fitLayer(cta, 300, 56, 34, 1.2, 'CTA text');
+  const badgeFit = fitLayer('NEW DESIGN', 300, 44, 28, 1.2, 'Badge text');
   return {
     version: 1, width: 1080, height: 1080,
     background: { type: 'gradient', color: from, gradient: { from, to, angle: 135 } },
     layers: [
       { id: 'ai_badge', type: 'shape', name: 'Badge', x: 390, y: 110, w: 300, h: 60, rotation: 0, opacity: 1, locked: false, hidden: false, groupId: null, shape: { kind: 'rect', fill: '#ffffff', stroke: '', strokeWidth: 0, radius: 30, shadow: null } },
-      { id: 'ai_badge_t', type: 'text', name: 'Badge text', x: 390, y: 120, w: 300, h: 44, rotation: 0, opacity: 1, locked: false, hidden: false, groupId: null, text: { text: 'NEW DESIGN', fontFamily: headingFont, fontSize: 28, fontWeight: 800, fontStyle: 'normal', underline: false, align: 'center', color: from, letterSpacing: 2, lineHeight: 1.2, shadow: null, stroke: null, gradient: null } },
-      { id: 'ai_head', type: 'text', name: 'Headline', x: 90, y: 280, w: 900, h: 260, rotation: 0, opacity: 1, locked: false, hidden: false, groupId: null, text: { text: headline, fontFamily: headingFont, fontSize: 110, fontWeight: 800, fontStyle: 'normal', underline: false, align: 'center', color: '#ffffff', letterSpacing: 0, lineHeight: 1.05, shadow: { color: '#000000', blur: 10, offsetX: 0, offsetY: 4 }, stroke: null, gradient: null } },
-      { id: 'ai_sub', type: 'text', name: 'Subheading', x: 140, y: 580, w: 800, h: 90, rotation: 0, opacity: 1, locked: false, hidden: false, groupId: null, text: { text: sub, fontFamily: bodyFont, fontSize: 36, fontWeight: 400, fontStyle: 'normal', underline: false, align: 'center', color: '#e8ecf8', letterSpacing: 0, lineHeight: 1.3, shadow: null, stroke: null, gradient: null } },
+      { id: 'ai_badge_t', type: 'text', name: 'Badge text', x: 390, y: 120, w: 300, h: 44, rotation: 0, opacity: 1, locked: false, hidden: false, groupId: null, text: { text: badgeFit.text, fontFamily: headingFont, fontSize: badgeFit.fontSize, fontWeight: 800, fontStyle: 'normal', underline: false, align: 'center', color: from, letterSpacing: 2, lineHeight: 1.2, shadow: null, stroke: null, gradient: null } },
+      { id: 'ai_head', type: 'text', name: 'Headline', x: 90, y: 280, w: 900, h: 260, rotation: 0, opacity: 1, locked: false, hidden: false, groupId: null, text: { text: headFit.text, fontFamily: headingFont, fontSize: headFit.fontSize, fontWeight: 800, fontStyle: 'normal', underline: false, align: 'center', color: '#ffffff', letterSpacing: 0, lineHeight: 1.05, shadow: { color: '#000000', blur: 10, offsetX: 0, offsetY: 4 }, stroke: null, gradient: null } },
+      { id: 'ai_sub', type: 'text', name: 'Subheading', x: 140, y: 580, w: 800, h: 90, rotation: 0, opacity: 1, locked: false, hidden: false, groupId: null, text: { text: subFit.text, fontFamily: bodyFont, fontSize: subFit.fontSize, fontWeight: 400, fontStyle: 'normal', underline: false, align: 'center', color: '#e8ecf8', letterSpacing: 0, lineHeight: 1.3, shadow: null, stroke: null, gradient: null } },
       { id: 'ai_cta', type: 'shape', name: 'CTA button', x: 390, y: 720, w: 300, h: 88, rotation: 0, opacity: 1, locked: false, hidden: false, groupId: null, shape: { kind: 'rect', fill: '#ffffff', stroke: '', strokeWidth: 0, radius: 44, shadow: null } },
-      { id: 'ai_cta_t', type: 'text', name: 'CTA text', x: 390, y: 736, w: 300, h: 56, rotation: 0, opacity: 1, locked: false, hidden: false, groupId: null, text: { text: cta, fontFamily: headingFont, fontSize: 34, fontWeight: 800, fontStyle: 'normal', underline: false, align: 'center', color: accent, letterSpacing: 0, lineHeight: 1.2, shadow: null, stroke: null, gradient: null } },
+      { id: 'ai_cta_t', type: 'text', name: 'CTA text', x: 390, y: 736, w: 300, h: 56, rotation: 0, opacity: 1, locked: false, hidden: false, groupId: null, text: { text: ctaFit.text, fontFamily: headingFont, fontSize: ctaFit.fontSize, fontWeight: 800, fontStyle: 'normal', underline: false, align: 'center', color: accent, letterSpacing: 0, lineHeight: 1.2, shadow: null, stroke: null, gradient: null } },
     ],
-    _ai: { prompt: name, suggestions: { headline, subheading: sub, cta, palette: { primary: from, secondary: to, accent }, fonts: { heading: headingFont, body: bodyFont } } },
+    _ai: { prompt: name, suggestions: { headline, subheading: sub, cta, palette: { primary: from, secondary: to, accent }, fonts: { heading: headingFont, body: bodyFont } }, needsAttention },
   };
 }
 
@@ -444,7 +460,7 @@ async function designAssist(userId, { prompt, name, projectId } = {}, signal) {
   const content = buildDesignFromSuggestions(out, clean);
   const project = db.createProject(userId, { name: `${designName} (AI assist)`, type: 'design', content });
   credits.chargeCredits(userId, 'ai_design', `AI Design Assist: "${clean.slice(0, 80)}" → project ${project.id}`);
-  return { project: { id: project.id, name: project.name, type: project.type }, suggestions: content._ai.suggestions, sourceProjectId: projectId || null };
+  return { project: { id: project.id, name: project.name, type: project.type }, suggestions: content._ai.suggestions, needsAttention: content._ai.needsAttention || [], sourceProjectId: projectId || null };
 }
 
 // --- Magic Write (general AI writing) ----------------------------------------

@@ -17,6 +17,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { fontFor } = require('./render');
 const { probeMedia } = require('./ffmpeg');
+const { fitText } = require('./quiz-model');
 
 function escColor(hex) {
   const h = String(hex || '#ffffff').replace('#', '');
@@ -118,15 +119,26 @@ async function renderDesign({ design, mediaById, outPath }) {
       const t = layer.text || {};
       const font = fontFor(t.fontFamily, t.fontWeight);
       if (!font) throw new Error('No usable system font found for text rendering (DejaVu fonts missing).');
+      // C-06: fit the text to its box before drawing — wrap, then shrink
+      // the font (never draw past the box), and honour the layer's
+      // lineHeight via drawtext line_spacing (the renderer used to ignore
+      // it, so preview and server render disagreed).
+      const lh = num(t.lineHeight, 1.2) || 1.2;
+      const maxLines = Math.max(1, Math.floor(h / (num(t.fontSize, 64) * lh)));
+      const fit = fitText(String(t.text || ''), w * 0.95, { maxFont: num(t.fontSize, 64), minFont: 12, maxLines, lineHeight: lh });
+      if (fit.status === 'attention') {
+        warnings.push(`Layer "${layer.name}": text does not fit its box even at the smallest readable size — shorten it (suggested: "${(fit.suggestedText || '').slice(0, 80)}").`);
+      }
       const filePath = path.join(tmpDir, `text${layerIdx}.txt`);
-      fs.writeFileSync(filePath, String(t.text || ''));
+      fs.writeFileSync(filePath, fit.lines.join('\n'));
       textFiles.push(filePath);
-      const fsPx = Math.max(6, Math.round(num(t.fontSize, 64)));
+      const fsPx = Math.max(6, Math.round(fit.fontSize));
       let xExpr;
       if (t.align === 'center') xExpr = `${x}+(${w}-text_w)/2`;
       else if (t.align === 'right') xExpr = `${x}+${w}-text_w`;
       else xExpr = `${x}`;
       let dt = `drawtext=fontfile=${font}:textfile='${filePath}':fontsize=${fsPx}:fontcolor=${escColor(t.color)}:x='${xExpr}':y=${y}`;
+      if (lh > 1) dt += `:line_spacing=${Math.round(fsPx * (lh - 1))}`;
       if (opacity < 1) dt += `:alpha=${fmt(opacity)}`;
       if (t.underline) warnings.push(`Layer "${layer.name}": underline is not rendered by the server renderer.`);
       if (t.shadow) warnings.push(`Layer "${layer.name}": text shadow is not rendered by the server renderer.`);

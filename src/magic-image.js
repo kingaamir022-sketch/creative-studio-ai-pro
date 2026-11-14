@@ -210,13 +210,22 @@ function decodeMaskDataUrl(dataUrl) {
 }
 
 // Mean alpha (0-255) of a PNG: 255 = fully opaque (nothing to erase).
+// C-04: force RGBA first — alphaextract needs an alpha plane, and an
+// alpha-less (RGB) mask used to fail with a raw FFmpeg stderr dump. An
+// RGB mask is fully opaque, so it now correctly reads 255 and the
+// friendly "Nothing to erase" guard fires instead.
 async function meanAlpha(maskPath) {
+  // C-04: format=rgba first so an alpha-less (RGB) mask reads as fully
+  // opaque instead of failing in alphaextract. signalstats on this FFmpeg
+  // build prints nothing by itself — its per-frame stats only surface via
+  // the metadata filter (lavfi.signalstats.YAVG=<n>). Without metadata=print
+  // this always returned null and the "Nothing to erase" guard never fired.
   const { stdout, stderr } = await run('ffmpeg', ['-v', 'info', '-i', maskPath,
-    '-vf', 'alphaextract,signalstats', '-f', 'null', '-'], { timeout: 60000 });
+    '-vf', 'format=rgba,alphaextract,signalstats,metadata=print', '-f', 'null', '-'], { timeout: 60000 });
   const text = `${stdout || ''}\n${stderr || ''}`;
-  const m = text.match(/YAVG:\s*([0-9.]+)/g);
+  const m = text.match(/lavfi\.signalstats\.YAVG=([0-9.]+)/g) || text.match(/YAVG:\s*([0-9.]+)/g);
   if (!m || !m.length) return null;
-  const last = m[m.length - 1].match(/YAVG:\s*([0-9.]+)/);
+  const last = m[m.length - 1].match(/([0-9.]+)\s*$/);
   return last ? parseFloat(last[1]) : null;
 }
 
