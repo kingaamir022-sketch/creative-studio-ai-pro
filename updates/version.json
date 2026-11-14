@@ -1,9 +1,8 @@
 {
  "app": "CreativeStudio AI Pro",
- "version": "2.2.2",
- "notes": "Magic Tools: Resize, Animate presets, Eraser, Expand, Background Remover, Grab, Magic Write.",
- "package": "update-2.2.2.json",
- "packageSha256": "4be91208d9299e5b2973e67e2edba57460a54e1c3af49333b3cece34ad111fea",
- "publishedAt": "2026-11-13T17:32:11.915Z",
- "fullReinstall": true
+ "version": "2.2.3",
+ "notes": "Docs & Slides: presentations (decks), documents, charts, website publish, print-ready PDF. New deck/doc project types with boot migration; AI deck generation; fixed the Phase 4 design renderer so designs with image layers render (was: FFmpeg refused the whole render).",
+ "package": "update-2.2.3.json",
+ "packageSha256": "8f6541ad2e5916ad5eedfec4786c4994281f74e7d397fbb5ef6db9fc4a7712d1",
+ "publishedAt": "2026-11-14T01:46:58.946Z"
 }
