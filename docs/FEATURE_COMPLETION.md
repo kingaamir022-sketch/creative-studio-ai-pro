@@ -1042,6 +1042,69 @@ twelve 2.6.1 values move too); historical "v2.6.1" comments (e.g.
 The v2.6.1 suite was 409/409; with these 23 new tests the suite is 432
 — the coordinator's final full run confirms the total.
 
+## 1k. v2.7.1 addendum — "Updater Fix" (2026-11-14)
+
+Two updater bugs the user hit on their PC, plus one honesty fix. No new
+features; health is now `version: '2.7.1', phase: 14`, the dashboard
+system string is `'2.7.1 (Updater Fix)'` and the index title is
+`v2.7.1 Desktop App`.
+
+**Bug 1 — the stuck orange warning.** After an update was applied, the
+"⚠ An update was applied — restart the server…" warning stayed on
+Dashboard, Home and Settings even after the restart, because nothing
+ever cleared the `pendingRestart` flag on boot. The server now clears
+a stale `pendingRestart` (and a stale update-restart flag) when it
+boots — a fresh boot means any restart is done. The warning text itself
+is now desktop-aware in `public/app.js` (`restartActionText(isDesktop,
+runAgain)`): inside the Electron desktop app it reads "restart the
+app", while the browser/server install keeps the Start.bat wording
+byte-identical ("restart the server (close Start.bat / npm start
+again)" in Settings, "… / run npm start again" on Dashboard/Home).
+The status payload carries the `desktop` flag for this
+(`desktop: true` when the server runs inside Electron).
+
+**Bug 2 — the apply 409 rendered as an error.** Applying when no update
+was available returns 409 "No update is available." — correct server
+behaviour, unchanged — but all three Update-now handlers (Dashboard,
+Home, Settings) showed it as a red error toast. They now show the info
+toast "You are up to date." instead (and re-render); any other error
+still shows as an error. The "Check now" path already toasted "You are
+up to date." and is unchanged.
+
+**Honesty fix — `lastApplied` only for the running version.**
+`/api/updates/status` used to surface whatever `lastApplied` was stored,
+even when it belonged to an older version than the one running. It now
+omits a `lastApplied` whose version differs from the running version
+(`lastApplied: null`) and surfaces one that matches.
+
+**Desktop apply (server/Electron side).** On Windows the apply batch now
+waits for BOTH the server PID and the Electron parent PID before copying
+files, and relaunches the desktop exe instead of Start.bat (the
+non-desktop batch still relaunches Start.bat). The server writes an
+update-restart flag (`data/updates/restarting-for-update`) when a
+desktop apply starts, so the Electron shell can quit quietly instead of
+showing its "Server band ho gaya" crash dialog; the shell consumes
+(deletes) the flag on the server child's exit.
+
+**Tests (new, port 4858):** `tests/updater-fix-271.test.js` — 7/7 green
+in its own run (`node --test tests/updater-fix-271.test.js`): boot
+clears a seeded stale `pendingRestart` (with a stale `lastApplied`
+2.2.3); the desktop batch contains the exe path, waits for both PIDs
+and never mentions Start.bat, while the default batch still launches
+Start.bat; `consumeUpdateRestartFlag` returns true once (deleting the
+flag) then false; status omits a stale `lastApplied` 2.2.3 and surfaces
+a matching 2.7.1; check-now against a feed at the running version
+reports no update available; apply with no update stays a 409 "No
+update is available." Existing version assertions were bumped 2.7.0 →
+2.7.1 / phase 13 → 14 (`api`, `acceptance`, `design`, `home-flow-240`,
+`music`, `shorts`, `social`, `electron-260`, `multi-owner-261`,
+`capcut-exact-270`, and `update` — whose test app copy mirrors the real
+`package.json`, so its twelve 2.7.0 values move too); the two dashboard
+version assertions (`capcut-exact-270`, `home-flow-240`) now expect
+`'2.7.1 (Updater Fix)'`, matching the renamed server string. The v2.7.0
+suite was 432/432; with these 7 new tests the suite is 439 — the
+coordinator's final full run confirms the total.
+
 ## 2. Key modules (from the master prompt)
 
 | Module | Status |
