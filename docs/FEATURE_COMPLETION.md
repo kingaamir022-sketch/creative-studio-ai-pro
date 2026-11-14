@@ -1,6 +1,6 @@
-# CreativeStudio AI Pro — Feature Completion Report (Phase 9, Final QA)
+# CreativeStudio AI Pro — Feature Completion Report (Phase 10, Final QA)
 
-**Version:** 2.4.0 · **Date:** 2026-11-14 · **Suite:** `npm test` — **284/284 pass, 0 fail** (275 baseline + 9 rotation-fix tests)
+**Version:** 2.5.0 · **Date:** 2026-11-14 · **Suite:** `npm test` — **376/376 pass, 0 fail** (284 baseline in v2.4.0 + 92 new parity tests: 39 render + 24 AI + 9 editor + 20 planner; single clean run, exit 0)
 (exit 0, single clean run; see [Acceptance verdicts](#acceptance-verdicts-a–d) below).
 
 **Rule of this report:** every feature is exactly one of **Implemented**,
@@ -17,8 +17,8 @@ real-provider or real-platform call has ever run**.
 |---|---------|--------|-------|
 | 1 | Dashboard | Implemented | Real DB counts, recent projects/media, system status (FFmpeg, storage vs plan), notifications, quick actions, global search (projects & media). |
 | 2 | AI Design Studio | Needs credentials | Prompt → editable design (never a flattened image) works through the Phase 7 LLM layer; without an LLM key it refuses with `key_needed`. A clearly-labelled local rule-based layout helper works with no key. |
-| 3 | Graphic Editor | Implemented | Real canvas editor (drag/resize/rotate, layers, undo/redo, snap guides, 12 sizes, 15 fonts, shapes/images/filters/crop, gradient + transparent PNG/JPG export), 26 built-in templates (20 design + 3 video + 3 deck, v2.2.4), Brand Kit. **Pending:** text curvature (no fake control shown). |
-| 4 | Video Editor | Implemented | Multi-track timeline (drag/trim/split/ripple/group, markers, snapping, undo/redo), speed/volume/fade/filters, text clips, Fade/Dissolve/Slide/Wipe via FFmpeg xfade, position/scale/opacity keyframes, real FFmpeg render queue. **Pending:** chroma key, stabilisation, proxy editing, speed-ramping curves, motion paths/easing (keyframes interpolate linearly), 4K, a 3rd video track (max 2: main + one overlay/PiP). |
+| 3 | Graphic Editor | Implemented | Real canvas editor (drag/resize/rotate, layers, undo/redo, snap guides, 12 sizes, 15 fonts, shapes/images/filters/crop, gradient + transparent PNG/JPG export), 26 built-in templates (20 design + 3 video + 3 deck, v2.2.4), Brand Kit. **v2.5.0:** text curvature is built (curve-angle slider + live arc preview + server arc render). |
+| 4 | Video Editor | Implemented | Multi-track timeline (drag/trim/split/ripple/group, markers, snapping, undo/redo), speed/volume/fade/filters, text clips, 28 xfade transitions via FFmpeg (apply-to-all, up to 5 s), rotation/volume keyframes with per-key easing, real FFmpeg render queue. **v2.5.0:** chroma key, stabilisation, speed curves (0.1–100×), 4K, N video tracks, effects library (16), masking, reverse/freeze, voice processing, auto reframe, optical flow, compound clips, waveforms, SRT captions, full shortcut map — all built (see §1g). **Pending:** proxy editing (setting stored; preview still renders full quality). |
 | 5 | AI Video Generator | Needs credentials | Text-to-video / image-to-video via the Phase 7 provider registry (Runway). Without a video provider key it refuses with `key_needed`. |
 | 6 | AI Image Generator | Needs credentials | Text-to-image / image-to-image (OpenAI Images / Stability). Without an image provider key it refuses with `key_needed`. |
 | 7 | Bulk Design Studio | Implemented | One template + spreadsheet → PNG/JPG per row, ZIP export, whole-row dedupe (duplicates never generated, never retried). |
@@ -28,15 +28,15 @@ real-provider or real-platform call has ever run**.
 | 11 | AI Music Studio | Implemented | Real local DSP: BPM/beat grid/downbeats/energy curve/drop detection, waveform, confidence; Music Library (own/licensed audio only); Sync Director (cut/transition on beat, divisor, pulse, fade/volume/loop); beat-snap + beat ruler. AI music generation / mood tagging are live in Phase 7 but **need a music / LLM key**. **Pending:** multi-track audio mixing. |
 | 12 | Auto Captions | Implemented | Manual transcripts (plain text = estimated timing, SRT/VTT = exact), editable, SRT/VTT export, word-by-word burn-in, Urdu/English/Roman Urdu/Arabic RTL/Hindi. Automatic transcription is live in Phase 7 but **needs an STT key** (refuses with 402 `key_needed` without one — never a fake transcript). |
 | 13 | Background Remover | Implemented (v2.2.2) | Free local U-2-Net ONNX model (`onnxruntime-web`, WASM) — no key, nothing uploaded. Model (~168 MB) downloads once on first use into `data/models/u2net.onnx` and is cached; offline → honest 503. Also powers Magic Grab. Live in Magic Tools; the sidebar entry is now the Magic Tools view. |
-| 14 | Effects | Implemented | Searchable library of the motion effects that really exist (keyframe animations, filters, text animations); the view lists chroma key, stabilisation, object removal, proxy editing, speed ramping and motion paths as **not built**, never as working. Clip presets apply in one click from the editor's Effects tab (`POST /api/magic/animate` → real keyframes). Fade and Slide are NOT here — they are transitions. |
-| 15 | Transitions | Implemented | Clip-to-clip transitions (Fade, Dissolve, Slide, Wipe) rendered with FFmpeg xfade between adjacent clips on the same video track; the editor's Transitions tab lists only these. Fade and Slide are transitions, not effects — never mixed with Effects. |
+| 14 | Effects | Implemented | **v2.5.0:** the editor's Effects tab now lists the 16 real FFmpeg effects (Glitch, Retro, Blur, VHS, Film Grain, Light leaks, …) with intensity sliders, plus adjustment layers; chroma key, stabilisation, speed ramping and motion paths/easing are all built. The view still lists object removal and proxy editing as **not built**, never as working. Clip presets apply in one click from the editor's Effects tab (`POST /api/magic/animate` → real keyframes). Fade and Slide are NOT here — they are transitions. |
+| 15 | Transitions | Implemented | **v2.5.0:** 28 clip-to-clip xfade transitions rendered with FFmpeg between adjacent clips on the same video track, duration up to 5 s, Apply-to-all; the editor's Transitions tab lists only these. Fade and Slide are transitions, not effects — never mixed with Effects. |
 | 16 | Animation Studio | Implemented | Keyframes (position/scale/opacity, linear interpolation) + text fade/slide/pop animations, auto + manual per-element timing. **v2.2.2 — Magic Animate presets:** 10 one-click presets (fade, slide-up, slide-left, pop, zoom, bounce, float, pulse, spin, typewriter); design presets apply to a layer in the Graphic Editor and preview live with CSS; clip presets expand into real video keyframes held to the clip end. **Still pending:** motion paths, easing curves; typewriter and spin are design-only (drawtext cannot render them — never offered for clips). |
 | 17 | Brand Kit | Implemented | Brand profiles (logos, colours, fonts), one-click apply to designs. |
 | 18 | Media Library | Implemented | Real uploads (image/video/audio, 200 MB default), search/tags/folders/favourites/preview, delete removes the disk file. |
-| 19 | Stock Assets | Implemented (v2.2.4) | Free stock images + audio via Openverse (key-free anonymous API, verified live) — search by keyword/license/category, preview, save straight into the Media Library with attribution + license recorded; re-saving the same asset returns the existing row (duplicate skipped, never a second copy). **Honest limit:** Openverse has no video search (images + audio only) — the UI says so plainly; stock video stays an upload-your-own-file flow. |
-| 20 | Social Media Creator | Implemented | Compose + attach from library, real per-platform char limits, AI caption/hashtags via Phase 7 LLM (**needs an LLM key**; local template captions are clearly labelled, never "AI"), drafts/scheduling, scheduler. Publishing **only via official platform APIs when connected** — no platform is connected on a fresh install, so Publish refuses with `NOT_CONNECTED`; never a fake publish. **Pending:** TikTok video upload (initialises, chunk upload unimplemented — fails honestly). |
+| 19 | Stock Assets | Implemented (v2.2.4, video in v2.5.0) | Free stock images + audio via Openverse (key-free anonymous API, verified live) — search by keyword/license/category, preview, save straight into the Media Library with attribution + license recorded; re-saving the same asset returns the existing row (duplicate skipped, never a second copy). **v2.5.0:** stock video via Pexels (free key in Settings, encrypted) — search + save end to end; without a key the honest `NO_VIDEO_SEARCH` 400 (Openverse has no video search, so the UI says so plainly). |
+| 20 | Social Media Creator | Implemented | Compose + attach from library, real per-platform char limits, AI caption/hashtags via Phase 7 LLM (**needs an LLM key**; local template captions are clearly labelled, never "AI"), drafts/scheduling, scheduler. Publishing **only via official platform APIs when connected** — no platform is connected on a fresh install, so Publish refuses with `NOT_CONNECTED`; never a fake publish. **v2.5.0:** TikTok video upload is finished (chunk upload after the working init; ends `published` with a real TikTok video id, or fails honestly — needs a connected TikTok account). |
 | 21 | Content Calendar | Implemented | Month view of scheduled posts, schedule/reschedule from the composer, scheduler runs due posts (every 15 s + manual run). |
-| 22 | Export Center | Implemented | Render-job list, download, save-to-library, ZIP. Formats actually offered: PNG/JPG designs, MP4 and MOV video at 720p/1080p (MOV = same H.264+AAC, QuickTime container, v2.4.0). **Pending:** WebP/SVG, WebM, 4K, custom naming. |
+| 22 | Export Center | Implemented | Render-job list, download, save-to-library, ZIP. Formats actually offered: PNG/JPG designs, MP4 and MOV video at 720p/1080p (MOV = same H.264+AAC, QuickTime container, v2.4.0). **v2.5.0:** 2K/4K, WebM (VP9), HEVC, HDR (10-bit), custom filenames, estimated size, audio-only MP3/WAV, frame PNG, GIF, export queue, per-platform presets. **Pending:** WebP/SVG. |
 | 23 | Projects | Implemented | CRUD, duplicate, trash/restore/permanent delete, autosave, version history (latest 20) + restore, per-user ownership. |
 | 24 | Templates Marketplace | Implemented | In-app only (no external store): publish design/video/deck templates, browse/search, install = a real editable project, rate, report. **v2.2.4:** built-in library grown 8 → 26 (20 design + 3 video + 3 deck), all validated and installable from the Marketplace view; decks publishable too. **Pending:** bulk-job templates are not publishable. |
 | 25 | AI Assistant | Implemented (v2.2.4) | Project-aware assistant: summarise a project, suggest improvements, "make this more professional" (design + deck), "create five versions" (design). Every action creates a NEW project — the original is never edited in place. Needs an LLM key (free Gemini works); without one it refuses 402 `PROVIDER_KEY_NEEDED` and creates nothing. |
@@ -611,19 +611,175 @@ The quiz aspect/fps is deliberately NOT offered (fixed preset) and the
 "Invalid Date" update-history display bug is still pending for a later
 round.
 
+## 1g. v2.5.0 addendum — "CapCut parity round" (2026-11-14)
+
+The complete CapCut analysis (`capcut-complete-analysis-v240.md`, 486
+inventory rows → 306 unique capabilities: 29 MATCH / 115 DIFFER / 162
+MISSING) produced a consolidated 72-item build list (§6). v2.5.0 builds
+all 72 in one round, in §6 order (P0 → P1 → P2). P3 items are defers by
+design and are NOT built (live co-editing, custom domain, cloud
+Spaces/sync, motion tracking, AI stickers, video object removal, eye
+contact/lip sync, in-app camera). CapCut's tartib (arrangement) is the
+master layout; Canva-only features are merged into it; nothing is mixed
+(Effects under Effects, Transitions under Transitions). No new
+production dependency, `fullReinstall: false` (update package: 140 app
+files, no dependency overlay; SHA verified in both copies against
+`updates/version.json` at publish time).
+
+**P0 — CapCut behaviour core (all done).** #1 Stickers: 20-SVG bundled
+library + stock images + AI sticker tab, placed on overlay tracks,
+draggable in the preview. #2 Video effects library: 16 real FFmpeg
+effects (glitch, retro, blur, vhs, grain, lightleak, vintage, noir,
+neon, dream, sharpen, pixelate, invert, warm, cool, edge), clip-level
+intensity + adjustment-layer effect tracks. #3 Chroma key via
+`chromakey` (pixel-verified: green removed, subject kept). #4 Speed
+curves: 8 presets (montage, hero, bullet, jumpcut, flashin, flashout,
+custom) + 0.1–100× range, exact trapezoid integration. #5 Keyframes:
+rotation 0–360 + volume 0–2 + per-key easing; `geq` removed — keyframed
+renders 2.8× faster (3.5 s clip: 8.1 s wall vs 22.6 s baseline).
+#6 Transitions: 28 real xfade types, up to 5 s, Apply-to-all.
+#7 Filter presets (10 slider bundles) + `.CUBE`/`.3DL` LUT import via
+`lut3d`. #8 Stabilisation: vidstab two-pass, cached per media+strength.
+#9 Masking: 7 types (pixel-verified circle). #10 N video tracks: the
+2-track cap is gone (3rd track verified rendering). #31 Rotation
+regression: 90°/270° still render at project size alone, with
+transitions, and with keyframes — verified again this release; the two
+`rotation-fix-240` tests that asserted "validate rejects
+rotation/volume keyframes" were flipped to the new contract (they now
+assert acceptance, plus out-of-range rejection). #32 Core shortcuts
+(Ctrl+B/D, Q/W, M, Ctrl+E/T, frame step, J/K/L shuttle) and #33
+copy/cut/paste + multi-select (Ctrl-click, Shift-range, Ctrl+A) — all
+wired in the editor with a rebindable map (see #50).
+
+**P1 — important, visible in normal editing (all done).** #11 Stock
+music/SFX inside the editor (Openverse audio search + save + add).
+#12 In-app voiceover recording (MediaRecorder → upload → audio clip at
+playhead). #13 Export: 2K/4K, 25/50 fps, WebM (VP9), HEVC, bitrate /
+quality / CRF, HDR flag, cover-frame endpoint. #14 Font fidelity:
+Poppins/Montserrat/Inter/Roboto/Open Sans/Lato/Bebas Neue/Oswald/
+Playfair Display download as real TTFs on first use into `data/fonts`
+(cached like the U-2-Net model); offline falls back to DejaVu honestly.
+#15 Text templates (6) + saved styles + curved text (Graphic Editor
+curve-angle slider, live arc preview, server arc render). #16 Reverse /
+freeze (pixel-verified). #17 Voice processing: denoise, enhance voice,
+vocal isolation, loudnorm (verified ≈ −16 LUFS), auto-ducking.
+#18 Auto reframe (Shorts centroid pre-pass). #19 Deck transitions +
+slide entrance animations (MP4 uses real xfade; per-frame element
+animation exists in preview/present only, not in MP4 — honest).
+#20 TikTok chunk upload finished (published with a real video id
+against a mock API; text-only / failed-chunk fail honestly). #34 Extract
+audio (`POST /:projectId/extract-audio` → 201 `{media, clip}`).
+#35 Compound clips / nesting (nested timeline rendered to temp file).
+#36 Right-click context menus (clip / track / empty lane). #37 Audio
+waveforms on the timeline (Ctrl+Shift+H; `GET /api/media/:id/waveform`
+canonical + `/api/video/media/:id/waveform` alias, 100–200 peaks,
+404 when no audio). #38 Emoji: colour emoji now render — drawtext and
+libass provably cannot do colour emoji from Noto Color Emoji on this
+box, so emoji text is pre-rendered to a transparent PNG with Python +
+Pillow (`FT_LOAD_COLOR`); pixel-verified (6,495 saturated pixels for 🎉
+vs 0 control); if Python/Pillow is missing it falls back to the ASS
+path with a warning in the job log. #39 TTS → timeline clip handoff
+("Add voice to timeline at playhead"). #40 Project background UI
+(colour / image / blur-fill) + PiP free positioning (draggable overlay
+in the preview). #41 Caption workflow: SRT import/export, batch edit,
+caption split (B), caption styles (5 presets). #42 Adjustment layer
+(effect tracks, noir verified grayscale). #43 Optical flow / smooth
+slow-mo (`minterpolate` below 0.5×). #44 AutoCut (real editable
+project). #45 Transcript-based editing + silence removal
+(silencedetect). #46 Preview controls (quality dropdown, safe-zones
+overlay, fullscreen, loop). #47 Render performance: keyframed 2.8×
+faster (see #5); plain 60 s renders at ~parity (19.4 s vs 17.4 s
+baseline, reported as noise, not a regression). #48 Volume 0–200% with
+dB readout + Ctrl+./Ctrl+, nudge. #49 Caption styles (5 presets).
+#50 Full shortcut map: all 27 CapCut bindings + in-app Shortcuts panel
+(click to rebind, persisted to `cs-shortcuts`, reset to defaults).
+
+**P2 — Canva gaps + depth (all done except the honest limits below).**
+#21 Sheets: new `sheet` project type — real grid, formula evaluator
+(=SUM/=AVERAGE/=COUNT/=MIN/=MAX/=IF, refs/ranges, real `#DIV/0!` /
+`#REF!` / `#CIRC!` errors), formatting, CSV/XLSX import/export,
+`GET /api/sheets/:id/rows` as a bulk-job data source. Wired into the
+app shell (sidebar "Sheets", `go('sheets')`, `initSheets`, sheet
+projects open the studio). **Bug found during the build:** the
+`projects.type` CHECK rejected `'sheet'` — fixed in `src/db.js` (CHECK
++ v2.2.3 rebuild migration, old-format DB verified). #22 CMYK print
+(`DeviceCMYK` alongside RGB). #23 DOCX internals (real `numbering.xml`,
+`styles.xml` Heading1/2/3 + IntenseQuote, headers/footers, `sectPr`).
+#24 Stock video via Pexels (free key in Settings, encrypted; without a
+key the honest `NO_VIDEO_SEARCH` 400). #25 Content Planner depth
+(campaigns, approval draft→pending→approved, drag-drop reschedule,
+series, bulk ≤50, best-time suggestions). #26 Collaboration: edit
+shares, @mentions → bell, layer-pinned comments, per-project activity
+feed; OWNER untouchable. #27 Print sizes (A5/A4/A3/A6/flyer/
+business-card/custom) + print-ready checklist endpoint. #28 Template
+library depth (résumé, logo, certificate, menu, invitation,
+presentation-set; 32 templates total). #29 Magic Grab: true per-object
+segmentation (connected component; background click fails honestly).
+#30 Website extras (SEO/meta, local analytics, password protection;
+custom domain stays OUT). #51 Export breadth (25/50 fps, filename,
+estimated size, audio settings, export queue, audio-only MP3/WAV,
+frame PNG, GIF). #52 HDR (HEVC 10-bit, `yuv420p10le` ffprobe-verified).
+#53 Export presets per platform (TikTok/Reels/Shorts, YouTube, …).
+#54 Project settings dialog (Ctrl+P: name/aspect/resolution/fps,
+copy-vs-link, auto-save, proxy — proxy is stored and honestly labelled;
+the preview still renders full quality). #55 Settings pages
+(Performance, Draft/Cache, project defaults, language, privacy/data).
+#56 Templates: trending feed + guided placeholder swap + category rows
+(For you / Trending / Commercial / Social). #57 Media depth
+(favourites, folders + filter, smart collections; **face
+detection/grouping is honestly NOT available** — no local face model
+exists in `data/models`; the Settings API reports `available:false`).
+#58 Timeline depth (split screen, slip edit Alt+drag, J/L link/unlink,
+sync linked). #59 Velocity effects (6 presets over speed curves).
+#60 Video AI depth (local FFmpeg denoise/deflicker/enhance/upscale;
+expand/remix/relight key-gated). #61 Video translator / AI dubbing
+(key-gated). #62 EditPilot (key-gated). #63 Third-party video models
+(Kling 3.0, Veo 3.0/3.1, PixVerse, Sora alongside Runway, key-gated).
+#64 AI Design Studio / Infinite Canvas (key-gated). #65 Director Mode +
+AI avatars (key-gated). #66 Seedance: **PARTIAL — Edit is done
+(key-gated); Extend is NOT built locally** (a local-only install has no
+publicly reachable source URL, so Seedance cannot fetch the source —
+the job fails with that exact honest reason, never faked). #67 Auto
+Lyrics + AI Lab + batch edit. #68 Retouch/beauty (frame-level smooth;
+heavy ML kinds refuse `NOT_AVAILABLE`). #69 Bilingual captions +
+speaker ID (LLM-inferred labels, honestly labelled NOT acoustic
+diarization) + curved text (see #15). #70 PWA: real `manifest.json` +
+service worker (offline app-shell cache, install prompt), wired into
+`public/index.html`. #71 Home depth: project sort (date/name/type) +
+rename from Projects view and editor. #72 Text depth in the video
+editor (font picker, letter spacing, line height, shadow, stroke,
+gradient — gradient text is refused with a clear 400 at job creation,
+never silently rendered solid).
+
+**Also fixed this release:** the "Invalid Date" update-history display
+bug — `fmtDate` appended `'Z'` to ISO timestamps that already end in
+`'Z'` (`'…Z' + 'Z'` = Invalid Date); it now uses ISO input as-is and
+only converts space-separated DB timestamps. The canonical waveform
+endpoint `GET /api/media/:id/waveform` was added (alias of the
+render-side handler). The LUT-upload server crash (`kind:'lut'`
+violated the media CHECK), the compound-render `uid is not defined`
+crash, and the split-screen validation comparing track kinds instead
+of ids were all found and fixed during testing.
+
+**Tests (new, one file per slice, ports 4850–4853):**
+`tests/parity-render-250.test.js` 39/39, `tests/parity-ai-250.test.js`
+24/24, `tests/parity-editor-250.test.js` 9/9, `tests/parity-planner-250.test.js`
+20/20 — 92 new tests, all green in their own runs; the full-suite count
+is in the header above (single clean `npm test` run).
+
 ## 2. Key modules (from the master prompt)
 
 | Module | Status |
 |--------|--------|
-| Graphic Design Studio | Implemented (text curvature Pending; Magic Resize + Magic Animate presets live in v2.2.2) |
-| Video Editor | Implemented (chroma key, stabilisation, speed ramping, proxy editing, 4K, 3rd track Pending) |
+| Graphic Design Studio | Implemented (text curvature built in v2.5.0; Magic Resize + Magic Animate presets live in v2.2.2) |
+| Video Editor | Implemented (chroma key, stabilisation, speed curves, 4K, N tracks, keyframe easing all built in v2.5.0; proxy editing Pending) |
 | Magic Tools (v2.2.2) | Implemented: Magic Resize (local reflow), Magic Animate presets (10), Magic Eraser (needs image key), Magic Expand (AI needs key; solid/blur local), Background Remover + Magic Grab (free local ONNX, no key), Magic Write (LLM, needs key; free Gemini works) |
 | Magic Switch (v2.2.4) | Implemented: reflow between the 12 size presets + LLM translate (14 languages incl. Urdu + Roman Urdu); always creates a new project; no key → 402 `PROVIDER_KEY_NEEDED` |
-| Stock Assets (v2.2.4) | Implemented: Openverse images + audio (key-free), save to Media Library with attribution; no video search (Openverse has none) |
+| Stock Assets (v2.2.4, video v2.5.0) | Implemented: Openverse images + audio (key-free), save to Media Library with attribution; stock video via Pexels (free key, else honest `NO_VIDEO_SEARCH`) |
 | AI Assistant (v2.2.4) | Implemented: summarise, suggest, make-professional (design + deck), five-versions (design); new projects only, never edits in place; needs an LLM key |
-| Collaboration (v2.2.4) | Implemented: read-only share link + per-user share + comments (replies, resolve). No live co-editing (out of scope by design). v2.4.0: a real Collaboration view reachable from Home quick-nav (shared-with-me list + how-to-share). |
+| Collaboration (v2.2.4, depth v2.5.0) | Implemented: read-only share link + per-user share + comments (replies, resolve). v2.5.0: shares can grant `edit`, @mentions notify, comments pin to a layer/slide, per-project activity feed; OWNER untouchable. No live co-editing (out of scope by design). v2.4.0: a real Collaboration view reachable from Home quick-nav (shared-with-me list + how-to-share). |
 | Updater overlay (v2.2.4) | Implemented: verified `node_modules` overlay in update packages (SHA-256 per file, backup + rollback cover it, native modules refused) — new production dependencies no longer need fullReinstall. Design: `docs/UPDATER.md` |
-| Docs & Slides (v2.2.3) | Implemented (AI deck generation needs an LLM key; CMYK print Pending) |
+| Docs & Slides (v2.2.3, CMYK + deck transitions v2.5.0) | Implemented (AI deck generation needs an LLM key; CMYK print built in v2.5.0; deck transitions + slide entrance animations built in v2.5.0) |
 | Bulk Video Studio + Dynamic Background Engine | Implemented (AI/prompt backgrounds need an image key; A vs B quiz Pending) |
 | AI Music Sync Director | Implemented (AI generation/mood need keys; multi-track mixing Pending) |
 | Long Video to Shorts | Implemented (face tracking Pending; 60-min end-to-end render not run) |
@@ -688,16 +844,20 @@ round.
 - No real provider key, platform token, or Google credential exists in this
   build — no real AI/provider/platform call has ever run; everything was
   proven against local mock servers.
-- TikTok video upload is unfinished (chunk upload unimplemented — fails
-  honestly, never marked published). Instagram needs a public media URL
+- TikTok video upload is finished in v2.5.0 (chunk upload; ends `published`
+  with a real video id, or fails honestly) — needs a connected TikTok
+  account to verify end to end. Instagram needs a public media URL
   (`publicBaseUrl`). YouTube uploads as unlisted by default.
 - No payment gateway (OWNER-approved plan requests; no payment is taken).
 - AI backgrounds / AI voice / STT / AI music / mood tags need keys.
 - A vs B quiz format not built; 5-question quiz video at 3s countdown =
   38s, not 45–60s (60s+ needs 8 questions or a 5–6s countdown).
-- Max 2 video tracks, no 4K, no chroma key/stabilisation/proxy editing,
-  no motion paths/easing, no face/subject tracking, no CMYK print
-  conversion, no live co-editing (share + comments only, by design).
+- v2.5.0 built: N video tracks, 4K, chroma key, stabilisation, speed
+  curves, keyframe easing, CMYK print conversion. Still not built: proxy
+  editing (setting stored; preview still full quality), face/subject
+  tracking, Seedance Extend (local install has no public source URL),
+  face detection/grouping (no local model), live co-editing (share +
+  comments only, by design).
   Stock Assets, AI Assistant and Magic Switch ARE built (v2.2.4).
   Background remover and Magic Grab ARE built (v2.2.2, free local ONNX model) —
   the "no vision model, no background remover" line is retired. Presentations,
@@ -803,6 +963,12 @@ blurb corrections above. All fixes were re-verified by the full suite.
    templates, quick-access cards for all 35 features) and the New
    Project chooser that creates a real project and lands inside its
    editor — see §1f.
+4. **CapCut parity round — v2.5.0 — DONE.** All 72 items from the
+   complete CapCut analysis (§6: P0 → P1 → P2), except the honest
+   limits in §1g (Seedance Extend, face detection/grouping, proxy
+   preview, per-frame deck animation in MP4) and the P3 defers (live
+   co-editing, custom domain, cloud sync, motion tracking, AI stickers,
+   object removal, eye contact/lip sync, in-app camera) — see §1g.
 4. Provider keys (Settings → AI Providers, secure entry — never in chat)
    to make AI modes, AI backgrounds, TTS/cloning, and STT run for real.
    (Gemini free key is already configured on the user's PC and tested OK.)
