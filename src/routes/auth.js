@@ -6,6 +6,7 @@ const auth = require('../auth');
 
 const router = express.Router();
 const PLANS = require('./plans');
+const { isOwnerEmail } = require('../ownerEmails');
 
 function validEmail(e) { return typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim()); }
 
@@ -17,13 +18,16 @@ router.post('/signup', (req, res) => {
   if (db.getUserByEmail(email)) return res.status(409).json({ error: 'An account with this email already exists.' });
 
   const isFirst = db.countUsers() === 0;
-  const role = isFirst ? 'OWNER' : 'USER';
+  // v2.6.1 — Multi-Owner: an allowlisted OWNER_EMAILS address is OWNER
+  // (Lifetime Free) even when it is not the first account.
+  const isAllowlistedOwner = isOwnerEmail(email);
+  const role = (isFirst || isAllowlistedOwner) ? 'OWNER' : 'USER';
   // v2.2.0 — OWNER Lifetime Free: the first account (OWNER) is lifetime-free
   // with everything unlimited; later signups stay on Free (100 credits).
   // Lifetime has no finite credit allowance (credits null), so the stored
   // balance is 0 — the ledger balance is never drawn from for unlimited
   // users (see credits.js isUnlimited).
-  const plan = isFirst ? 'Lifetime' : 'Free';
+  const plan = (isFirst || isAllowlistedOwner) ? 'Lifetime' : 'Free';
   const credits = PLANS[plan].credits ?? 0;
   const user = db.createUser({
     name: name.trim(), email: email.trim().toLowerCase(),
@@ -46,10 +50,18 @@ router.post('/login', (req, res) => {
   if (user.suspended) {
     return res.status(403).json({ error: 'This account is suspended. Contact the OWNER to restore access.' });
   }
+  // v2.6.1 — Multi-Owner: an allowlisted OWNER_EMAILS address that signed
+  // up before the allowlist (or was demoted) is promoted to OWNER + Lifetime
+  // on login.
+  let loginUser = user;
+  if (isOwnerEmail(user.email) && user.role !== 'OWNER') {
+    loginUser = db.updateUser(user.id, { role: 'OWNER', plan: 'Lifetime' });
+    db.audit(user.id, 'owner_promoted', 'user', user.id, 'Promoted to OWNER via OWNER_EMAILS allowlist');
+  }
   const token = auth.createSessionFor(user.id);
   res.cookie('cs_session', token, auth.sessionCookieOptions());
   db.audit(user.id, 'login', 'user', user.id, 'Signed in');
-  res.json({ user: auth.publicUser(user) });
+  res.json({ user: auth.publicUser(loginUser) });
 });
 
 router.post('/logout', auth.requireAuth, (req, res) => {

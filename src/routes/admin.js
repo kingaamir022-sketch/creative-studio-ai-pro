@@ -95,6 +95,10 @@ router.patch('/users/:id/role', auth.requireRole('OWNER', 'ADMIN'), (req, res) =
   if (user.id === req.user.id && role !== 'OWNER') {
     return res.status(400).json({ error: 'You cannot demote your own account — another OWNER must do it.' });
   }
+  // v2.6.1 — last-OWNER guard (defense-in-depth): never demote the final OWNER.
+  if (user.role === 'OWNER' && role !== 'OWNER' && db.countOwners() <= 1) {
+    return res.status(403).json({ error: 'Cannot demote the last OWNER.' });
+  }
   db.updateUser(user.id, { role });
   db.audit(req.user.id, 'admin_role_change', 'user', user.id, `Role of ${user.email} changed to ${role}`);
   res.json({ user: publicAdminUser(db.getUserById(user.id)) });
@@ -149,6 +153,10 @@ router.delete('/users/:id', auth.requireRole('OWNER', 'ADMIN'), (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found.' });
   if (guardOwnerTarget(req, res, user)) return;
   if (user.id === req.user.id) return res.status(400).json({ error: 'You cannot delete your own account.' });
+  // v2.6.1 — last-OWNER guard (defense-in-depth): never delete the final OWNER.
+  if (user.role === 'OWNER' && db.countOwners() <= 1) {
+    return res.status(403).json({ error: 'Cannot delete the last OWNER.' });
+  }
   // C-23: capture the user's website dirs BEFORE the row delete — the
   // websites table has ON DELETE CASCADE, so the rows (and their dirs)
   // would be unreadable afterwards.

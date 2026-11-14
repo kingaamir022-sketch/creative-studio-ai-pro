@@ -64,7 +64,7 @@ router.get('/dashboard', auth.requireAuth, async (req, res) => {
       db: 'ok',
       ffmpeg: ff,
       maxUploadMB: config.maxUploadMB,
-      version: '2.6.0 (Desktop App)',
+      version: '2.6.1 (Desktop App)',
     },
     recentProjects: recent.map((p) => ({ id: p.id, name: p.name, type: p.type, updatedAt: p.updated_at, durationSeconds: recentProjectDuration(p) })),
     recentMedia: recentMedia.map((m) => ({ id: m.id, originalName: m.original_name, kind: m.kind, url: `/api/media/${m.id}/file`, createdAt: m.created_at })),
@@ -225,6 +225,10 @@ router.patch('/users/:id', auth.requireAuth, auth.requireRole('OWNER', 'ADMIN'),
   }
   if (target.id === req.user.id && role && role !== req.user.role) {
     return res.status(400).json({ error: 'You cannot change your own role.' });
+  }
+  // v2.6.1 — last-OWNER guard (defense-in-depth): never demote the final OWNER.
+  if (target.role === 'OWNER' && role && role !== 'OWNER' && db.countOwners() <= 1) {
+    return res.status(403).json({ error: 'Cannot demote the last OWNER.' });
   }
   const u = db.updateUser(target.id, { role, plan });
   db.audit(req.user.id, 'user_update', 'user', u.id, `Updated ${u.email}: role=${u.role}, plan=${u.plan}`);
