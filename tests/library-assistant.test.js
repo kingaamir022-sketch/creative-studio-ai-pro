@@ -582,20 +582,20 @@ test('stock save stores the file with attribution and duplicates are skipped', a
 });
 
 // --- Template library ---------------------------------------------------------
-test('template library has 26 built-ins and marketplace install makes real projects', async () => {
+test('template library has 32 built-ins and marketplace install makes real projects', async () => {
   const all = await req('/api/marketplace/builtin', { cookie: ownerCookie });
   assert.equal(all.status, 200, JSON.stringify(all.json));
-  assert.equal(all.json.templates.length, 26, `expected 26 built-ins, got ${all.json.templates.length}`);
-  assert.deepEqual(all.json.counts, { design: 20, video: 3, deck: 3 }, JSON.stringify(all.json.counts));
+  assert.equal(all.json.templates.length, 32, `expected 32 built-ins, got ${all.json.templates.length}`);
+  assert.deepEqual(all.json.counts, { design: 25, video: 3, deck: 4 }, JSON.stringify(all.json.counts));
   const decks = await req('/api/marketplace/builtin?kind=deck', { cookie: ownerCookie });
-  assert.equal(decks.json.templates.length, 3, JSON.stringify(decks.json));
+  assert.equal(decks.json.templates.length, 4, JSON.stringify(decks.json));
   const pitch = await req('/api/marketplace/builtin?q=pitch', { cookie: ownerCookie });
   assert.equal(pitch.json.templates.length, 1, JSON.stringify(pitch.json));
   assert.equal(pitch.json.templates[0].id, 'builtin-deck-pitch');
 
   const designOnly = await req('/api/design/templates', { cookie: ownerCookie });
   assert.equal(designOnly.status, 200, JSON.stringify(designOnly.json));
-  assert.equal(designOnly.json.templates.length, 20, 'the Graphic Editor must see design templates only');
+  assert.equal(designOnly.json.templates.length, 25, 'the Graphic Editor must see design templates only');
   assert.ok(designOnly.json.templates.every((t) => t.kind === 'design'));
 
   const deckInstall = await req('/api/marketplace/builtin/builtin-deck-pitch/install', { method: 'POST', cookie: ownerCookie });

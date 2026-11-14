@@ -145,11 +145,11 @@ after(async () => {
   if (server) server.kill('SIGKILL');
 });
 
-test('health reports 2.4.0', async () => {
+test('health reports 2.5.0', async () => {
   const h = await req('/api/health');
   assert.equal(h.status, 200);
-  assert.equal(h.json.version, '2.4.0');
-  assert.equal(h.json.phase, 9);
+  assert.equal(h.json.version, '2.5.0');
+  assert.equal(h.json.phase, 10);
 });
 
 test('home landing data: dashboard carries real recent projects + version', async () => {
@@ -157,7 +157,7 @@ test('home landing data: dashboard carries real recent projects + version', asyn
   const second = await createProject('Home Recent B', 'video', { timeline: blankTimeline('16:9', 30) });
   const d = await req('/api/dashboard', { cookie: ownerCookie });
   assert.equal(d.status, 200);
-  assert.equal(d.json.system.version, '2.4.0 (CapCut Home & Flow)');
+  assert.equal(d.json.system.version, '2.5.0 (CapCut Parity Round)');
   assert.ok(Array.isArray(d.json.recentProjects), 'recentProjects must be an array');
   const ids = d.json.recentProjects.map((p) => p.id);
   assert.ok(ids.includes(first.id) && ids.includes(second.id), 'both created projects appear in recentProjects');
@@ -168,11 +168,11 @@ test('home landing data: dashboard carries real recent projects + version', asyn
   }
 });
 
-test('home templates row: marketplace builtin returns all 26 real templates across kinds', async () => {
+test('home templates row: marketplace builtin returns all 32 real templates across kinds', async () => {
   const r = await req('/api/marketplace/builtin', { cookie: ownerCookie });
   assert.equal(r.status, 200);
   const templates = r.json.templates || [];
-  assert.equal(templates.length, 26, `expected 26 builtin templates, got ${templates.length}`);
+  assert.equal(templates.length, 32, `expected 32 builtin templates, got ${templates.length}`);
   const kinds = new Set(templates.map((t) => t.kind));
   assert.ok(kinds.has('design') && kinds.has('video') && kinds.has('deck'), `all three kinds present: ${[...kinds]}`);
   for (const t of templates) {
@@ -184,7 +184,7 @@ test('home screen is served: index links home.css, app.js carries the flow, deep
   const index = await req('/');
   assert.equal(index.status, 200);
   assert.ok(index.text.includes('/home.css'), 'index.html links home.css');
-  assert.ok(index.text.includes('v2.4.0 CapCut Home & Flow'), 'index title is 2.4.0');
+  assert.ok(index.text.includes('v2.5.0 CapCut Parity Round'), 'index title is 2.5.0');
   const css = await req('/home.css');
   assert.equal(css.status, 200);
   assert.ok(css.text.includes('.home-hero') && css.text.includes('.home-new-btn'), 'home.css carries the hero + New Project styles');
@@ -374,7 +374,7 @@ test('gap: templates are browsable by category', async () => {
   assert.equal(r.status, 200);
   const cats = [...new Set(r.json.templates.map((t) => t.category))];
   assert.ok(cats.length >= 5, `builtins span at least 5 categories (got ${cats.length}: ${cats.join(', ')})`);
-  assert.equal(r.json.templates.length, 26, 'all 26 builtins are listed');
+  assert.equal(r.json.templates.length, 32, 'all 32 builtins are listed');
   const mk = await req('/marketplace.js');
   assert.ok(mk.text.includes('mk-builtin-cats'), 'marketplace renders category chips');
   assert.ok(mk.text.includes('data-cat'), 'chips carry a category filter');
@@ -396,7 +396,7 @@ test('gap: stickers — image media is accepted on a video track (render job 201
   assert.equal(r.status, 201, `image clip on a video track must be accepted for render: ${r.text}`);
   assert.equal(r.json.job.status, 'queued');
   const ve = await req('/video-editor.js');
-  assert.ok(ve.text.includes("api('/api/media?kind=image')"), 'Stickers tab fetches image media');
+  assert.ok(ve.text.includes("fetch('/stickers/index.json')"), 'Stickers tab fetches the bundled sticker library');
   assert.ok(ve.text.includes('function addSticker'), 'sticker placement function exists');
   assert.ok(ve.text.includes('clip.sticker = true'), 'sticker clips are flagged sticker:true');
   assert.ok(ve.text.includes('ve-stickerov'), 'sticker preview element exists');

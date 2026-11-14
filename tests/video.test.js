@@ -108,7 +108,7 @@ test('timeline model: blank timeline, validation, output dims', () => {
   assert.equal(d.height, 1280);
   const bad = blankTimeline('16:9', 30);
   const badClip = defaultClip('video', 1, 0, 2);
-  badClip.speed = 9;
+  badClip.speed = 101; // above the v2.5.0 0.1–100 range
   bad.tracks[0].clips.push(badClip);
   assert.ok(validateTimeline(bad).some((e) => e.includes('speed')));
   const overlap = blankTimeline('16:9', 30);
@@ -150,13 +150,14 @@ test('timeline model: keyframe linear interpolation', () => {
     { t: 0, x: 0, y: 50, scale: 1, opacity: 1 },
     { t: 4, x: 100, y: 50, scale: 2, opacity: 0 },
   ];
-  assert.deepEqual(keyframeAt(clip, 0), { x: 0, y: 50, scale: 1, opacity: 1 });
+  // v2.5.0 #5: keyframeAt now samples rotation + volume too.
+  assert.deepEqual(keyframeAt(clip, 0), { x: 0, y: 50, scale: 1, opacity: 1, rotation: 0, volume: 1 });
   const mid = keyframeAt(clip, 2);
   assert.equal(mid.x, 50);
   assert.equal(mid.scale, 1.5);
   assert.equal(mid.opacity, 0.5);
-  assert.deepEqual(keyframeAt(clip, 4), { x: 100, y: 50, scale: 2, opacity: 0 });
-  assert.deepEqual(keyframeAt({ ...clip, keyframes: [] }, 2), { x: 50, y: 50, scale: 1, opacity: 1 });
+  assert.deepEqual(keyframeAt(clip, 4), { x: 100, y: 50, scale: 2, opacity: 0, rotation: 0, volume: 1 });
+  assert.deepEqual(keyframeAt({ ...clip, keyframes: [] }, 2), { x: 50, y: 50, scale: 1, opacity: 1, rotation: 0, volume: 1 });
   assert.equal(allClips(blankTimeline('16:9', 30)).length, 0);
 });
 
@@ -171,7 +172,8 @@ test('video API requires login; effects list only real capabilities', async () =
   assert.ok(fx.json.filters.some((f) => f.id === 'brightness'));
   assert.ok(fx.json.notYet.length > 0);
   const v = await req('/api/video/validate', { method: 'POST', cookie: ownerCookie, body: { timeline: blankTimeline('16:9', 30) } });
-  assert.equal(v.status, 200);
+  // v2.5.0: an invalid timeline is a 400 with { valid: false, errors }.
+  assert.equal(v.status, 400);
   assert.equal(v.json.valid, false);
 });
 

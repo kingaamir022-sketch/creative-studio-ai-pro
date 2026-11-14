@@ -1,5 +1,5 @@
 'use strict';
-// Phase 9 — Final QA acceptance tests (A–D). Run with: npm test
+// Phase 10 — Final QA acceptance tests (A–D). Run with: npm test
 // Spawns the real server on a scratch port (4840) with a temp DB/uploads dir.
 //   A: Bulk Video end-to-end on 10 UNIQUE rows (the full 100-row run lives in
 //      scripts/acceptance-a.js — 100 sequential 1 s renders are too slow for
@@ -202,10 +202,10 @@ after(() => {
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-test('health reports Phase 9 / 2.3.1', async () => {
+test('health reports Phase 10 / 2.5.0', async () => {
   const h = await req('/api/health');
-  assert.equal(h.json.version, '2.3.1');
-  assert.equal(h.json.phase, 9);
+  assert.equal(h.json.version, '2.5.0');
+  assert.equal(h.json.phase, 10);
 });
 
 /* ---------- A (suite scale): 10 unique rows, real MP4s ---------- */

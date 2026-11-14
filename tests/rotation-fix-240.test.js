@@ -147,7 +147,7 @@ after(async () => {
   if (server) server.kill('SIGKILL');
 });
 
-test('validate rejects a keyframe carrying rotation', async () => {
+test('validate accepts a keyframe carrying rotation (v2.5.0 #5)', async () => {
   const tl = timelineWithClip((t) => {
     const c = defaultClip('video', mediaVideo.id, 0, 2);
     c.keyframes = [{ t: 0, x: 50, y: 50, scale: 1, opacity: 1, rotation: 90 }];
@@ -155,11 +155,18 @@ test('validate rejects a keyframe carrying rotation', async () => {
   });
   const r = await req('/api/video/validate', { method: 'POST', cookie: ownerCookie, body: { timeline: tl } });
   assert.equal(r.status, 200);
-  assert.equal(r.json.valid, false, 'a rotation keyframe must not validate');
-  assert.ok(r.json.errors.some((e) => /rotation/.test(e) && /not supported/.test(e)), `error names rotation as unsupported: ${JSON.stringify(r.json.errors)}`);
+  assert.equal(r.json.valid, true, `a rotation keyframe must validate in v2.5.0: ${JSON.stringify(r.json.errors)}`);
+  // Out-of-range rotation is still rejected (0–360).
+  const tl2 = timelineWithClip((t) => {
+    const c = defaultClip('video', mediaVideo.id, 0, 2);
+    c.keyframes = [{ t: 0, x: 50, y: 50, scale: 1, opacity: 1, rotation: 400 }];
+    t.tracks[0].clips.push(c);
+  });
+  const r2 = await req('/api/video/validate', { method: 'POST', cookie: ownerCookie, body: { timeline: tl2 } });
+  assert.equal(r2.json.valid, false, 'rotation above 360 must not validate');
 });
 
-test('validate rejects a keyframe carrying volume', async () => {
+test('validate accepts a keyframe carrying volume (v2.5.0 #5)', async () => {
   const tl = timelineWithClip((t) => {
     const c = defaultClip('video', mediaVideo.id, 0, 2);
     c.keyframes = [{ t: 0, x: 50, y: 50, scale: 1, opacity: 1, volume: 0.5 }];
@@ -167,8 +174,15 @@ test('validate rejects a keyframe carrying volume', async () => {
   });
   const r = await req('/api/video/validate', { method: 'POST', cookie: ownerCookie, body: { timeline: tl } });
   assert.equal(r.status, 200);
-  assert.equal(r.json.valid, false, 'a volume keyframe must not validate');
-  assert.ok(r.json.errors.some((e) => /volume/.test(e) && /not supported/.test(e)), `error names volume as unsupported: ${JSON.stringify(r.json.errors)}`);
+  assert.equal(r.json.valid, true, `a volume keyframe must validate in v2.5.0: ${JSON.stringify(r.json.errors)}`);
+  // Out-of-range volume is still rejected (0–2).
+  const tl2 = timelineWithClip((t) => {
+    const c = defaultClip('video', mediaVideo.id, 0, 2);
+    c.keyframes = [{ t: 0, x: 50, y: 50, scale: 1, opacity: 1, volume: 2.5 }];
+    t.tracks[0].clips.push(c);
+  });
+  const r2 = await req('/api/video/validate', { method: 'POST', cookie: ownerCookie, body: { timeline: tl2 } });
+  assert.equal(r2.json.valid, false, 'volume above 2 must not validate');
 });
 
 test('validate still accepts normal x/y/scale/opacity keyframes', async () => {

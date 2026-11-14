@@ -387,7 +387,9 @@ test('deck export to video renders a real MP4 through the render queue', async (
   assert.equal(video.width, 1920, 'deck video width');
   assert.equal(video.height, 1080, 'deck video height');
   const dur = parseFloat(info.format.duration);
-  assert.ok(dur >= 3.5 && dur <= 4.5, `deck video duration ~4s (2 slides x 2s): ${dur}`);
+  // v2.5.0 #19: per-slide durations win over secondsPerSlide — this deck's
+  // slides each carry duration: 5, so 5 + 5 = 10s (no transitions to subtract).
+  assert.ok(dur >= 9.5 && dur <= 10.5, `deck video duration ~10s (2 slides x 5s per-slide duration): ${dur}`);
 });
 
 // --- Documents -------------------------------------------------------------------
