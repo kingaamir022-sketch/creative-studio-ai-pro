@@ -123,11 +123,11 @@ test('design model: built-in templates are real editable designs', () => {
 });
 
 /* ---------- API ---------- */
-test('health reports Phase 11', async () => {
+test('health reports Phase 12', async () => {
   const r = await req('/api/health');
   assert.equal(r.status, 200);
-  assert.equal(r.json.phase, 11);
-  assert.equal(r.json.version, '2.6.0');
+  assert.equal(r.json.phase, 12);
+  assert.equal(r.json.version, '2.6.1');
 });
 
 test('design endpoints require login', async () => {
