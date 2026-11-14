@@ -134,7 +134,7 @@ function computeDepsOverlay(directDeps) {
 function collectFiles() {
   const files = [];
   const includeFile = (rel) => rel === 'server.js' || rel === 'package.json' || rel === 'Start.bat';
-  const includeDir = (rel) => ['src', 'public', 'docs', 'scripts', '.github'].some((d) => rel === d || rel.startsWith(d + '/'));
+  const includeDir = (rel) => ['src', 'public', 'docs', 'scripts', '.github', 'electron'].some((d) => rel === d || rel.startsWith(d + '/'));
   function walk(dir) {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, e.name);
