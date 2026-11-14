@@ -180,6 +180,10 @@ router.delete('/posts/:id', auth.requireAuth, (req, res) => {
   const post = db.getSocialPost(req.user.id, req.params.id);
   if (!post) return res.status(404).json({ error: 'Post not found.' });
   if (post.status === 'published') return res.status(400).json({ error: 'A published post cannot be deleted here — remove it on the platform itself, then mark this record manually.' });
+  // C-27: a 'manual' post IS a publication record (posted on the platform
+  // by hand and recorded here with its link) — deleting it would erase
+  // the only record that the post went out.
+  if (post.status === 'manual') return res.status(400).json({ error: 'A manually-posted record cannot be deleted — it is the only record that this post went out. Remove the post on the platform itself first if it should not be live.' });
   db.deleteSocialPost(req.user.id, post.id);
   db.audit(req.user.id, 'social_post_deleted', 'social_post', post.id, `Deleted ${post.status} post for ${post.platform}`);
   res.json({ ok: true });

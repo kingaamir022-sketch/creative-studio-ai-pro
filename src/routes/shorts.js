@@ -272,7 +272,7 @@ router.post('/jobs/:id/transcript', auth.requireAuth, (req, res) => {
     cues: norm.cues, timing, source, language: lang,
     updatedAt: new Date().toISOString(),
   };
-  db.updateShortsJob(job.id, { transcript, transcriptSource: source, language: lang });
+  db.updateShortsJob(job.id, { transcript, transcript_source: source, language: lang });
   refreshClipCaptionStatus(job.id);
   db.audit(req.user.id, 'shorts_transcript_saved', 'shorts_job', job.id,
     `Manual transcript (${source}, ${norm.cues.length} cues, ${timing} timing)`);

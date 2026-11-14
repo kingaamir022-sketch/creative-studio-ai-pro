@@ -10,6 +10,7 @@
 // Platform stats, per-user usage detail, audit log, system health.
 const express = require('express');
 const fs = require('fs');
+const path = require('path');
 const db = require('../db');
 const auth = require('../auth');
 const config = require('../config');
@@ -148,9 +149,28 @@ router.delete('/users/:id', auth.requireRole('OWNER', 'ADMIN'), (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found.' });
   if (guardOwnerTarget(req, res, user)) return;
   if (user.id === req.user.id) return res.status(400).json({ error: 'You cannot delete your own account.' });
+  // C-23: capture the user's website dirs BEFORE the row delete — the
+  // websites table has ON DELETE CASCADE, so the rows (and their dirs)
+  // would be unreadable afterwards.
+  const sites = db.listWebsites(user.id);
   db.deleteUserById(user.id);
-  db.audit(req.user.id, 'admin_user_delete', 'user', user.id, `Deleted user ${user.email} (${user.role}, ${user.plan})`);
-  res.json({ ok: true });
+  // C-23: deleting a user must not orphan their files on disk. Remove
+  // their uploads (media, thumbnails, AI output), their renders (incl.
+  // temp work dirs) and their published website folders.
+  const removed = [];
+  const failed = [];
+  for (const dir of [path.join(config.uploadsDir, String(user.id)), path.join(config.rendersDir, String(user.id))]) {
+    try {
+      if (fs.existsSync(dir)) { fs.rmSync(dir, { recursive: true, force: true }); removed.push(dir); }
+    } catch (e) { failed.push(dir); }
+  }
+  for (const site of sites) {
+    try {
+      if (site.dir && fs.existsSync(site.dir)) { fs.rmSync(site.dir, { recursive: true, force: true }); removed.push(site.dir); }
+    } catch { failed.push(site.dir); }
+  }
+  db.audit(req.user.id, 'admin_user_delete', 'user', user.id, `Deleted user ${user.email} (${user.role}, ${user.plan}) — removed ${removed.length} folder(s) from disk${failed.length ? `; ${failed.length} folder(s) could not be removed: ${failed.join(', ')}` : ''}`);
+  res.json({ ok: true, filesRemoved: removed.length, filesFailed: failed.length });
 });
 
 // Platform stats (real DB counts only).

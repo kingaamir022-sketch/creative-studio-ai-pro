@@ -77,7 +77,10 @@ router.post('/upload', auth.requireAuth, (req, res) => {
     // Phase 3: probe video/audio in the background (real duration, size,
     // fps, codec) and make a thumbnail for videos. The upload response
     // does not wait for it; the library shows the data once it lands.
-    if (m.kind === 'video' || m.kind === 'audio') {
+    // C-14: images are probed too — ffprobe returns their width/height,
+    // which the DOCX export, editor and bulk flows need (they used to
+    // fall back to 600×400 guesses because image rows had NULL sizes).
+    if (m.kind === 'video' || m.kind === 'audio' || m.kind === 'image') {
       const filePath = path.join(config.uploadsDir, String(req.user.id), m.stored_name);
       setImmediate(async () => {
         try {

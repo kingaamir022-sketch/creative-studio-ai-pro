@@ -50,7 +50,7 @@ router.get('/dashboard', auth.requireAuth, async (req, res) => {
       db: 'ok',
       ffmpeg: ff,
       maxUploadMB: config.maxUploadMB,
-      version: '2.3.0 (CapCut Design Pass)',
+      version: '2.3.1 (Fix Round)',
     },
     recentProjects: recent.map((p) => ({ id: p.id, name: p.name, type: p.type, updatedAt: p.updated_at })),
     recentMedia: recentMedia.map((m) => ({ id: m.id, originalName: m.original_name, kind: m.kind, url: `/api/media/${m.id}/file`, createdAt: m.created_at })),
@@ -58,11 +58,20 @@ router.get('/dashboard', auth.requireAuth, async (req, res) => {
 });
 
 // --- Notifications (real audit events for this user) ---
+// C-21: read/unread state is a per-user "last seen" marker in app_settings
+// (notif_seen_at:<userId>). unreadCount = audit rows newer than the marker;
+// opening the bell marks everything seen, so the dot clears.
 router.get('/notifications', auth.requireAuth, (req, res) => {
   const items = db.listAudit(req.user.id, 30).map((a) => ({
     id: a.id, action: a.action, detail: a.detail, entity: a.entity, entityId: a.entity_id, createdAt: a.created_at,
   }));
-  res.json({ notifications: items });
+  const seenAt = db.getAppSetting(`notif_seen_at:${req.user.id}`, '') || '';
+  const unreadCount = items.filter((n) => !seenAt || String(n.createdAt) > seenAt).length;
+  res.json({ notifications: items, unreadCount });
+});
+router.post('/notifications/seen', auth.requireAuth, (req, res) => {
+  db.setAppSetting(`notif_seen_at:${req.user.id}`, new Date().toISOString().replace('T', ' ').slice(0, 19));
+  res.json({ ok: true, unreadCount: 0 });
 });
 
 // --- Jobs (rendering engine live in Phase 3; full job API is /api/video/jobs) ---
@@ -140,10 +149,13 @@ router.post('/providers/active', auth.requireAuth, auth.requireRole('OWNER', 'AD
 });
 
 // --- Test connection: a minimal REAL call; reports the actual result ---
+// C-24: a failed test is a 402 (provider not usable), not a 200 — a 200
+// with {ok:false} let callers treat a dead key as a success.
 router.post('/providers/:id/test', auth.requireAuth, auth.requireRole('OWNER', 'ADMIN'), async (req, res) => {
   const def = providers.PROVIDERS.find((p) => p.id === req.params.id);
   if (!def) return res.status(404).json({ error: 'Unknown provider.' });
   const result = await providers.testProvider(def.id);
+  if (!result.ok) return res.status(402).json({ provider: def.id, ...result });
   res.json({ provider: def.id, ...result });
 });
 

@@ -43,7 +43,13 @@ function handleMagicError(res, err) {
   if (code === 'NOT_FOUND') return res.status(404).json({ error: err.message, code });
   if (code === 'NO_OBJECT_AT_POINT') return res.status(400).json({ error: err.message, code });
   if (code === 'INSUFFICIENT_CREDITS') return res.status(402).json({ error: err.message, code, needed: err.needed, balance: err.balance });
-  return res.status(400).json({ error: String((err && err.message) || err).slice(0, 500) });
+  // C-04: never return a raw FFmpeg stderr dump to the client — map it to
+  // one short, user-readable line (the detail stays in the server log).
+  const msg = String((err && err.message) || err);
+  const friendly = /ffmpeg failed|alphaextract|Invalid argument|error code/i.test(msg)
+    ? 'The image could not be processed — check the file and try again. (The technical detail is in the server log.)'
+    : msg.slice(0, 500);
+  return res.status(400).json({ error: friendly });
 }
 
 function creditGate(req, res, action) {

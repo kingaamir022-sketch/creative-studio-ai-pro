@@ -431,13 +431,23 @@ router.post('/websites/publish', auth.requireAuth, (req, res) => {
         await renderChartPng(spec, pngPath, { width: 960, height: 540 });
         chartFiles[id] = pngPath;
       }
-      const slug = slugify(p.name);
+      // C-18: republish updates the project's existing site (same slug and
+      // URL) instead of minting a second live site with a new random slug.
+      const existing = db.getWebsiteByProject(req.user.id, p.id);
+      const slug = existing ? existing.slug : slugify(p.name);
       const outDir = siteDir(slug);
+      if (existing) {
+        // Wipe the old build so stale assets from the previous version do
+        // not linger alongside the new one.
+        try { fs.rmSync(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      }
       const built = buildWebsite({ kind: p.type, title: p.name, design, deck, doc, mediaById, chartFiles, outDir });
       try { fs.rmSync(workDir, { recursive: true, force: true }); } catch { /* ignore */ }
-      const site = db.createWebsite(req.user.id, { projectId: p.id, slug, kind: p.type, title: p.name, dir: outDir });
-      db.audit(req.user.id, 'website_published', 'website', site.id, `Published "${p.name}" as a website at /sites/${slug}/`);
-      res.status(201).json({ site: { id: site.id, slug: site.slug, kind: site.kind, title: site.title, projectId: site.project_id, url: `/sites/${site.slug}/`, files: built.files } });
+      const site = existing
+        ? db.updateWebsite(req.user.id, existing.id, { kind: p.type, title: p.name, dir: outDir })
+        : db.createWebsite(req.user.id, { projectId: p.id, slug, kind: p.type, title: p.name, dir: outDir });
+      db.audit(req.user.id, existing ? 'website_republished' : 'website_published', 'website', site.id, `${existing ? 'Republished' : 'Published'} "${p.name}" as a website at /sites/${slug}/`);
+      res.status(existing ? 200 : 201).json({ site: { id: site.id, slug: site.slug, kind: site.kind, title: site.title, projectId: site.project_id, url: `/sites/${site.slug}/`, files: built.files }, republished: Boolean(existing) });
     })();
     build.catch((err) => { console.error('[docs-slides] website build failed:', err); res.status(500).json({ error: String(err.message || err).slice(0, 500) }); });
   } catch (err) {
