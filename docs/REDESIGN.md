@@ -169,3 +169,34 @@ results listed with their source URLs.
   remains).
 - The `renders/` directory was already empty; test DB/uploads were kept
   in /tmp and removed after verification.
+
+---
+
+## v2.3.0 — CapCut design pass (2026-11-14)
+
+Design-only release on top of v2.2.4: no new features, no behaviour changes,
+no dependency changes. Full detail in `docs/FEATURE_COMPLETION.md` §1d.
+
+- Sidebar regrouped CapCut-style: 35 items in 7 groups — Create · AI Studio ·
+  Edit · Bulk & Automation · Library · Publish & Grow · Account. Group
+  dividers; every feature under its proper heading, nothing mixed. Only the
+  NAV array order changed; all ids, routes, labels and blurbs unchanged.
+- Video Editor — CapCut four-pane layout (media top-left, preview right,
+  details far right, timeline bottom), full-height wrap, 8-tab left rail in
+  CapCut order: Media / Audio / Text / Stickers / Effects / Transitions /
+  Captions / Filters. Magnetic timeline (default ON, `🧲 Magnet` toggle);
+  Export top-right (`⬆ Export`); 3px playhead with triangle handle.
+- Graphic Editor — vertical icon rail (Canvas / Elements / Layers /
+  Templates / Media / Brand); Export PNG/JPG already top-right, kept.
+- `public/tokens.css` — 13 new CapCut editor tokens, each with dark AND
+  light values. Video stage stays black in both themes (content).
+- Light-theme parity finished: removed the duplicate `.modal-back`/`.modal`
+  rules in `docs-slides.css` that broke the light backdrop, token-based
+  chart placeholder, slide-thumb active state and alert colours, and the
+  quiz caption contrast fix in `bulk.css`.
+- Responsive: rail becomes a horizontal strip ≤860px; timeline and panels
+  keep the existing 390px rules; nav items never overflow (ellipsis).
+- Honest limits: the Stickers tab is an empty state, not a feature — no
+  sticker feature exists. No live-browser screenshot verification in this
+  pass (build environment has no browser); verified by the full suite.
+- Tests: 5 new v2.3.0 tests in `tests/design.test.js`; full suite 222/222 pass.

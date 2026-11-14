@@ -1,6 +1,6 @@
 # CreativeStudio AI Pro — Feature Completion Report (Phase 9, Final QA)
 
-**Version:** 2.0.0 · **Date:** 2026-11-13 · **Suite:** `npm test` — **132/132 pass, 0 fail**
+**Version:** 2.3.0 · **Date:** 2026-11-14 · **Suite:** `npm test` — **222/222 pass, 0 fail**
 (exit 0, single clean run; see [Acceptance verdicts](#acceptance-verdicts-a–d) below).
 
 **Rule of this report:** every feature is exactly one of **Implemented**,
@@ -11,7 +11,7 @@ until the user supplies a key, token, or OAuth connection. No real provider
 key, platform token, or Google credential exists in this build, so **no
 real-provider or real-platform call has ever run**.
 
-## 1. The 27 sidebar sections
+## 1. The 35 sidebar sections (CapCut groups, v2.3.0)
 
 | # | Section | Status | Notes |
 |---|---------|--------|-------|
@@ -47,6 +47,11 @@ real-provider or real-platform call has ever run**.
 | 30 | Charts (v2.2.3) | Implemented | Bar/line/pie/doughnut charts from pasted CSV or a manual table; duplicate rows permanently skipped (never doubled); SVG + PNG render (pure-JS rasterizer + FFmpeg text labels); save to Media Library as a real image, embeddable in decks, docs, designs and websites. |
 | 31 | Website (v2.2.3) | Implemented | Publish a design, deck or document as a static website (index.html + assets) served locally at /sites/:slug/; unpublish removes it. Local hosting only — no custom domain, no external host. |
 | 32 | Print (v2.2.3) | Implemented | Print-ready PDF export: A4 / US Letter / Poster 18×24 in at 150 DPI, configurable bleed (0–10 mm) and margin, crop marks + safe-zone guide drawn as vector lines. RGB PDF — CMYK conversion is not built. |
+| 33 | AI Studio | Needs credentials | The 10-mode studio (text, image, video, voice, quiz, transcription, music, deck, captions, design) through the Phase 7 provider registry; every mode refuses `key_needed` without its provider key, never a fake result. |
+| 34 | Voices | Implemented | Your own voice from a short sample is the default on all videos; AI voices too; bulk voice picker + per-row override. Real cloning/TTS needs a provider key; recorded narration works now. |
+| 35 | Admin Panel | Implemented | OWNER/ADMIN only: users, plan requests, platform stats, audit log, system health. |
+
+**v2.3.0 sidebar groups (CapCut order):** Create (Dashboard, AI Design Studio, Graphic Editor, Presentations, Documents, Charts) · AI Studio (AI Studio, AI Video Generator, AI Image Generator, AI Assistant) · Edit (Video Editor, Effects & Transitions, Animation Studio, Magic Tools, Auto Captions) · Bulk & Automation (Bulk Design Studio, Bulk Video Studio, Smart Template Builder, Long Video to Shorts, Music Sync Director, Voices) · Library (Media Library, Stock Assets, Templates Marketplace, Projects, Brand Kit) · Publish & Grow (Social Media Creator, Content Calendar, Website, Print, Export Center, Analytics) · Account (Admin Panel, Settings, Subscription & Credits). Effects under Effects, Transitions under Transitions, AI under AI, library under Library — nothing mixed.
 
 ## 1b. v2.2.3 addendum — Docs & Slides (Release B)
 
@@ -176,12 +181,83 @@ were already taken by the other 15 suites).
   conversion for print PDFs; live co-editing (out of scope by design);
   text curvature; TikTok upload; A vs B quiz format; 4K / 3rd video track.
 
+## 1d. v2.3.0 addendum — "CapCut design pass" (2026-11-14)
+
+Design-only release: no new features, no behaviour changes, no dependency
+changes. The CapCut desktop arrangement and one consistent design system
+over every feature and every option.
+
+- **Sidebar regrouped, CapCut-style** — 35 items in 7 groups (see §1):
+  Create · AI Studio · Edit · Bulk & Automation · Library ·
+  Publish & Grow · Account. Group dividers in the sidebar; every item in
+  its proper group, nothing mixed. All ids, routes, labels and blurbs
+  unchanged — only the NAV array order moved.
+- **Video Editor — four-pane CapCut layout** (`public/video-editor.js`,
+  `public/video-editor.css`): media top-left, preview right, details far
+  right, timeline bottom; full-height wrap (`calc(100vh - 130px)`),
+  min 560px. Left rail, 8 icon-over-label tabs in CapCut order:
+  **Media** (video only now) · **Audio** (audio files only, adds at
+  playhead to the audio track) · **Text** · **Stickers** · **Effects**
+  (real Magic Animate clip presets from `/api/magic/animate/presets` +
+  text fade/slide guidance + link to Animation Studio) ·
+  **Transitions** · **Captions** (real list of text-track clips with
+  text + start–end times; click seeks the playhead and selects the clip;
+  link to Auto Captions) · **Filters** (real per-clip filters from
+  `/api/video/effects` with ranges; selects a clip and jumps to the Clip
+  tab). **Magnetic timeline** — clip edges + playhead snap, default ON,
+  `🧲 Magnet` toggle in the timeline tools (beat snap keeps its own
+  toggle; a beat never overrides a closer edge). **Export top-right** —
+  `⬆ Export` jumps to the Export tab (same id `ve-goto-export`).
+  Playhead is a 3px line with a triangle handle. Clip colours from
+  tokens (`--clip-video/--clip-audio/--clip-text`).
+- **Graphic Editor — vertical icon rail** (`public/editor.js`,
+  `public/editor.css`): 76px rail (60px ≤1100px), icon + label tabs —
+  Canvas · **Elements** (renamed from "Add", `data-tab="add"` kept) ·
+  Layers · Templates · Media · Brand. Export PNG/JPG already top-right,
+  kept.
+- **Tokens + light parity** (`public/tokens.css`): 13 new CapCut editor
+  tokens with dark AND light values each (`--editor-rail-w`,
+  `--editor-rail-bg`, `--editor-rail-active`, `--timeline-bg`,
+  `--timeline-track-bg`, `--timeline-ruler`, `--playhead`,
+  `--snap-guide`, `--stage-bg`, `--clip-video`, `--clip-audio`,
+  `--clip-text`, `--export-btn`, `--export-btn-hover`). The video stage
+  stays black in both themes — it is content, not chrome. Token parity
+  is asserted in both themes by the v2.3.0 tests.
+- **Light-theme leftovers fixed:** `docs-slides.css` — chart placeholder
+  hardcoded `#24304f` → tokens; slide-thumb active background → token
+  mix; `.alert.ok/.warn` hardcoded hex → token mix; **removed duplicate
+  `.modal-back`/`.modal` rules** that loaded after `styles.css` and
+  killed the light backdrop override. `bulk.css` — `.qp-caption` muted
+  `var(--text-2)` → `#e8ecf8` (it sits on the dark phone frame).
+  Deliberately left as content: quiz phone preview colours, white design
+  canvas, transparency checker, black video stage, logo-mark gradient.
+- **Version:** 2.3.0 everywhere (`package.json`, `server.js` health +
+  startup log, `index.html` title, `src/openverse.js` User-Agent ×2,
+  `src/routes/system.js` version string, `updates/version.json`).
+  Tests: 5 new v2.3.0 tests in `tests/design.test.js` (sidebar grouping,
+  video-editor tabs/magnet/Export, graphic-editor rail, token parity,
+  light-theme leftovers); suite **222/222 pass**.
+- **Honestly NOT redesigned / left out:**
+  - **Stickers tab is an honest empty state**, not a feature — no
+    sticker/overlay-image feature exists in the app, so the tab says so
+    and links to the Graphic Editor instead of pretending to work.
+  - No live-browser click-through or screenshot verification in this
+    pass — the build environment has no browser. Verification is the
+    full test suite (222/222) plus static token/CSS checks and the
+    existing 390px responsive rules. The user should confirm the layout
+    on their PC.
+  - The topbar has no Export button — Export lives top-right inside
+    the editors (CapCut-style), as before.
+  - No feature, option, route, API contract or dependency changed.
+
 **Global UI:** global search (projects & media) — Implemented; notification
 centre — Implemented (real DB notifications); user profile — Implemented;
 recent projects / quick actions — Implemented; system status — Implemented
-(FFmpeg, storage, DB). Light theme — **Pending** (dark theme only; the
-prompt lists an optional light theme). Desktop-first timeline with a
-simplified mobile layout — Implemented as designed.
+(FFmpeg, storage, DB). Light theme — **Implemented (v2.3.0)** — every token
+has a light value (CapCut tokens included, verified by the v2.3.0
+token-parity tests); hardcoded dark chrome removed (docs-slides modal
+duplication, chart placeholder, alert colours, quiz caption bar).
+Desktop-first timeline with a simplified mobile layout — Implemented as designed.
 
 ## 2. Key modules (from the master prompt)
 
@@ -227,7 +303,7 @@ simplified mobile layout — Implemented as designed.
 | `.env.example` | Implemented (no real secrets in it) |
 | Install + deployment guides | Implemented (`docs/INSTALL.md`, `docs/DEPLOYMENT.md`) |
 | API docs | Implemented (`docs/API.md`) |
-| Automated tests | Implemented (`npm test`, 217 tests, all passing — v2.2.4) |
+| Automated tests | Implemented (`npm test`, 222 tests, all passing — v2.3.0) |
 | Error handling / honest errors | Implemented (`key_needed`, `NOT_CONNECTED`, 402 credit block, clear messages; never a fake success) |
 | Production build | Pending (no build step by design; see `docs/DEPLOYMENT.md` for the production notes) |
 
@@ -361,12 +437,12 @@ simplified mobile layout — Implemented as designed.
 No production code was changed for a feature in Phase 9 — only the three
 blurb corrections above. All fixes were re-verified by the full suite.
 
-## 8. What remains after v2.2.4
+## 8. What remains after v2.3.0
 
-1. **Final redesign — v2.3.0 CapCut design pass** (user rule): redesign the
-   whole project to the world's best professional designs — every feature,
-   every option, one consistent CapCut-style design, strict grouping
-   (Effects under Effects, Transitions under Transitions, nothing mixed).
+1. **Final redesign — v2.3.0 CapCut design pass — DONE (this release).**
+   Sidebar regrouped CapCut-style, Video Editor + Graphic Editor in the
+   four-pane CapCut layout, one design system with full light-theme
+   parity — see §1d.
 2. Provider keys (Settings → AI Providers, secure entry — never in chat)
    to make AI modes, AI backgrounds, TTS/cloning, and STT run for real.
    (Gemini free key is already configured on the user's PC and tested OK.)
