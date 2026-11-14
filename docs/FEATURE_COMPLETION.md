@@ -899,6 +899,149 @@ login, so a demoted allowlisted account stays USER until it signs in
 again. The friendly message only covers the unreachable-server case — a
 server that answers with an error still shows the server's own text.
 
+## 1j. v2.7.0 addendum — "CapCut Desktop Exact" (2026-11-14)
+
+The user said the app still was not CapCut-like, and sent two screenshots
+of real CapCut desktop on their PC, then six screenshots of real CapCut
+mobile (light theme), saying "baqi ap sab kuch dekhlo" — study the rest
+yourself. v2.7.0 rebuilds the Home and Video Editor shells (desktop) and
+adds the full mobile shell, to match those references in arrangement,
+order, labels and colours. Nothing was removed: all v2.5.0 parity items,
+Sheets, planner, multi-owner, friendly login message and PWA still work.
+Health is now `version: '2.7.0', phase: 13`; the dashboard system string is
+`'2.7.0 (CapCut Desktop Exact)'` and the index title is
+`v2.7.0 Desktop App`. Pure app-code change: `fullReinstall: false`.
+
+**Desktop Home (reference: CapCut desktop home).** `public/app.js`
+(`viewHome()` + the home-only shell in `render()`) and
+`public/home.css` — the home view now has its own CapCut shell (own
+sidebar + top bar; all other views keep the existing shell): top bar with
+logo, upload (→ Media Library), theme toggle, bell (real notifications)
+and settings; sidebar with the sign-in/user card, pink→cyan Join Pro
+(→ Subscription & Credits, real plan state — OWNERs see "✓ Lifetime
+Free", no payment gateway exists, nothing faked), Home (active),
+Templates, "Create with AI" header, Video Studio, Design Studio, an
+expandable "More tools" (Create with AI + Marketing tools + all 7 CapCut
+groups with every NAV item, so nothing becomes unreachable), Invite
+friends with the orange "New" badge (→ Collaboration) and the "Try
+Seedance 2.5 / Generate 4K videos" promo card (→ Seedance generate);
+the huge cyan-gradient "+ Create project" banner (→ the existing
+`openNewProjectFlow()`: 9 types + aspect ratio + fps, import-first for
+video); the 5 dark tool cards in a row with exact labels — AI image
+("Turn ideas into imagery", GPT Image badge), Extend video ("Seamlessly
+extend any clip"), AI edit ("Edit clips by describing it"), Enhance
+quality ("Get sharper results instantly"), AI remove ("Remove anything
+unwanted") — each opening its real tool; the "AI-powered creative suite"
+carousel (Video Studio, Design Studio, AI ad maker, Long video to
+Shorts) with a right-arrow scroll button; REAL Recent Projects (with
+video durations) and Templates rows plus working search, kept from v2.4.0.
+
+**Desktop Editor (reference: CapCut desktop editor).**
+`public/video-editor.js` + `public/video-editor.css` — the shell is
+rebuilt around the existing timeline/preview/render engine (unchanged):
+top bar with logo (→ Home), a real Menu dropdown (New project, Open
+project, Save, Save version, Project settings, Keyboard shortcuts,
+Settings), an editable project name, Left/Right layout toggles, a ◆ Pro
+badge showing the real plan (→ Subscription & Credits), Share (real
+share dialog / Collaboration) and a cyan Export button (real export
+dialog: resolution, fps, format, codec, quality, bitrate, HDR, presets,
+estimate, audio-only, frame PNG/GIF); the left icon rail in CapCut
+order — Media (active, cyan), Audio, Text, Stickers, Effects,
+Transitions, Captions, Filters — each switching its real panel, nothing
+mixed; the Media panel with an Import dropdown, Media / Timeline /
+Subprojects tabs, the big dashed Import drop zone ("+ Import", "Drag and
+drop videos, photos, and audio files here"), "No media? Create with
+these tools" (Generate / AI avatars / Record) and collapsible Yours /
+Generate (AI badge) / Spaces / Library sections; the centre preview
+header "Player-Timeline 01" with hamburger, real HH:MM:SS:FF timecode,
+play, Full / Ratio / fullscreen; the right Details panel (cyan heading:
+Name, Path, Imported media "Stay in original location", Arrange layers —
+a REAL toggle changing how new clips place, Proxy "Turned off", Aspect
+ratio "Original", Resolution "Adapted", Modify → project settings);
+the bottom timeline toolbar (+ menu, Select/Split mode, undo, redo,
+split, delete, voiceover, snap, zoom slider + magnifiers, ⋯ second row
+with every previous tool) and the dashed empty-timeline state "Drag
+material here and start to create".
+
+**Mobile shell (reference: six CapCut mobile screenshots, light theme).**
+New `public/mobile.css` + `public/mobile.js` (loaded from
+`public/index.html`; `public/app.js` gains the mobile branch in
+`viewHome` and the `m-*` routes) — at ≤860px the app shows the light
+mobile layout (white/pale-blue, black text, cyan accents) with a bottom
+nav — Edit, Templates, AI Lab, Inbox (red badge = real unread count),
+Me — and a big cyan floating + button (→ New Project flow): Edit home
+("Try Standard 7 days for -" pill → real plan view, New video / Edit
+photo "Seedream 5.5" hero cards, the 8 quick tools in a 4-col grid,
+Projects with Space + sort, REAL projects list, the exact empty-state
+copy "Your projects will appear here. Start creating now."); AI Lab
+("What are we creating today?", Remix viral content card, Quick photo
+edit / AutoCut / Create AI video / Try Seedance 2.5 pills, the "Turn
+Photos into AI Videos" input bar); Templates ("Search CapCut" over our
+real library, Following / For you / Pro / real-category chips, 2-col
+cards with real local install counts); All Tools (a sheet with X close
+and a pinned cyan "New project": Quick actions, AI tools, Photo
+editing, Marketing tools — all 28 tiles open a real local feature);
+Inbox ("CapCut official(N)" = our real system notices with the real
+count, Interactions = real render jobs + real collab comments, filters
+All / Exports / Likes / Comments); Me (real signed-in user, "FREE year
+of Pro" + "Renew Pro" → real plan view, "Your progress" from real local
+counts, Creator center with real local stats, Creation tasks →
+Content Planner, Inspiration hub → Templates, More: Apply to be a
+creator / Events / Purchased). The mobile editor turns the left/right
+panels into bottom sheets (55vh max, scrim, drag handle) with pills to
+open them; touch targets ≥44px, no overflow at 390px.
+
+**Honest limits (nothing faked).** The floating + button is visible on
+the Me screenshot only — it is implemented on all mobile views anyway,
+per the build instruction, and this is stated here. Template cards use
+our real library: its 12 real categories are Business, Certificate,
+Education, Invitation, Logo, Menu, Presentation Set, Print, Promo,
+Résumé, Social, Video — there is no "Daily life" or "Selfie" category,
+so those chips do not exist; built-in templates have no recorded uses,
+so no use count is shown (never invented), and no template carries an
+AI-made flag, so no AI badge is shown. Inbox has NO Follow buttons and
+no follower rows — CapCut-cloud followers cannot exist locally; it
+shows our real notifications and activity instead. Me shows no Lv.5
+Platinum, Honor Wall, 153.2K views or cash rewards — those are CapCut-
+cloud values; the same slots show real local counts with honest labels.
+Seedance generate/extend is key-gated and refuses honestly without a
+`SEEDANCE_API_KEY`; Extend additionally cannot use a local file (no
+publicly reachable source URL). AI avatars are a still photo + spoken
+script, no lip-sync. Proxy media, Subprojects, cloud Spaces and a
+creator program do not exist locally and the UI says so where it
+mentions them. No live 390px check in a real browser/phone was possible
+on the VM — overflow and touch-target rules are by construction
+(`minmax(0,1fr)` grids, `overflow-x:hidden`, 44px rules) plus a jsdom
+DOM smoke test; verify on a real phone, especially the editor bottom
+sheets and timeline touch. The desktop logo stays CreativeStudio, not
+CapCut; window min/max/close are hidden in the browser build (the
+Electron shell provides them); the Filters rail has no chevron because
+all 8 tabs are visible.
+
+**Tests (new, port 4857):** `tests/capcut-exact-270.test.js` — 23/23
+green in its own run (`node --test tests/capcut-exact-270.test.js`):
+home sidebar order, cyan banner + 9 New Project types, the 5 tool
+cards with exact labels, the suite carousel cards + scroll button,
+Recent Projects durations (live: a 3s timeline project reports
+durationSeconds 3), template install (live: builtin → real project);
+editor top bar, rail order, Media panel drop zone/tabs/create tools,
+Details fields in order, timeline toolbar + empty state, Export dialog
+fields + jobs list; index loading mobile.css/mobile.js; mobile nav
+order + FAB, Edit home (pill, hero cards, 8 tools in order, empty
+state), AI Lab, Templates, All Tools (4 sections in order, all 28
+tiles), Inbox tabs/filters + real unread count, Me sections + analytics
+contract, a no-fake-data guard (mobile.js contains no invented follower
+names, "Followed you", "153.2K" or "Platinum"), and the 390px CSS
+rules. Existing version assertions were bumped 2.6.1 → 2.7.0 /
+phase 12 → 13 (`api`, `acceptance`, `design`, `home-flow-240`,
+`music`, `shorts`, `social`, `electron-260`, `multi-owner-261`, and
+`update` — whose test app copy mirrors the real `package.json`, so its
+twelve 2.6.1 values move too); historical "v2.6.1" comments (e.g.
+"pre-v2.6.1 case", Multi-Owner guards) were left untouched.
+`package.json` `test` now also runs `tests/capcut-exact-270.test.js`.
+The v2.6.1 suite was 409/409; with these 23 new tests the suite is 432
+— the coordinator's final full run confirms the total.
+
 ## 2. Key modules (from the master prompt)
 
 | Module | Status |
