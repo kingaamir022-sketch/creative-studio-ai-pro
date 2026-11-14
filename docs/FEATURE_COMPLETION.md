@@ -1,6 +1,6 @@
 # CreativeStudio AI Pro — Feature Completion Report (Phase 9, Final QA)
 
-**Version:** 2.3.0 · **Date:** 2026-11-14 · **Suite:** `npm test` — **222/222 pass, 0 fail**
+**Version:** 2.3.1 · **Date:** 2026-11-14 · **Suite:** `npm test` — **249/249 pass, 0 fail**
 (exit 0, single clean run; see [Acceptance verdicts](#acceptance-verdicts-a–d) below).
 
 **Rule of this report:** every feature is exactly one of **Implemented**,
@@ -259,6 +259,162 @@ token-parity tests); hardcoded dark chrome removed (docs-slides modal
 duplication, chart placeholder, alert colours, quiz caption bar).
 Desktop-first timeline with a simplified mobile layout — Implemented as designed.
 
+## 1e. v2.3.1 addendum — "Fix round: full-verification audit gaps C-01–C-27" (2026-11-14)
+
+Fixes-only release: no new features, no design changes, no dependency
+changes. Every gap found by the full feature-by-feature verification audit
+of v2.3.0 (45 areas checked: 40 PASS, 5 FAIL) is fixed in this one round,
+with one regression test per gap in `tests/fix-round-231.test.js` (port
+4847). The 222/222 suite passing did not catch these gaps — the tests
+covered happy paths; the gaps lived in unmapped defaults, unfitted text,
+status bookkeeping and edge cases the suite never exercised.
+
+**Blockers**
+- **C-01 — unmapped `{{FIELD}}` blanked the value** (`src/bulk-model.js`
+  `substituteText`, `public/bulk.js`): with no explicit field mapping
+  (the default) a template field rendered blank with no warning. It now
+  falls back to the same-name dataset column (normalised, case/space
+  insensitive); an explicit mapping still wins; a field with no column
+  anywhere is still reported missing, not faked. The mapping UI
+  pre-selects the same-name column. `startBulkJob` (`src/bulk.js`) adds a
+  pre-flight check: template fields that resolve nowhere refuse up front,
+  naming the unresolved `{{FIELD}}`s.
+- **C-02 — quiz score-card CTA overflowed both frame edges**
+  (`src/quiz-model.js` `buildQuizTimeline`): the CTA was drawn at a fixed
+  48px with no fit check. CTA + sub-line now run through `fitText`
+  against the safe-box width (max 48/28px, min 20/16px, max 2 lines), the
+  whole block is vertically centred in the safe box, and an un-fittable
+  CTA is flagged "Score-card text does not fit" with a shorter-text
+  suggestion instead of rendering broken.
+
+**Never-overflow cluster**
+- **C-05 — 17 of 107 built-in template text layers overflowed**
+  (`src/design-templates.js`): all 21 overflowing layers found by the
+  builder's `fitText` re-check (height + width) are fixed — boxes grown
+  where they can grow, fonts shrunk where they cannot (e.g. promo-post
+  "SUMMER SALE" box 280→360px; food-promo headline 130→108px).
+  Re-check after the fix: **107 text layers, 0 overflowing**.
+- **C-06 — Graphic Editor had no autofit** (`src/design-render.js`,
+  `public/editor.js`): the preview clipped, the export drew past the
+  box, and the server renderer ignored `lineHeight`. Server text layers
+  now fit via `fitText` before drawing (wrap, then shrink to min 12px;
+  `line_spacing` honoured; un-fittable layers warned by name). The editor
+  autofits on text/font/size changes, inline-edit commit and box resize
+  (shrink only), autofits before save/export, and clips every layer to
+  its own box in the canvas preview as a backstop.
+- **C-07 — quiz `slide-left` moved only the text, not its panel**
+  (`src/render.js`): the old fixed 120px/80px text-only shift clipped
+  text at the frame edge. One shared clamped slide offset is now applied
+  identically to the text and its panel drawbox (clamped so the panel
+  never leaves the frame).
+
+**Broken**
+- **C-03 — model status stuck on "downloading" forever**
+  (`src/segmentation.js` `ensureModel`): `downloadPromise` was only
+  cleared on the error path, so after a successful 168 MB download
+  `modelStatus()` reported "downloading" forever. It is now cleared on
+  success too, so the status flips to `ready`.
+- **C-04 — Magic Eraser returned a raw FFmpeg stderr dump for
+  alpha-less masks** (`src/magic-image.js` `meanAlpha`,
+  `src/routes/magic.js` `handleMagicError`): `format=rgba` is inserted
+  before `alphaextract` (an RGB mask now reads alpha 255, so the friendly
+  "Nothing to erase" guard fires), and — found while writing the
+  regression test — `signalstats` prints nothing by itself on this FFmpeg
+  build, so `meanAlpha` always returned `null` and the guard never fired;
+  it now reads the stats via `signalstats,metadata=print`
+  (`lavfi.signalstats.YAVG=…`, old `YAVG:` shape kept as a fallback).
+  Raw FFmpeg stderr is mapped to one short user-readable line.
+- **C-08 — Music Sync refused any project that already had an audio
+  clip** (`src/music-sync.js` `applyMusicSync`): the music clip now goes
+  to the first audio track whose clips do not overlap `[0, duration)`,
+  else a new `Audio N` track is created; re-apply stays idempotent.
+- **C-09 — A/V sync drift of 0.5s after transitions** (`src/render.js`
+  `collectAudio`): audio-track clips now use `shiftAt(clip.start)` as
+  the adelay start instead of the raw timeline start, so they shift with
+  the transitions exactly like the video clips.
+- **C-10 — DOCX export dropped chart blocks to placeholder text**
+  (`src/docs-slides.js` `docToDocx`): chart blocks now render via
+  `renderChartPng` (960×540) and embed as real images with the chart
+  title as caption (new shared `embedImage()` helper); a render failure
+  falls back to a one-line note naming the chart.
+- **C-11 — AI Studio listed 11 of 12 backend modes (`deck` missing)**
+  (`public/ai-studio.js`): the mode list is now derived from
+  `GET /api/ai/status` (full 12-mode table as fallback), with deck fields
+  (topic, slide count, style, audience), result rendering and an "Open in
+  Presentations" action. The backend `generateDeck` was already complete.
+
+**Rough edges**
+- **C-12 — server renderer drops editor features silently**
+  (`public/editor.js`): a warning bar under the toolbar lists, live, the
+  features the server render drops (ellipse/triangle shapes, rounded
+  corners drawn square, shadows, gradient text as solid colour, text
+  stroke/underline) — preview and PNG/JPG export keep them.
+- **C-13 — AI Design Assist headline never fit** (`src/ai.js`
+  `buildDesignFromSuggestions`): headline, subheading, CTA and badge all
+  run through `fitText` now; un-fittable layers are recorded in
+  `needsAttention`.
+- **C-14 — uploaded images never got width/height stored**
+  (`src/routes/media.js`): the upload probe branch now includes images
+  (ffprobe already returns image dimensions).
+- **C-15 — Shorts manual transcript never saved** (`src/routes/shorts.js`):
+  the route passed camelCase `transcriptSource` to a DB allow-list that
+  only accepts `transcript_source`; it now passes the snake_case name.
+- **C-16 — no solid-colour background fallback for quiz/bulk**
+  (`src/bulk.js`): a quiz row with no background assigned rendered on
+  the solid spec navy `#14213D` with a warning instead of throwing "This
+  row has no background assigned". Found while writing the regression
+  test: `startBulkJob` and the sample route call
+  `assignBackgroundsForJob` first, which threw "No backgrounds selected"
+  on an empty pool — so a quiz batch could never reach the fallback. A
+  quiz job in random/pool/manual mode with no pool now skips assignment
+  entirely (rows stay unassigned → navy fallback). Non-quiz video batches
+  still refuse without a pool: a template video needs a background.
+- **C-17 — Export Center stale copy** (`public/app.js`): "Batch image
+  export and ZIP download arrive with Bulk Design in Phase 4" now says
+  batch image export is live in Bulk Design with ZIP download from the
+  job.
+- **C-18 — republishing minted a second live site** (`src/db.js`,
+  `src/routes/docs-slides.js`): publish now reuses the project's existing
+  site (same slug/URL, rebuilt in place, `republished: true`); first
+  publish still creates it (201).
+- **C-19 — published deck/design pages had no viewport scaling**
+  (`src/docs-slides.js` `buildWebsite`): a `__fitPages` scaler scales
+  each `.page` to the viewport width (runs on load + resize); design
+  pages are wrapped in `.page-wrap` so the scaled height is reserved.
+- **C-20 — malformed JSON returned 500** (`server.js`): a body-parser
+  `entity.parse.failed` now returns 400 "Request body is not valid JSON".
+- **C-21 — notification bell dot never evaluated on load**
+  (`src/routes/system.js`, `public/app.js`): `GET /api/notifications`
+  now returns `unreadCount` (audit rows newer than the per-user
+  `notif_seen_at` marker); `POST /api/notifications/seen` sets it; the
+  client evaluates the dot on shell render and marks seen on open.
+- **C-22 — analytics platform totals visible to any USER**
+  (`src/db.js` `userStats`, `src/routes/analytics.js`): OWNER/ADMIN keep
+  platform-wide totals; a plain USER now sees only their own rows
+  (projects, renders, AI jobs, storage scoped to their folders).
+- **C-23 — deleting a user orphaned their files** (`src/routes/admin.js`):
+  delete now removes `uploads/<userId>`, `renders/<userId>` and each
+  published site dir (websites are listed before the row delete, which
+  cascades), and reports `filesRemoved`/`filesFailed`.
+- **C-24 — provider Test returned HTTP 200 on failure**
+  (`src/routes/system.js`): a failed test now returns **402** with the
+  same body.
+- **C-25 — dashboard "FFmpeg render engine live" was static text**
+  (`public/app.js`): the Render-jobs foot now reads the live
+  `d.system.ffmpeg` probe (`FFmpeg <version> live`, or "FFmpeg
+  unavailable — renders will fail").
+- **C-26 — version list had no content fingerprint** (`src/db.js`):
+  `listProjectVersions` now returns `sha256` (SHA-256 of the stored JSON)
+  + `bytes` per version; identical contents share a fingerprint.
+- **C-27 — a `manual` social post could be deleted** (`src/routes/social.js`,
+  `public/social.js`): delete now refuses `manual` records (400) as well
+  as `published` ones — a manual record is the only proof that post went
+  out; the Delete button is hidden for both.
+
+**Not built, by design (kept honestly labelled):** C-28 TikTok upload
+(`NOT_IMPLEMENTED`), C-29 CMYK print (PDFs DeviceRGB only), C-30 Stock
+video search (Openverse has none; honest `NO_VIDEO_SEARCH` 400).
+
 ## 2. Key modules (from the master prompt)
 
 | Module | Status |
@@ -443,6 +599,9 @@ blurb corrections above. All fixes were re-verified by the full suite.
    Sidebar regrouped CapCut-style, Video Editor + Graphic Editor in the
    four-pane CapCut layout, one design system with full light-theme
    parity — see §1d.
+2. **Fix round — v2.3.1 — DONE.** All 27 gaps from the full v2.3.0
+   verification audit (C-01–C-27) fixed in one release, one regression
+   test per gap — see §1e. Suite is now 249/249.
 2. Provider keys (Settings → AI Providers, secure entry — never in chat)
    to make AI modes, AI backgrounds, TTS/cloning, and STT run for real.
    (Gemini free key is already configured on the user's PC and tested OK.)
