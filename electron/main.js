@@ -52,7 +52,7 @@ function showLoadingWindow() {
 }
 
 function startServer(port) {
-  const spec = cfg.getServerCommand(appPath, isPackaged, port);
+  const spec = cfg.getServerCommand(appPath, isPackaged, port, { exePath: app.getPath('exe') });
   log(`starting server: ${spec.command} ${spec.args.join(' ')} (port ${port})`);
   const child = spawn(spec.command, spec.args, { cwd: spec.cwd, env: spec.env, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.on('data', (d) => process.stdout.write(`[server] ${d}`));
@@ -66,6 +66,13 @@ function startServer(port) {
     serverChild = null;
     if (quitting) return;
     if (restartRequested) { restartRequested = false; return; }
+    // v2.7.1 — the server exited for a desktop update apply: the update
+    // batch will relaunch the app, so quit quietly — no crash dialog.
+    if (cfg.consumeUpdateRestartFlag(dataDir)) {
+      quitting = true;
+      app.quit();
+      return;
+    }
     offerServerRestart(`Server band ho gaya (exit code ${code ?? '?'}) — kaam save hai, server dobara chalaya ja sakta hai.`);
   });
   return child;

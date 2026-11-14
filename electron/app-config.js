@@ -111,13 +111,20 @@ function saveWindowState(filePath, state) {
 // On win32 packaged the bundled node.exe is REQUIRED, so it is returned
 // even if the file is absent — the spawn then fails loudly instead of
 // silently running some other Node.
-function getServerCommand(appPath, isPackaged, port = DEFAULT_PORT) {
+function getServerCommand(appPath, isPackaged, port = DEFAULT_PORT, opts = {}) {
   const serverJs = path.join(appPath, 'server.js');
   const env = {
     ...process.env,
     PORT: String(port),
     HOST: '127.0.0.1',
   };
+  // v2.7.1 — when the shell passes its exe path, tell the server it runs
+  // inside the desktop app (and which exe to relaunch on update). With no
+  // exePath the env is exactly as before.
+  if (opts.exePath) {
+    env.CS_DESKTOP_APP = '1';
+    env.CS_DESKTOP_EXE = opts.exePath;
+  }
   const binDir = path.join(appPath, 'bin');
   const pathSep = process.platform === 'win32' ? ';' : ':';
   if (fs.existsSync(binDir)) env.PATH = binDir + pathSep + (process.env.PATH || '');
@@ -177,6 +184,22 @@ function buildMenuTemplate(h, version) {
   ];
 }
 
+// v2.7.1 — consume the update-restart flag the server writes when a
+// desktop update apply starts (data/updates/restarting-for-update under
+// dataDir). Returns true when the flag existed (and deletes it), false
+// otherwise. Never throws — a missing/unreadable flag just means no
+// update restart is in progress.
+function consumeUpdateRestartFlag(dataDir) {
+  try {
+    const flagFile = path.join(dataDir, 'updates', 'restarting-for-update');
+    if (!fs.existsSync(flagFile)) return false;
+    fs.rmSync(flagFile, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   DEFAULT_PORT,
   resolveServerPort,
@@ -185,5 +208,6 @@ module.exports = {
   saveWindowState,
   clampWindowState,
   getServerCommand,
+  consumeUpdateRestartFlag,
   buildMenuTemplate,
 };
