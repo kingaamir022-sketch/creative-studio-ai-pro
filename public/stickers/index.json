@@ -1,0 +1,104 @@
+{
+ "stickers": [
+  {
+   "id": "smile",
+   "name": "Smile",
+   "file": "/stickers/smile.svg"
+  },
+  {
+   "id": "heart",
+   "name": "Heart",
+   "file": "/stickers/heart.svg"
+  },
+  {
+   "id": "star",
+   "name": "Star",
+   "file": "/stickers/star.svg"
+  },
+  {
+   "id": "fire",
+   "name": "Fire",
+   "file": "/stickers/fire.svg"
+  },
+  {
+   "id": "thumbs-up",
+   "name": "Thumbs up",
+   "file": "/stickers/thumbs-up.svg"
+  },
+  {
+   "id": "clap",
+   "name": "Clap",
+   "file": "/stickers/clap.svg"
+  },
+  {
+   "id": "party",
+   "name": "Party",
+   "file": "/stickers/party.svg"
+  },
+  {
+   "id": "crown",
+   "name": "Crown",
+   "file": "/stickers/crown.svg"
+  },
+  {
+   "id": "rocket",
+   "name": "Rocket",
+   "file": "/stickers/rocket.svg"
+  },
+  {
+   "id": "lightning",
+   "name": "Lightning",
+   "file": "/stickers/lightning.svg"
+  },
+  {
+   "id": "music-note",
+   "name": "Music note",
+   "file": "/stickers/music-note.svg"
+  },
+  {
+   "id": "camera",
+   "name": "Camera",
+   "file": "/stickers/camera.svg"
+  },
+  {
+   "id": "check",
+   "name": "Check mark",
+   "file": "/stickers/check.svg"
+  },
+  {
+   "id": "warning",
+   "name": "Warning",
+   "file": "/stickers/warning.svg"
+  },
+  {
+   "id": "speech",
+   "name": "Speech bubble",
+   "file": "/stickers/speech.svg"
+  },
+  {
+   "id": "gift",
+   "name": "Gift",
+   "file": "/stickers/gift.svg"
+  },
+  {
+   "id": "sun",
+   "name": "Sun",
+   "file": "/stickers/sun.svg"
+  },
+  {
+   "id": "moon",
+   "name": "Moon",
+   "file": "/stickers/moon.svg"
+  },
+  {
+   "id": "arrow",
+   "name": "Arrow",
+   "file": "/stickers/arrow.svg"
+  },
+  {
+   "id": "burst",
+   "name": "Burst",
+   "file": "/stickers/burst.svg"
+  }
+ ]
+}
