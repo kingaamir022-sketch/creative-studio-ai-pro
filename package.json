@@ -18,7 +18,7 @@
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
-    "test": "node --test tests/api.test.js tests/design.test.js tests/video.test.js tests/bulk.test.js tests/music.test.js tests/narration.test.js tests/shorts.test.js tests/ai-studio.test.js tests/social.test.js tests/acceptance.test.js tests/update.test.js tests/lifetime.test.js tests/gemini-superadmin.test.js tests/magic-tools.test.js tests/docs-slides.test.js tests/library-assistant.test.js tests/fix-round-231.test.js tests/home-flow-240.test.js tests/rotation-fix-240.test.js"
+    "test": "node --test tests/api.test.js tests/design.test.js tests/video.test.js tests/bulk.test.js tests/music.test.js tests/narration.test.js tests/shorts.test.js tests/ai-studio.test.js tests/social.test.js tests/acceptance.test.js tests/update.test.js tests/lifetime.test.js tests/gemini-superadmin.test.js tests/magic-tools.test.js tests/docs-slides.test.js tests/library-assistant.test.js tests/fix-round-231.test.js tests/home-flow-240.test.js tests/rotation-fix-240.test.js tests/parity-render-250.test.js tests/parity-ai-250.test.js tests/parity-editor-250.test.js tests/parity-planner-250.test.js"
   },
-  "version": "2.4.0"
+  "version": "2.5.0"
 }
